@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wo_postgres
+    environment:
+      POSTGRES_USER: workorder
+      POSTGRES_PASSWORD: workorder_dev
+      POSTGRES_DB: workorder
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workorder -d workorder"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  be:
+    build:
+      context: ..
+      dockerfile: be/Dockerfile
+      target: dev
+    container_name: wo_be
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      LOG_LEVEL: debug
+      DATABASE_URL: postgresql://workorder:workorder_dev@postgres:5432/workorder
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-string-at-least-32-chars}
+      CORS_ORIGIN: http://localhost:3000
+      WORKDIR: /app/be
+    ports:
+      - "3001:3001"
+    volumes:
+      - ../:/app
+      - be_node_modules:/app/be/node_modules
+      - be_root_node_modules:/app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    working_dir: /app/be
+    entrypoint: ["/app/deploy/dev-entrypoint.sh"]
+    command: ["npm", "run", "dev"]
+
+  fe:
+    build:
+      context: ..
+      dockerfile: fe/Dockerfile
+      target: dev
+    container_name: wo_fe
+    environment:
+      NODE_ENV: development
+      VITE_API_URL: http://localhost:3001
+      WORKDIR: /app/fe
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../:/app
+      - fe_node_modules:/app/fe/node_modules
+      - fe_root_node_modules:/app/node_modules
+    depends_on:
+      - be
+    working_dir: /app/fe
+    entrypoint: ["/app/deploy/dev-entrypoint.sh"]
+    command: ["npm", "run", "dev"]
+
+volumes:
+  postgres_data:
+  be_node_modules:
+  be_root_node_modules:
+  fe_node_modules:
+  fe_root_node_modules:

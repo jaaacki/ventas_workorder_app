@@ -1,6 +1,6 @@
 #syntax=docker/dockerfile:1
 
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 WORKDIR /app
 RUN apk add --no-cache libc6-compat openssl
 
@@ -14,6 +14,7 @@ RUN npm ci
 
 FROM base AS dev
 ENV NODE_ENV=development
+ENV DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder
 COPY . .
 RUN npm run build -w shared && npm run db:generate -w be
 WORKDIR /app/be
@@ -21,10 +22,11 @@ CMD ["npm", "run", "dev"]
 
 FROM base AS build
 ENV NODE_ENV=production
+ENV DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder
 COPY . .
-RUN npm run build -w shared && npm run build -w be
+RUN npm run build -w shared && npm run db:generate -w be && npm run build -w be
 
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build /app/be/dist ./dist

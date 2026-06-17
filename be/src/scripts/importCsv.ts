@@ -1,9 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import csv from 'csv-parser';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+});
 
 export type Row = Record<string, string | undefined>;
 
@@ -342,7 +345,6 @@ async function loadCsv(filePath: string): Promise<Row[]> {
 }
 
 function createMany(model: string, data: Record<string, unknown>[]) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const delegate = (prisma as any)[model];
   if (!delegate || typeof delegate.createMany !== 'function') {
     throw new Error(`Unknown Prisma model: ${model}`);

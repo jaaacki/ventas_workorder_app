@@ -44,3 +44,6 @@ data/
 # Keep seed data? No, generated seed files can be large
 scripts/seed_data/*.json
 scripts/seed_data/*.csv
+
+# Playwright browser session artifacts
+.playwright-mcp/

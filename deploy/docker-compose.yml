@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: wo_postgres
     environment:
       POSTGRES_USER: workorder
@@ -9,7 +9,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U workorder -d workorder"]
       interval: 5s
@@ -26,7 +26,7 @@ services:
       NODE_ENV: development
       PORT: 3001
       LOG_LEVEL: debug
-      DATABASE_URL: postgresql://workorder:workorder_dev@postgres:5432/workorder
+      DATABASE_URL: postgresql://workorder:workorder_dev@postgres:5432/wo
       JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-string-at-least-32-chars}
       CORS_ORIGIN: http://localhost:3000
       WORKDIR: /app/be

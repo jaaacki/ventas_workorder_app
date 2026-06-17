@@ -1,7 +1,10 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import '@fastify/jwt';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../db/prisma.js';
+
+const errorResponse = z.object({ error: z.string() });
 
 export const authRoutes: FastifyPluginAsyncZod = async function (app) {
   app.post(
@@ -14,6 +17,7 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
         }),
         response: {
           200: z.object({ token: z.string(), user: z.object({ id: z.string(), email: z.string(), name: z.string().nullable() }) }),
+          401: errorResponse,
         },
       },
     },

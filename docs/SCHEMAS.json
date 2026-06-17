@@ -1,0 +1,2028 @@
+[
+  {
+    "table": "procedure",
+    "keyFields": [
+      "procedureId"
+    ],
+    "columns": [
+      {
+        "name": "procedureId",
+        "type": "Text",
+        "key": true,
+        "partOfKey": true,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=CONCATENATE( \"PRO-\", TEXT(TODAY(), \"YYMMDD\"), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1) )"
+      },
+      {
+        "name": "createdOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=NOW()"
+      },
+      {
+        "name": "createdBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "updatedOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=NOW()"
+      },
+      {
+        "name": "updatedBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "procedureName",
+        "type": "Name",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "procedureDesc",
+        "type": "LongText",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "procedureShort",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "keyText",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=\"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\""
+      },
+      {
+        "name": "label",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=[procedureShort]&\" - \"&[procedureName]"
+      }
+    ]
+  },
+  {
+    "table": "het",
+    "keyFields": [
+      "hetId"
+    ],
+    "columns": [
+      {
+        "name": "hetId",
+        "type": "Text",
+        "key": true,
+        "partOfKey": true,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=CONCATENATE( \"HET-\", TEXT(TODAY(), \"YYMMDD\"), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1) )"
+      },
+      {
+        "name": "createdOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "createdBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "updatedOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=NOW()"
+      },
+      {
+        "name": "updatedBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "clinicId",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "HCICode",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "clinicName",
+        "type": "Name",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "licenseName",
+        "type": "Name",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "address",
+        "type": "Address",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "hetNumber",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "parcelTrackingNumber",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "deliverId",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "collectId",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "usedBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "workOrder",
+        "formula": "=INDEX(SELECT(workOrder[woId], AND([hetId] = [_THISROW].[hetId], NOT([delete]))),1)"
+      },
+      {
+        "name": "finishedBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "workOrder",
+        "formula": "=IF(ISNOTBLANK([finishedWorkOrder_REF]), [finishedWorkOrder_REF],\"\")"
+      },
+      {
+        "name": "quantity",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=IF(ISNOTBLANK([finishedWorkOrder_REF]), [finishedWorkOrder_REF].[outPut], \"\")"
+      },
+      {
+        "name": "delete",
+        "type": "Yes/No",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=FALSE"
+      },
+      {
+        "name": "forceField",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "keyText",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=\"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\""
+      },
+      {
+        "name": "b11Weight",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": false,
+        "references": null,
+        "formula": "=INDEX(SELECT(workOrder[outPut], AND( [hetId] = [_THISROW].[hetId], [phaseOrder] = 5, ISNOTBLANK([prodEnd]) )),1)"
+      },
+      {
+        "name": "label",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=[hetNumber]&IF( ISNOTBLANK([b11Weight]),\" (\"& [b11Weight]&\" Grams)\",\"\" )"
+      },
+      {
+        "name": "finishedWorkOrder_REF",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": "workOrder",
+        "formula": "=INDEX( SELECT(workOrder[woId], AND( [hetId] = [_THISROW].[hetId], [phaseOrder] = 15 ) ),1 )"
+      }
+    ]
+  },
+  {
+    "table": "phase",
+    "keyFields": [
+      "phaseId"
+    ],
+    "columns": [
+      {
+        "name": "phaseId",
+        "type": "Text",
+        "key": true,
+        "partOfKey": true,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=CONCATENATE( \"PHS-\", TEXT(TODAY(), \"YYMMDD\"), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1) )"
+      },
+      {
+        "name": "createdOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=NOW()"
+      },
+      {
+        "name": "createdBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "updatedOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=NOW()"
+      },
+      {
+        "name": "updatedBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "procedureIds",
+        "type": "EnumList",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "procedure",
+        "formula": null
+      },
+      {
+        "name": "phaseName",
+        "type": "Name",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "phaseDesc",
+        "type": "LongText",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=TEXT(SELECT(procedure[label], CONTAINS([_THISROW].[procedureIds],[procedureId])))"
+      },
+      {
+        "name": "phaseShort",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "bomId",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "bom",
+        "formula": null
+      },
+      {
+        "name": "bomName",
+        "type": "Name",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=[bomId].[bomName]"
+      },
+      {
+        "name": "order",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "uom",
+        "type": "Enum",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "enum: Grams, Strips",
+        "formula": null
+      },
+      {
+        "name": "keyText",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=\"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\""
+      },
+      {
+        "name": "virPhaseDesc",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=TEXT(SELECT(procedure[label], CONTAINS([_THISROW].[procedureIds],[procedureId])))"
+      },
+      {
+        "name": "procedureShorts",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=TEXT(SELECT(procedure[procedureShort], CONTAINS([_THISROW].[procedureIds],[procedureId])))"
+      },
+      {
+        "name": "phaseStart",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=INDEX(SPLIT(INDEX(SPLIT([virPhaseDesc], \" , \"),1),\" - \"),1)"
+      },
+      {
+        "name": "phaseEnd",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=INDEX(SPLIT(INDEX(SPLIT([virPhaseDesc], \" , \"),COUNT(SPLIT([virPhaseDesc], \" , \"))),\" - \"),1)"
+      },
+      {
+        "name": "bomLines",
+        "type": "Related",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": "bomLine",
+        "formula": "=SELECT(bomLine[bomLineId], [bomId] = [_THISROW].[bomId])"
+      },
+      {
+        "name": "procedures",
+        "type": "Related",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": "procedure",
+        "formula": "=SELECT(procedure[procedureId], IN([procedureId], [_THISROW].[procedureIds]))"
+      }
+    ]
+  },
+  {
+    "table": "workOrder",
+    "keyFields": [
+      "woId"
+    ],
+    "columns": [
+      {
+        "name": "woId",
+        "type": "Text",
+        "key": true,
+        "partOfKey": true,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=CONCATENATE( \"WKO-\", TEXT(TODAY(), \"YYMMDD\"), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1) )"
+      },
+      {
+        "name": "woNumber",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=[virWoNumber]"
+      },
+      {
+        "name": "createdOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=NOW()"
+      },
+      {
+        "name": "createdBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "updatedOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=NOW()"
+      },
+      {
+        "name": "updatedBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "hetId",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "het",
+        "formula": null
+      },
+      {
+        "name": "batchHetIds",
+        "type": "EnumList",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "het",
+        "formula": null
+      },
+      {
+        "name": "phaseId",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "phase",
+        "formula": "=\"PHS-24082368G\""
+      },
+      {
+        "name": "phaseOrder",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=[phaseId].[order]"
+      },
+      {
+        "name": "phaseShort",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=[phaseId].[phaseShort]"
+      },
+      {
+        "name": "phaseEquipIds",
+        "type": "EnumList",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "phaseEquip",
+        "formula": "=[validPhaseEquipIds]"
+      },
+      {
+        "name": "prodStart",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=IF( AND(ISBLANK([_THIS]),ISNOTBLANK([hetId])),NOW(), [_THIS] )"
+      },
+      {
+        "name": "startSign",
+        "type": "Signature",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "startSignBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=IF(AND(ISNOTBLANK([startSign]), ISBLANK([_THIS])), USEREMAIL(),[_THIS])"
+      },
+      {
+        "name": "prodEnd",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=IF(AND(ISNOTBLANK([endSign]),ISBLANK([_THIS])),NOW(), [_THIS])"
+      },
+      {
+        "name": "endSign",
+        "type": "Signature",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "endSignBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=IF(AND(ISNOTBLANK([endSign]), ISBLANK([_THIS])), USEREMAIL(),[_THIS])"
+      },
+      {
+        "name": "prodDuration",
+        "type": "Duration",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=IF(AND(ISNOTBLANK([prodStart]),ISNOTBLANK([prodEnd])), [prodEnd]-[prodStart],\"\")"
+      },
+      {
+        "name": "b11CycleNo",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "outPut",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "uom",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=[phaseId].[uom]"
+      },
+      {
+        "name": "image",
+        "type": "Image",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "manuId",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "manufacturer",
+        "formula": "=INDEX(SELECT(manufacturer[manuId], IN([_THISROW].[hetId], [batchHetIds]) ),1)"
+      },
+      {
+        "name": "manuNumber",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=[manuId].[manuNumber]"
+      },
+      {
+        "name": "reportPdf",
+        "type": "File",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "delete",
+        "type": "Yes/No",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=FALSE"
+      },
+      {
+        "name": "forceField",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "keyText",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=\"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\""
+      },
+      {
+        "name": "entryCount",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=COUNT(SELECT(workOrder[woId], TRUE, TRUE))"
+      },
+      {
+        "name": "virWoNumber",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=\"WO\"&RIGHT(\"000000\"&([entryCount] + 58 + 1),6)"
+      },
+      {
+        "name": "phaseBom",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": "bom",
+        "formula": "=[phaseId].[bomId]"
+      },
+      {
+        "name": "virBatchId",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=TEXT(TODAY(),\"DDMMYYYY\")&RIGHT(\"000\"& [entryCountDaily],3)"
+      },
+      {
+        "name": "entryCountDaily",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=COUNT(SELECT(workOrder[woId],TEXT([_THISROW].[createdOn],\"DDMMYYYY\") = TEXT(TODAY(),\"DDMMYYYY\")))+1"
+      },
+      {
+        "name": "bomLineItems",
+        "type": "Related",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": "bomLine",
+        "formula": "=SELECT(bomLine[bomLineId],[bomId] = [_THISROW].[phaseBom])"
+      },
+      {
+        "name": "productionState",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=IF([phaseOrderCurrent] = [phaseOrder], IF(AND(ISNOTBLANK([prodStart]),ISNOTBLANK([prodEnd])), IF([phaseOrder] < 16, \"2. Next Phase\"&IF(ISNOTBLANK([phaseId].[phaseShort]),\": \"& [nextPhase].[phaseShort],\"\"), \"4. Finished Goods\"), IF(OR(ISBLANK([steralisationCurrent]),ISBLANK([steralisationCurrent].[result])), \"1. In Progress\"&IF(ISNOTBLANK([phaseId].[phaseShort]),\": \"&[phaseId].[phaseShort],\"\"),\"3. In Quarantine (\"&TEXT([steralisationCurrent].[createdOn],\"DD-MM-YY\")&\")\") ), \"5. WO Completed\" )"
+      },
+      {
+        "name": "phaseOrderCurrent",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=IF([combinedHetCheck], INDEX( SELECT(workOrder[phaseOrder], CONTAINS([batchHetIds], [_THISROW].[hetId])), COUNT(SELECT(workOrder[phaseOrder], CONTAINS([batchHetIds],[_THISROW].[hetId]))), ), INDEX( SELECT(workOrder[phaseOrder], [hetId] = [_THISROW].[hetId]), COUNT(SELECT(workOrder[phaseOrder], [hetId] = [_THISROW].[hetId])) ) )"
+      },
+      {
+        "name": "woSerials",
+        "type": "Related",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": "woSerial",
+        "formula": "=REF_ROWS(\"woSerial\", \"woId\")"
+      },
+      {
+        "name": "usedHetIds",
+        "type": "Related",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": "workOrder",
+        "formula": "=SELECT(workOrder[hetId], [phaseOrder] = 1)"
+      },
+      {
+        "name": "B11Weight",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=SUM(SELECT(workOrder[outPut], AND( IN([hetId], [_THISROW].[batchHetIds]), ISNOTBLANK([prodEnd]), [phaseOrder] = 5 ) ))"
+      },
+      {
+        "name": "combinedHetCheck",
+        "type": "Yes/No",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=COUNT(SELECT(workOrder[batchHetIds], AND( ISNOTBLANK([batchHetIds]), CONTAINS([batchHetIds], [_THISROW].[hetId]) ) ,TRUE )) >= 1"
+      },
+      {
+        "name": "serialCheckDone",
+        "type": "Yes/No",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=COUNT([bomLineItems]) - COUNT([woSerials]) = 0"
+      },
+      {
+        "name": "duplicatePhaseCheck",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=COUNT(SELECT(workOrder[phaseOrder], AND([hetId] = [_THISROW].[hetId], [phaseOrder] = [_THISROW].[phaseOrder] ) ) )"
+      },
+      {
+        "name": "previousWo",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": "workOrder",
+        "formula": "=INDEX( SELECT(workOrder[woId], AND( [hetId] = [_THISROW].[hetId], [phaseOrder] = ([_THISROW].[phaseOrder] - 1) ) ),1)"
+      },
+      {
+        "name": "previousOutput",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=[previousWo].[outPut]&\" \"&[previousWo].[uom]"
+      },
+      {
+        "name": "steralisationCurrent",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": "sterilise",
+        "formula": "=INDEX([Related sterilises], COUNT([Related sterilises]))"
+      },
+      {
+        "name": "nextPhase",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": "phase",
+        "formula": "=INDEX(SELECT( phase[phaseId], [order] = [_THISROW].[phaseOrder] + 1 ),1)"
+      },
+      {
+        "name": "woSerialsRO",
+        "type": "Related",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": "woSerial",
+        "formula": "=REF_ROWS(\"woSerial\", \"woId\")"
+      },
+      {
+        "name": "labelFile",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=CONCATENATE([woId], '.pdf')"
+      },
+      {
+        "name": "betReading",
+        "type": "Decimal",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=INDEX( SELECT( sterilise[betReading], AND( [manuId] = [_THISROW].[manuId], ISNOTBLANK([betReading]) ) ), 1 )"
+      },
+      {
+        "name": "validPhaseEquipIds",
+        "type": "Related",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": "phaseEquip",
+        "formula": "=SELECT(phaseEquip[id], CONTAINS([phaseIds], [_THISROW].[phaseId]), TRUE )"
+      }
+    ]
+  },
+  {
+    "table": "staff",
+    "keyFields": [
+      "EMAIL"
+    ],
+    "columns": [
+      {
+        "name": "ID",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "ACTIVE",
+        "type": "Yes/No",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "NAME",
+        "type": "Name",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "SECOND_NAME",
+        "type": "Name",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "LAST_NAME",
+        "type": "Name",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "EMAIL",
+        "type": "Email",
+        "key": true,
+        "partOfKey": true,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "UF_PHONE_INNER",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "UF_DEPARTMENT",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "PERSONAL_MOBILE",
+        "type": "Phone",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "DATE_REGISTER",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "permission",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "appRole",
+        "type": "Enum",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      }
+    ]
+  },
+  {
+    "table": "manufacturer",
+    "keyFields": [
+      "manuId"
+    ],
+    "columns": [
+      {
+        "name": "manuId",
+        "type": "Text",
+        "key": true,
+        "partOfKey": true,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=CONCATENATE( \"MAN-\", TEXT(TODAY(), \"YYMMDD\"), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1) )"
+      },
+      {
+        "name": "createdOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=NOW()"
+      },
+      {
+        "name": "createdBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "updatedOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=NOW()"
+      },
+      {
+        "name": "updatedBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "manuNumber",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=IF( ISBLANK([_THISROW].[manuNumber]), MID(\"ABCDEFGHIJKL\", MONTH(TODAY()), 1) & RIGHT(\"00\" & DAY(TODAY()), 2)&RIGHT(\"00\"&[entryCountToday],3) & \"025\" & MID(\"ABCDEFGHIJ\", NUMBER(LEFT(RIGHT(TEXT(YEAR(TODAY())), 2), 1)), 1) & MID(\"ABCDEFGHIJ\", NUMBER(RIGHT(TEXT(YEAR(TODAY())), 1)), 1), [_THISROW].[manuNumber] )"
+      },
+      {
+        "name": "hetId",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "batchHetIds",
+        "type": "EnumList",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "het",
+        "formula": null
+      },
+      {
+        "name": "keyText",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=\"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\""
+      },
+      {
+        "name": "entryCountToday",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=COUNT(SELECT(manufacturer[manuId],TEXT([createdOn],\"DD MMYYYY\") = TEXT(TODAY(),\"DDMMYYYY\")))+1"
+      }
+    ]
+  },
+  {
+    "table": "bom",
+    "keyFields": [
+      "bomId"
+    ],
+    "columns": [
+      {
+        "name": "bomId",
+        "type": "Text",
+        "key": true,
+        "partOfKey": true,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=CONCATENATE( \"BOM-\", TEXT(TODAY(), \"YYMMDD\"), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1) )"
+      },
+      {
+        "name": "createdOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=NOW()"
+      },
+      {
+        "name": "createdBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "updatedOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=NOW()"
+      },
+      {
+        "name": "updatedBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "bomName",
+        "type": "Name",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "keyText",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=\"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\""
+      }
+    ]
+  },
+  {
+    "table": "bomLine",
+    "keyFields": [
+      "bomLineId"
+    ],
+    "columns": [
+      {
+        "name": "bomLineId",
+        "type": "Text",
+        "key": true,
+        "partOfKey": true,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=CONCATENATE( \"BOL-\", TEXT(TODAY(), \"YYMMDD\"), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1) )"
+      },
+      {
+        "name": "createdOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=NOW()"
+      },
+      {
+        "name": "createdBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "updatedOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=NOW()"
+      },
+      {
+        "name": "updatedBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "bomId",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "bom",
+        "formula": null
+      },
+      {
+        "name": "bomName",
+        "type": "Name",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=[bomId].[bomName]"
+      },
+      {
+        "name": "description",
+        "type": "LongText",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "quantity",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "uom",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "hasSerial",
+        "type": "Yes/No",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "deleted",
+        "type": "Yes/No",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=FALSE"
+      },
+      {
+        "name": "keyText",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=\"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\""
+      }
+    ]
+  },
+  {
+    "table": "woSerial",
+    "keyFields": [
+      "woSerialId"
+    ],
+    "columns": [
+      {
+        "name": "woSerialId",
+        "type": "Text",
+        "key": true,
+        "partOfKey": true,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=CONCATENATE( \"WOS-\", TEXT(TODAY(), \"YYMMDD\"), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1) )"
+      },
+      {
+        "name": "woId",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "workOrder",
+        "formula": null
+      },
+      {
+        "name": "createdOn",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=NOW()"
+      },
+      {
+        "name": "createdBy",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "updatedOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=NOW()"
+      },
+      {
+        "name": "updatedBy",
+        "type": "Email",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "bomRef",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "bomLine",
+        "formula": "=INDEX([woId].[bomLineItems],COUNT([woId].[woSerials])+1)"
+      },
+      {
+        "name": "bomLineName",
+        "type": "Name",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=[bomRef].[bomName]"
+      },
+      {
+        "name": "quantity",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=[bomRef].[quantity]&\" \"&[bomRef].[uom]"
+      },
+      {
+        "name": "hasSerial",
+        "type": "Yes/No",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=[bomRef].[hasSerial]"
+      },
+      {
+        "name": "serialNumber",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=IF([hasSerial],\"\",\"N/A\")"
+      },
+      {
+        "name": "keyText",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=\"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\""
+      },
+      {
+        "name": "bomLineItems",
+        "type": "Related",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=[woId].[bomLineItems]"
+      },
+      {
+        "name": "bomLineEntryCount",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=COUNT( [bomLineItems] - [woSerialDone] )"
+      },
+      {
+        "name": "woSerialDone",
+        "type": "Related",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": "woSerial",
+        "formula": "=SELECT(woSerial[bomRef], [woId] = [_THISROW].[woId])"
+      }
+    ]
+  },
+  {
+    "table": "sterilise",
+    "keyFields": [
+      "sterId"
+    ],
+    "columns": [
+      {
+        "name": "sterId",
+        "type": "Text",
+        "key": true,
+        "partOfKey": true,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=CONCATENATE( \"STE-\", TEXT(TODAY(), \"YYMMDD\"), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1), MID([keyText], RANDBETWEEN(1, LEN([keyText])), 1) )"
+      },
+      {
+        "name": "woId",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "workOrder",
+        "formula": null
+      },
+      {
+        "name": "createdOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=NOW()"
+      },
+      {
+        "name": "createdBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "manuId",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "manufacturer",
+        "formula": "=[woId].[manuId]"
+      },
+      {
+        "name": "batchHetId",
+        "type": "EnumList",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "het",
+        "formula": "=[woId].[batchHetIds]"
+      },
+      {
+        "name": "direction",
+        "type": "Enum",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "result",
+        "type": "Yes/No",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "betReading",
+        "type": "Decimal",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "quantity",
+        "type": "Number",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=IF( [woId].[phaseOrder] = 13, IF( [direction] = \"OUT\", [woId].[previousWo].[outPut], INDEX( SELECT(sterilise[quantity], AND( [woId] = [_THISROW].[woId], [direction] = \"OUT\" ) ), 1 ) ), IF( [direction] = \"OUT\", 0, [woId].[previousWo].[outPut] - INDEX( SELECT(sterilise[quantity], AND( [woId] = [_THISROW].[woId], [direction] = \"OUT\" ) ), 1 ) ) )"
+      },
+      {
+        "name": "comment",
+        "type": "LongText",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "image",
+        "type": "Image",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "signOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=IF(ISNOTBLANK([signature]), NOW(), [_THIS])"
+      },
+      {
+        "name": "signBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=IF(ISNOTBLANK([signature]), USEREMAIL(), [_THIS])"
+      },
+      {
+        "name": "signature",
+        "type": "Signature",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "keyText",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=\"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\""
+      },
+      {
+        "name": "label",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": true,
+        "references": null,
+        "formula": "=IF(ISBLANK([result]),\"\",IF([result],\"PASSED\",\"FAILED\")&\": \")& [woId].[woNumber]&\" - \"&[manuId].[manuNumber]"
+      }
+    ]
+  },
+  {
+    "table": "printLabels",
+    "keyFields": [
+      "_ID"
+    ],
+    "columns": [
+      {
+        "name": "_ID",
+        "type": "Text",
+        "key": true,
+        "partOfKey": true,
+        "readOnly": true,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "Path",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": true,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "File",
+        "type": "File",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "CreateTime",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "LastModifiedBy",
+        "type": "Email",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "MimeType",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      }
+    ]
+  },
+  {
+    "table": "phaseEquip",
+    "keyFields": [
+      "id"
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "type": "Text",
+        "key": true,
+        "partOfKey": true,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=CONCATENATE( \"PHQ-\", TEXT(TODAY(), \"YYMMDD\"), UPPER(LEFT(UNIQUEID(\"PackedUUID\"),4)) )"
+      },
+      {
+        "name": "createdOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=NOW()"
+      },
+      {
+        "name": "createdBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "updatedOn",
+        "type": "DateTime",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": "=NOW()"
+      },
+      {
+        "name": "updatedBy",
+        "type": "Ref",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "staff",
+        "formula": "=USEREMAIL()"
+      },
+      {
+        "name": "equipId",
+        "type": "Text",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "name",
+        "type": "Name",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "description",
+        "type": "LongText",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": null,
+        "formula": null
+      },
+      {
+        "name": "phaseIds",
+        "type": "EnumList",
+        "key": false,
+        "partOfKey": false,
+        "readOnly": false,
+        "virtual": false,
+        "references": "phase",
+        "formula": null
+      }
+    ]
+  }
+]

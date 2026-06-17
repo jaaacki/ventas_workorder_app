@@ -8,16 +8,363 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Placeholder schema — will be replaced by the full migration once seed data is inspected.
 model Staff {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String?
-  passwordHash String?
-  bitrixId     String?
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  passwordHash  String?
+  bitrixId      String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  createdProcedures Procedure[] @relation("ProcedureCreatedBy")
+  updatedProcedures Procedure[] @relation("ProcedureUpdatedBy")
+  createdHets       Het[]       @relation("HetCreatedBy")
+  updatedHets       Het[]       @relation("HetUpdatedBy")
+  createdPhases     Phase[]     @relation("PhaseCreatedBy")
+  updatedPhases     Phase[]     @relation("PhaseUpdatedBy")
+  createdWorkOrders WorkOrder[] @relation("WorkOrderCreatedBy")
+  updatedWorkOrders WorkOrder[] @relation("WorkOrderUpdatedBy")
+  createdBoms        Bom[]        @relation("BomCreatedBy")
+  updatedBoms        Bom[]        @relation("BomUpdatedBy")
+  createdBomLines    BomLine[]    @relation("BomLineCreatedBy")
+  updatedBomLines    BomLine[]    @relation("BomLineUpdatedBy")
+  createdWoSerials   WoSerial[]   @relation("WoSerialCreatedBy")
+  updatedWoSerials   WoSerial[]   @relation("WoSerialUpdatedBy")
+  createdSterilises  Sterilise[]  @relation("SteriliseCreatedBy")
+  updatedSterilises  Sterilise[]  @relation("SteriliseUpdatedBy")
+  createdPhaseEquips PhaseEquip[] @relation("PhaseEquipCreatedBy")
+  updatedPhaseEquips PhaseEquip[] @relation("PhaseEquipUpdatedBy")
+  startedWorkOrders  WorkOrder[]  @relation("WorkOrderStartSignBy")
+  endedWorkOrders    WorkOrder[]  @relation("WorkOrderEndSignBy")
+  signedSterilises   Sterilise[]  @relation("SteriliseSignBy")
+  createdManufacturers Manufacturer[] @relation("ManufacturerCreatedBy")
+  updatedManufacturers Manufacturer[] @relation("ManufacturerUpdatedBy")
 
   @@map("staff")
+}
+
+model Manufacturer {
+  id            String    @id @default(cuid())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  createdById   String?
+  updatedById   String?
+  manuName      String?
+  manuNumber    String?
+  keyText       String?
+
+  createdBy     Staff?       @relation("ManufacturerCreatedBy", fields: [createdById], references: [id])
+  updatedBy     Staff?       @relation("ManufacturerUpdatedBy", fields: [updatedById], references: [id])
+  workOrders    WorkOrder[]
+  sterilises    Sterilise[]
+  batchHets     ManufacturerHet[]
+
+  @@map("manufacturer")
+}
+
+model Procedure {
+  id             String      @id
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  createdById    String?
+  updatedById    String?
+  procedureName  String?
+  procedureDesc  String?
+  procedureShort String?
+  keyText        String?
+
+  createdBy      Staff?           @relation("ProcedureCreatedBy", fields: [createdById], references: [id])
+  updatedBy      Staff?           @relation("ProcedureUpdatedBy", fields: [updatedById], references: [id])
+  phases         PhaseProcedure[]
+
+  @@map("procedure")
+}
+
+model Bom {
+  id          String    @id
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  bomName     String?
+  keyText     String?
+
+  createdBy   Staff?     @relation("BomCreatedBy", fields: [createdById], references: [id])
+  updatedBy   Staff?     @relation("BomUpdatedBy", fields: [updatedById], references: [id])
+  lines       BomLine[]
+  phases      Phase[]
+
+  @@map("bom")
+}
+
+model BomLine {
+  id          String     @id
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  createdById String?
+  updatedById String?
+  bomId       String
+  bomName     String?
+  description String?
+  quantity    Decimal?   @db.Decimal(18, 4)
+  uom         String?
+  hasSerial   Boolean   @default(false)
+  deleted     Boolean   @default(false)
+  keyText     String?
+
+  createdBy   Staff?      @relation("BomLineCreatedBy", fields: [createdById], references: [id])
+  updatedBy   Staff?      @relation("BomLineUpdatedBy", fields: [updatedById], references: [id])
+  bom         Bom         @relation(fields: [bomId], references: [id])
+  woSerials   WoSerial[]
+
+  @@map("bomLine")
+}
+
+model Het {
+  id                 String            @id
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  createdById        String?
+  updatedById        String?
+  clinicId           String?
+  HCICode            String?
+  clinicName         String?
+  licenseName        String?
+  address            String?
+  hetNumber          String?
+  parcelTrackingNumber Int?
+  deliverId          String?
+  collectId          String?
+  usedById           String?
+  finishedById       String?
+  quantity           Int?
+  deleted            Boolean           @default(false)
+  forceField         Int?
+  keyText            String?
+  b11Weight          Decimal?          @db.Decimal(18, 4)
+
+  createdBy          Staff?            @relation("HetCreatedBy", fields: [createdById], references: [id])
+  updatedBy          Staff?            @relation("HetUpdatedBy", fields: [updatedById], references: [id])
+  usedBy             WorkOrder?        @relation("HetUsedBy", fields: [usedById], references: [id])
+  finishedBy         WorkOrder?        @relation("HetFinishedBy", fields: [finishedById], references: [id])
+  workOrders         WorkOrder[]       @relation("WorkOrderHet")
+  workOrderHets      WorkOrderHet[]
+  steriliseHets      SteriliseHet[]
+  manufacturerHets   ManufacturerHet[]
+
+  @@map("het")
+}
+
+model Phase {
+  id             String             @id
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  createdById    String?
+  updatedById    String?
+  phaseName      String?
+  phaseShort     String?
+  phaseOrder     Int?
+  description    String?
+  bomId          String?
+  keyText        String?
+
+  createdBy      Staff?             @relation("PhaseCreatedBy", fields: [createdById], references: [id])
+  updatedBy      Staff?             @relation("PhaseUpdatedBy", fields: [updatedById], references: [id])
+  bom            Bom?               @relation(fields: [bomId], references: [id])
+  procedures     PhaseProcedure[]
+  phaseEquips    PhasePhaseEquip[]
+  currentWorkOrders WorkOrder[]      @relation("WorkOrderCurrentPhase")
+  nextWorkOrders WorkOrder[]         @relation("WorkOrderNextPhase")
+
+  @@map("phase")
+}
+
+model PhaseProcedure {
+  phaseId     String
+  procedureId String
+  phase       Phase     @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  procedure   Procedure @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+
+  @@id([phaseId, procedureId])
+  @@map("phaseProcedure")
+}
+
+model PhaseEquip {
+  id          String            @id
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  createdById String?
+  updatedById String?
+  equipId     String?
+  name        String?
+  description String?
+  keyText     String?
+
+  createdBy   Staff?            @relation("PhaseEquipCreatedBy", fields: [createdById], references: [id])
+  updatedBy   Staff?            @relation("PhaseEquipUpdatedBy", fields: [updatedById], references: [id])
+  phases      PhasePhaseEquip[]
+  workOrders  WorkOrderPhaseEquip[]
+
+  @@map("phaseEquip")
+}
+
+model PhasePhaseEquip {
+  phaseId      String
+  phaseEquipId String
+  phase        Phase      @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  phaseEquip   PhaseEquip @relation(fields: [phaseEquipId], references: [id], onDelete: Cascade)
+
+  @@id([phaseId, phaseEquipId])
+  @@map("phasePhaseEquip")
+}
+
+model WorkOrder {
+  id                     String                @id
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  createdById            String?
+  updatedById            String?
+  hetId                  String?
+  phaseId                String?
+  phaseOrder             Int?
+  phaseShort             String?
+  prodStart              DateTime?
+  startSignPath          String?
+  startSignById          String?
+  prodEnd                DateTime?
+  endSignPath            String?
+  endSignById            String?
+  prodDuration           Decimal?              @db.Decimal(18, 4)
+  manuId                 String?
+  manuNumber             String?
+  woNumber               String?
+  reportPdfPath          String?
+  deleted                Boolean               @default(false)
+  forceField             Int?
+  keyText                String?
+  previousWoId           String?
+  steralisationCurrentId String?               @unique
+  nextPhaseId            String?
+
+  createdBy              Staff?                @relation("WorkOrderCreatedBy", fields: [createdById], references: [id])
+  updatedBy              Staff?                @relation("WorkOrderUpdatedBy", fields: [updatedById], references: [id])
+  het                    Het?                  @relation("WorkOrderHet", fields: [hetId], references: [id])
+  phase                  Phase?                @relation("WorkOrderCurrentPhase", fields: [phaseId], references: [id])
+  startSignBy            Staff?                @relation("WorkOrderStartSignBy", fields: [startSignById], references: [id])
+  endSignBy              Staff?                @relation("WorkOrderEndSignBy", fields: [endSignById], references: [id])
+  manufacturer           Manufacturer?         @relation(fields: [manuId], references: [id])
+  previousWo             WorkOrder?            @relation("WorkOrderPrevious", fields: [previousWoId], references: [id])
+  nextWorkOrders         WorkOrder[]           @relation("WorkOrderPrevious")
+  steralisationCurrent   Sterilise?            @relation("WorkOrderSterilisationCurrent", fields: [steralisationCurrentId], references: [id])
+  nextPhase              Phase?                @relation("WorkOrderNextPhase", fields: [nextPhaseId], references: [id])
+  woSerials              WoSerial[]
+  sterilises             Sterilise[]
+  batchHets              WorkOrderHet[]
+  phaseEquips            WorkOrderPhaseEquip[]
+  usedHets               Het[]                 @relation("HetUsedBy")
+  finishedHets           Het[]                 @relation("HetFinishedBy")
+
+  @@map("workOrder")
+}
+
+model WorkOrderHet {
+  workOrderId String
+  hetId       String
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  het         Het       @relation(fields: [hetId], references: [id], onDelete: Cascade)
+
+  @@id([workOrderId, hetId])
+  @@map("workOrderHet")
+}
+
+model WorkOrderPhaseEquip {
+  workOrderId  String
+  phaseEquipId String
+  workOrder    WorkOrder  @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  phaseEquip   PhaseEquip @relation(fields: [phaseEquipId], references: [id], onDelete: Cascade)
+
+  @@id([workOrderId, phaseEquipId])
+  @@map("workOrderPhaseEquip")
+}
+
+model WoSerial {
+  id          String     @id
+  createdOn   DateTime   @default(now())
+  createdById String?
+  updatedOn   DateTime   @updatedAt
+  updatedById String?
+  workOrderId String
+  bomRefId    String
+  serialNumber String?
+  keyText     String?
+
+  createdBy   Staff?     @relation("WoSerialCreatedBy", fields: [createdById], references: [id])
+  updatedBy   Staff?     @relation("WoSerialUpdatedBy", fields: [updatedById], references: [id])
+  workOrder   WorkOrder  @relation(fields: [workOrderId], references: [id])
+  bomRef      BomLine    @relation(fields: [bomRefId], references: [id])
+
+  @@map("woSerial")
+}
+
+model Sterilise {
+  id          String         @id
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  createdById String?
+  workOrderId String
+  manuId      String?
+  direction   String?
+  result      Boolean?
+  betReading  Decimal?       @db.Decimal(18, 4)
+  quantity    Int?
+  comment     String?
+  imagePath   String?
+  signOn      DateTime?
+  signById    String?
+  signaturePath String?
+  keyText     String?
+
+  createdBy   Staff?         @relation("SteriliseCreatedBy", fields: [createdById], references: [id])
+  updatedById String?
+  updatedBy   Staff?         @relation("SteriliseUpdatedBy", fields: [updatedById], references: [id])
+  workOrder   WorkOrder      @relation(fields: [workOrderId], references: [id])
+  manufacturer Manufacturer? @relation(fields: [manuId], references: [id])
+  signBy      Staff?         @relation("SteriliseSignBy", fields: [signById], references: [id])
+  batchHets   SteriliseHet[]
+  currentWorkOrder WorkOrder?  @relation("WorkOrderSterilisationCurrent")
+
+  @@map("sterilise")
+}
+
+model SteriliseHet {
+  steriliseId String
+  hetId       String
+  sterilise   Sterilise @relation(fields: [steriliseId], references: [id], onDelete: Cascade)
+  het         Het       @relation(fields: [hetId], references: [id], onDelete: Cascade)
+
+  @@id([steriliseId, hetId])
+  @@map("steriliseHet")
+}
+
+model ManufacturerHet {
+  manufacturerId String
+  hetId          String
+  manufacturer   Manufacturer @relation(fields: [manufacturerId], references: [id], onDelete: Cascade)
+  het            Het          @relation(fields: [hetId], references: [id], onDelete: Cascade)
+
+  @@id([manufacturerId, hetId])
+  @@map("manufacturerHet")
+}
+
+model PrintLabel {
+  id             String   @id @default(cuid())
+  path           String?
+  fileUrl        String?
+  createdTime    DateTime?
+  lastModifiedBy String?
+  mimeType       String?
+
+  @@map("printLabel")
 }

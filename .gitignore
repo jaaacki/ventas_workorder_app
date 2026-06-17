@@ -1,0 +1,34 @@
+.DS_Store
+node_modules/
+dist/
+build/
+.env
+.env.local
+.env.*.local
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Database
+postgres_data/
+
+# Uploads / generated files
+uploads/
+*.pdf
+*.png
+*.jpg
+*.jpeg
+
+# Keep seed data? No, generated seed files can be large
+scripts/seed_data/*.json
+scripts/seed_data/*.csv

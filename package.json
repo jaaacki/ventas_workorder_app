@@ -1,0 +1,23 @@
+{
+  "name": "ventas-workorder-app",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "be",
+    "fe",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "make -C deploy up && make -C deploy logs",
+    "build": "docker compose -f deploy/docker-compose.yml build",
+    "down": "make -C deploy down",
+    "db:migrate": "make -C deploy db-migrate",
+    "db:seed": "make -C deploy db-seed",
+    "db:reset": "make -C deploy db-reset",
+    "shell:be": "make -C deploy shell-be",
+    "shell:fe": "make -C deploy shell-fe"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

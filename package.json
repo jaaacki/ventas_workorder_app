@@ -13,6 +13,7 @@
     "down": "make -C deploy down",
     "db:migrate": "make -C deploy db-migrate",
     "db:seed": "make -C deploy db-seed",
+    "db:import": "make -C deploy db-import",
     "db:reset": "make -C deploy db-reset",
     "shell:be": "make -C deploy shell-be",
     "shell:fe": "make -C deploy shell-fe"

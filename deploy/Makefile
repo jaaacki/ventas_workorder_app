@@ -24,5 +24,8 @@ db-migrate:
 db-seed:
 	docker compose -f docker-compose.yml exec be npm run db:seed
 
+db-import:
+	docker compose -f docker-compose.yml exec be npm run db:import
+
 db-reset:
 	docker compose -f docker-compose.yml exec be npx prisma migrate reset --force --skip-seed

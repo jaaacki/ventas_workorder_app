@@ -29,7 +29,8 @@ cd deploy && make up
 ```bash
 npm run down              # Stop all services
 npm run db:migrate        # Run Prisma migrations inside the backend container
-npm run db:seed           # Run the seed script
+npm run db:seed           # Run the default seed script
+npm run db:import         # Import CSV seed data from scripts/seed_data/
 npm run db:reset          # Reset the database
 npm run shell:be          # Open a shell in the backend container
 npm run shell:fe          # Open a shell in the frontend container

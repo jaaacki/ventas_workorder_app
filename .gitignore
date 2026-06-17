@@ -38,6 +38,9 @@ uploads/
 # Claude plans / local scratch
 .claude/
 
+# Woodpecker / local CI data (mirrors ~/Dev/docker layout)
+data/
+
 # Keep seed data? No, generated seed files can be large
 scripts/seed_data/*.json
 scripts/seed_data/*.csv

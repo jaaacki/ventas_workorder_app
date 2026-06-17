@@ -1,0 +1,151 @@
+# Woodpecker CI — ventas_workorder_app
+#
+# Strategy:
+#   - Pull Requests: fast checks (lint, unit tests, typecheck, build). No DB.
+#   - Dev / Main pushes: full integration + DB tests close to production.
+
+---
+# Pull requests: fast feedback for developers.
+when:
+  event: pull_request
+  branch: [dev, main]
+
+variables:
+  - &node_image node:22-alpine
+
+steps:
+  pr-be-lint:
+    image: *node_image
+    commands:
+      - cd be
+      - npm ci
+      - npm run lint
+
+  pr-be-typecheck:
+    image: *node_image
+    commands:
+      - cd be
+      - npm ci
+      - npm run typecheck
+
+  pr-be-unit-test:
+    image: *node_image
+    commands:
+      - cd be
+      - npm ci
+      - npm run test:unit
+
+  pr-be-build:
+    image: *node_image
+    commands:
+      - cd be
+      - npm ci
+      - npm run build
+
+  pr-fe-lint:
+    image: *node_image
+    commands:
+      - cd fe
+      - npm ci
+      - npm run lint
+
+  pr-fe-typecheck:
+    image: *node_image
+    commands:
+      - cd fe
+      - npm ci
+      - npm run typecheck
+
+  pr-fe-build:
+    image: *node_image
+    commands:
+      - cd fe
+      - npm ci
+      - npm run build
+
+---
+# Dev / main pushes: full integration tests against a real database.
+when:
+  event: push
+  branch: [dev, main]
+
+variables:
+  - &node_image node:22-alpine
+  - &postgres_image postgres:16-alpine
+
+steps:
+  dev-be-lint:
+    image: *node_image
+    commands:
+      - cd be
+      - npm ci
+      - npm run lint
+
+  dev-be-typecheck:
+    image: *node_image
+    commands:
+      - cd be
+      - npm ci
+      - npm run typecheck
+
+  dev-be-build:
+    image: *node_image
+    commands:
+      - cd be
+      - npm ci
+      - npm run build
+
+  dev-db-setup:
+    image: *node_image
+    commands:
+      - cd be
+      - npm ci
+      - npm run db:generate
+      - npm run db:deploy
+      - npm run db:seed
+    environment:
+      DATABASE_URL: postgres://woodpecker_test:woodpecker_test@postgres:5432/woodpecker_test?sslmode=disable
+      JWT_SECRET: ci-jwt-secret-not-used-in-production
+      NODE_ENV: test
+
+  dev-be-integration-test:
+    image: *node_image
+    commands:
+      - cd be
+      - npm ci
+      - npm run test:integration
+    environment:
+      DATABASE_URL: postgres://woodpecker_test:woodpecker_test@postgres:5432/woodpecker_test?sslmode=disable
+      JWT_SECRET: ci-jwt-secret-not-used-in-production
+      NODE_ENV: test
+    depends_on:
+      - dev-db-setup
+
+  dev-fe-lint:
+    image: *node_image
+    commands:
+      - cd fe
+      - npm ci
+      - npm run lint
+
+  dev-fe-typecheck:
+    image: *node_image
+    commands:
+      - cd fe
+      - npm ci
+      - npm run typecheck
+
+  dev-fe-build:
+    image: *node_image
+    commands:
+      - cd fe
+      - npm ci
+      - npm run build
+
+services:
+  postgres:
+    image: *postgres_image
+    environment:
+      POSTGRES_USER: woodpecker_test
+      POSTGRES_PASSWORD: woodpecker_test
+      POSTGRES_DB: woodpecker_test

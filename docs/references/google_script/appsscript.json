@@ -1,0 +1,20 @@
+{
+  "timeZone": "Asia/Singapore",
+  "dependencies": {
+    "libraries": [
+      {
+        "userSymbol": "Tamotsu",
+        "version": "32",
+        "libraryId": "1OiJIgWlrg_DFHFYX_SoaEzhFJPCmwbbfEHEqYEfLEEhKRloTNVJ-3U4s"
+      },
+      {
+        "userSymbol": "BOM_WO_SHEET",
+        "version": "0",
+        "libraryId": "18Ig3sc-V3n5SRQqjVI_pVm_Jeo6ONJb-WOAjq97hPWxeUZ91U3i9OeWL",
+        "developmentMode": true
+      }
+    ]
+  },
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8"
+}

@@ -1,9 +1,12 @@
 import Fastify from 'fastify';
+import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { parseEnv } from './config/env.js';
+import authPlugin from './plugins/auth.js';
 import { authRoutes } from './auth/routes.js';
+import { oauthRoutes } from './auth/oauth.js';
 import { healthRoutes } from './routes/health.js';
 
 async function buildServer() {
@@ -21,6 +24,11 @@ async function buildServer() {
 
   app.decorate('config', config);
 
+  await app.register(cookie, {
+    secret: config.JWT_SECRET,
+    parseOptions: {},
+  });
+
   await app.register(cors, {
     origin: config.CORS_ORIGIN || true,
     credentials: true,
@@ -30,8 +38,11 @@ async function buildServer() {
     secret: config.JWT_SECRET,
   });
 
+  await app.register(authPlugin);
+
   await app.register(healthRoutes, { prefix: '/api/health' });
   await app.register(authRoutes, { prefix: '/api/auth' });
+  await app.register(oauthRoutes, { prefix: '/api/auth/oauth' });
 
   return app;
 }

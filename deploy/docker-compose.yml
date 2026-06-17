@@ -26,9 +26,21 @@ services:
       NODE_ENV: development
       PORT: 3001
       LOG_LEVEL: debug
-      DATABASE_URL: postgresql://workorder:workorder_dev@postgres:5432/wo
+      DATABASE_URL: postgresql://workorder:workorder_dev@postgres:5432/workorder
       JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-string-at-least-32-chars}
       CORS_ORIGIN: http://localhost:3000
+      FRONTEND_URL: http://localhost:3000
+      OWNER_EMAIL: ${OWNER_EMAIL:-jacki.ng@ada.asia}
+      OWNER_PASSWORD: ${OWNER_PASSWORD:-1q2w3e4r!Q@W#E$$R!!!}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${GOOGLE_SERVICE_ACCOUNT_JSON:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:3001/api/auth/oauth/google/callback}
+      MS_CLIENT_ID: ${MS_CLIENT_ID:-}
+      MS_CLIENT_SECRET: ${MS_CLIENT_SECRET:-}
+      MS_TENANT: ${MS_TENANT:-common}
+      MS_REDIRECT_URI: ${MS_REDIRECT_URI:-http://localhost:3001/api/auth/oauth/microsoft/callback}
+      BITRIX_WEBHOOK_URL: ${BITRIX_WEBHOOK_URL:-}
       WORKDIR: /app/be
     ports:
       - "3001:3001"

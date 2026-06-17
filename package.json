@@ -20,5 +20,9 @@
   },
   "engines": {
     "node": ">=24.0.0"
+  },
+  "overrides": {
+    "@types/react": false,
+    "@types/react-dom": false
   }
 }

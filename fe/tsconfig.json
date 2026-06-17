@@ -6,8 +6,12 @@
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
+    "types": [],
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",

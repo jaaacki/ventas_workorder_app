@@ -13,10 +13,14 @@ model Staff {
   name          String?
   passwordHash  String?
   bitrixId      String?
+  googleId      String?  @unique
+  microsoftId   String?  @unique
   active        Boolean  @default(true)
+  roleId        String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  role              Role?      @relation(fields: [roleId], references: [id])
   createdProcedures Procedure[] @relation("ProcedureCreatedBy")
   updatedProcedures Procedure[] @relation("ProcedureUpdatedBy")
   createdHets       Het[]       @relation("HetCreatedBy")
@@ -42,6 +46,21 @@ model Staff {
   updatedManufacturers Manufacturer[] @relation("ManufacturerUpdatedBy")
 
   @@map("staff")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  name        String
+  description String?
+  builtIn     Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  staff Staff[]
+
+  @@map("role")
 }
 
 model Manufacturer {

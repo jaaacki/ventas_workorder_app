@@ -32,6 +32,12 @@ uploads/
 *.jpg
 *.jpeg
 
+# TypeScript build info
+*.tsbuildinfo
+
+# Claude plans / local scratch
+.claude/
+
 # Keep seed data? No, generated seed files can be large
 scripts/seed_data/*.json
 scripts/seed_data/*.csv

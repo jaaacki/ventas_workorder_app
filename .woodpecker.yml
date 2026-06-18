@@ -1,9 +1,6 @@
-# Woodpecker CI — ventas_workorder_app
-#
-# Strategy:
-#   - Pull Requests: fast checks (lint, unit tests, typecheck, build). No DB.
-#   - Dev / Main pushes: full integration + DB tests close to production.
-
+# Local Woodpecker CI.
+# Agents must not run project test/build commands on the host.
+# PR checks are fast feedback only; success means candidate for integration branch review.
 ---
 # Pull requests: fast feedback for developers.
 when:
@@ -11,57 +8,40 @@ when:
   branch: [dev, main]
 
 variables:
-  - &node_image node:22-alpine
+  - &node_image node:24-alpine
 
 steps:
-  pr-be-lint:
+  pr-install:
     image: *node_image
     commands:
-      - cd be
       - npm ci
-      - npm run lint
 
-  pr-be-typecheck:
+  pr-shared-checks:
     image: *node_image
     commands:
-      - cd be
-      - npm ci
-      - npm run typecheck
+      - npm run -w shared typecheck
+      - npm run -w shared build
+    depends_on:
+      - pr-install
 
-  pr-be-unit-test:
+  pr-be-checks:
     image: *node_image
     commands:
-      - cd be
-      - npm ci
-      - npm run test:unit
+      - npm run -w be lint
+      - npm run -w be typecheck
+      - npm run -w be test:unit
+      - npm run -w be build
+    depends_on:
+      - pr-shared-checks
 
-  pr-be-build:
+  pr-fe-checks:
     image: *node_image
     commands:
-      - cd be
-      - npm ci
-      - npm run build
-
-  pr-fe-lint:
-    image: *node_image
-    commands:
-      - cd fe
-      - npm ci
-      - npm run lint
-
-  pr-fe-typecheck:
-    image: *node_image
-    commands:
-      - cd fe
-      - npm ci
-      - npm run typecheck
-
-  pr-fe-build:
-    image: *node_image
-    commands:
-      - cd fe
-      - npm ci
-      - npm run build
+      - npm run -w fe lint
+      - npm run -w fe typecheck
+      - npm run -w fe build
+    depends_on:
+      - pr-shared-checks
 
 ---
 # Dev / main pushes: full integration tests against a real database.
@@ -70,50 +50,50 @@ when:
   branch: [dev, main]
 
 variables:
-  - &node_image node:22-alpine
+  - &node_image node:24-alpine
   - &postgres_image postgres:16-alpine
 
 steps:
-  dev-be-lint:
+  dev-install:
     image: *node_image
     commands:
-      - cd be
       - npm ci
-      - npm run lint
 
-  dev-be-typecheck:
+  dev-shared-build:
     image: *node_image
     commands:
-      - cd be
-      - npm ci
-      - npm run typecheck
+      - npm run -w shared typecheck
+      - npm run -w shared build
+    depends_on:
+      - dev-install
 
-  dev-be-build:
+  dev-be-checks:
     image: *node_image
     commands:
-      - cd be
-      - npm ci
-      - npm run build
+      - npm run -w be lint
+      - npm run -w be typecheck
+      - npm run -w be test:unit
+      - npm run -w be build
+    depends_on:
+      - dev-shared-build
 
   dev-db-setup:
     image: *node_image
     commands:
-      - cd be
-      - npm ci
-      - npm run db:generate
-      - npm run db:deploy
-      - npm run db:seed
+      - npm run -w be db:generate
+      - npm run -w be db:deploy
+      - npm run -w be db:seed
     environment:
       DATABASE_URL: postgres://woodpecker_test:woodpecker_test@postgres:5432/woodpecker_test?sslmode=disable
       JWT_SECRET: ci-jwt-secret-not-used-in-production
       NODE_ENV: test
+    depends_on:
+      - dev-shared-build
 
   dev-be-integration-test:
     image: *node_image
     commands:
-      - cd be
-      - npm ci
-      - npm run test:integration
+      - npm run -w be test:integration
     environment:
       DATABASE_URL: postgres://woodpecker_test:woodpecker_test@postgres:5432/woodpecker_test?sslmode=disable
       JWT_SECRET: ci-jwt-secret-not-used-in-production
@@ -121,26 +101,14 @@ steps:
     depends_on:
       - dev-db-setup
 
-  dev-fe-lint:
+  dev-fe-checks:
     image: *node_image
     commands:
-      - cd fe
-      - npm ci
-      - npm run lint
-
-  dev-fe-typecheck:
-    image: *node_image
-    commands:
-      - cd fe
-      - npm ci
-      - npm run typecheck
-
-  dev-fe-build:
-    image: *node_image
-    commands:
-      - cd fe
-      - npm ci
-      - npm run build
+      - npm run -w fe lint
+      - npm run -w fe typecheck
+      - npm run -w fe build
+    depends_on:
+      - dev-shared-build
 
 services:
   postgres:

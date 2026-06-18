@@ -25,7 +25,7 @@ async function authPlugin(fastify: FastifyInstance) {
     (...allowedRoles: string[]) => {
       return async (request: FastifyRequest, reply: FastifyReply) => {
         await fastify.authenticate(request, reply);
-        if (!allowedRoles.includes(request.user.role)) {
+        if (!allowedRoles.includes((request.user as JwtPayload).role)) {
           return reply.status(403).send({ error: 'Forbidden' });
         }
       };

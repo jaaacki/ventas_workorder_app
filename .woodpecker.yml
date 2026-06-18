@@ -28,6 +28,8 @@ steps:
     image: *node_image
     commands:
       - npm run -w be db:generate
+    environment:
+      DATABASE_URL: postgres://woodpecker_test:woodpecker_test@localhost:5432/woodpecker_test?sslmode=disable
     depends_on:
       - pr-shared-checks
 
@@ -78,6 +80,8 @@ steps:
     image: *node_image
     commands:
       - npm run -w be db:generate
+    environment:
+      DATABASE_URL: postgres://woodpecker_test:woodpecker_test@localhost:5432/woodpecker_test?sslmode=disable
     depends_on:
       - dev-shared-build
 

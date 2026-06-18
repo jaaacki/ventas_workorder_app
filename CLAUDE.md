@@ -30,8 +30,10 @@ This file defines how Claude Code and other contributors should work in this rep
 
 ## CI pipeline strategy
 
-- **Pull requests:** fast checks only — lint, unit tests, typecheck, build. No database.
-- **`dev` / `main` pushes:** full integration tests against a real PostgreSQL database, as close to production as possible.
+- Woodpecker CI files live in `.woodpecker/`:
+  - `.woodpecker/pr.yml` — fast PR checks (lint, typecheck, unit tests, build). No database.
+  - `.woodpecker/dev.yml` — full integration tests against a real PostgreSQL database for `dev` pushes.
+  - `.woodpecker/main.yml` — same integration checks for `main` pushes; production handoff is handled by remote CI/CD unless this repo says otherwise.
 - Backend tests are split into `vitest.unit.config.ts` and `vitest.integration.config.ts`.
 - Test files are excluded from `tsc` build output via `tsconfig.json`.
 

@@ -1,62 +1,9 @@
-# Local Woodpecker CI.
+# Local Woodpecker CI — dev branch integration.
 # Agents must not run project test/build commands on the host.
-# PR checks are fast feedback only; success means candidate for integration branch review.
----
-# Pull requests: fast feedback for developers.
-when:
-  event: pull_request
-  branch: [dev, main]
-
-variables:
-  - &node_image node:22-alpine
-
-steps:
-  pr-install:
-    image: *node_image
-    commands:
-      - npm ci
-
-  pr-shared-checks:
-    image: *node_image
-    commands:
-      - npm run -w shared typecheck
-      - npm run -w shared build
-    depends_on:
-      - pr-install
-
-  pr-be-generate:
-    image: *node_image
-    commands:
-      - npm run -w be db:generate
-    environment:
-      DATABASE_URL: postgres://woodpecker_test:woodpecker_test@localhost:5432/woodpecker_test?sslmode=disable
-    depends_on:
-      - pr-shared-checks
-
-  pr-be-checks:
-    image: *node_image
-    commands:
-      - npm run -w be lint
-      - npm run -w be typecheck
-      - npm run -w be test:unit
-      - npm run -w be build
-    depends_on:
-      - pr-be-generate
-
-  pr-fe-checks:
-    image: *node_image
-    commands:
-      - npm run -w fe lint
-      - npm run -w fe typecheck
-      - npm run -w fe build
-    depends_on:
-      - pr-shared-checks
-
----
-# Dev / main pushes: full integration tests against a real database.
+# Runs full integration tests against a real PostgreSQL database.
 when:
   event: push
-  branch: [dev, main]
+  branch: [dev]
 
 variables:
   - &node_image node:22-alpine

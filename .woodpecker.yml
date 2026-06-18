@@ -24,6 +24,13 @@ steps:
     depends_on:
       - pr-install
 
+  pr-be-generate:
+    image: *node_image
+    commands:
+      - npm run -w be db:generate
+    depends_on:
+      - pr-shared-checks
+
   pr-be-checks:
     image: *node_image
     commands:
@@ -32,7 +39,7 @@ steps:
       - npm run -w be test:unit
       - npm run -w be build
     depends_on:
-      - pr-shared-checks
+      - pr-be-generate
 
   pr-fe-checks:
     image: *node_image
@@ -67,6 +74,13 @@ steps:
     depends_on:
       - dev-install
 
+  dev-be-generate:
+    image: *node_image
+    commands:
+      - npm run -w be db:generate
+    depends_on:
+      - dev-shared-build
+
   dev-be-checks:
     image: *node_image
     commands:
@@ -75,7 +89,7 @@ steps:
       - npm run -w be test:unit
       - npm run -w be build
     depends_on:
-      - dev-shared-build
+      - dev-be-generate
 
   dev-db-setup:
     image: *node_image

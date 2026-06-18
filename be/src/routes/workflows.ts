@@ -17,7 +17,7 @@ const phaseDetailSchema = z.object({
   sortOrder: z.number(),
   phase: z.object({
     id: z.string(),
-    name: z.string().nullable(),
+    phaseName: z.string().nullable(),
     phaseShort: z.string().nullable(),
     phaseOrder: z.number().nullable(),
   }),
@@ -63,8 +63,8 @@ const updateBodySchema = z.object({
   phases: z.array(phaseBindingSchema).optional(),
 });
 
-function actorIdOf(req: { user: JwtPayload }): string {
-  return req.user.id;
+function actorIdOf(req: { user: unknown }): string {
+  return (req.user as JwtPayload).id;
 }
 
 export const workflowRoutes: FastifyPluginAsyncZod = async function (app) {

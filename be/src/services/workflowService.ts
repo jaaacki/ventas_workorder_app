@@ -34,7 +34,7 @@ const workflowDetailInclude = {
   updatedBy: { select: { id: true, name: true, email: true } },
   phases: {
     include: {
-      phase: { select: { id: true, name: true, phaseShort: true, phaseOrder: true } },
+      phase: { select: { id: true, phaseName: true, phaseShort: true, phaseOrder: true } },
     },
     orderBy: { sortOrder: 'asc' },
   },

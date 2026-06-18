@@ -14,7 +14,7 @@ async function authPlugin(fastify: FastifyInstance) {
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         await request.jwtVerify<JwtPayload>();
-      } catch (err) {
+      } catch {
         return reply.status(401).send({ error: 'Unauthorized' });
       }
     }
@@ -25,7 +25,7 @@ async function authPlugin(fastify: FastifyInstance) {
     (...allowedRoles: string[]) => {
       return async (request: FastifyRequest, reply: FastifyReply) => {
         await fastify.authenticate(request, reply);
-        if (!allowedRoles.includes(request.user.role)) {
+        if (!allowedRoles.includes((request.user as JwtPayload).role)) {
           return reply.status(403).send({ error: 'Forbidden' });
         }
       };

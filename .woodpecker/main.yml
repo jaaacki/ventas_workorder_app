@@ -1,0 +1,85 @@
+# Local Woodpecker CI — main branch production handoff.
+# Agents must not run project test/build commands on the host.
+# Runs the same integration checks as dev.yml. Remote production deployment
+# is handled outside this repo unless otherwise configured.
+when:
+  event: push
+  branch: [main]
+
+variables:
+  - &node_image node:22-alpine
+  - &postgres_image postgres:16-alpine
+
+steps:
+  main-install:
+    image: *node_image
+    commands:
+      - npm ci
+
+  main-shared-build:
+    image: *node_image
+    commands:
+      - npm run -w shared typecheck
+      - npm run -w shared build
+    depends_on:
+      - main-install
+
+  main-be-generate:
+    image: *node_image
+    commands:
+      - npm run -w be db:generate
+    environment:
+      DATABASE_URL: postgres://woodpecker_test:woodpecker_test@localhost:5432/woodpecker_test?sslmode=disable
+    depends_on:
+      - main-shared-build
+
+  main-be-checks:
+    image: *node_image
+    commands:
+      - npm run -w be lint
+      - npm run -w be typecheck
+      - npm run -w be test:unit
+      - npm run -w be build
+    depends_on:
+      - main-be-generate
+
+  main-db-setup:
+    image: *node_image
+    commands:
+      - npm run -w be db:generate
+      - npm run -w be db:deploy
+      - npm run -w be db:seed
+    environment:
+      DATABASE_URL: postgres://woodpecker_test:woodpecker_test@postgres:5432/woodpecker_test?sslmode=disable
+      JWT_SECRET: ci-jwt-secret-not-used-in-production
+      NODE_ENV: test
+    depends_on:
+      - main-shared-build
+
+  main-be-integration-test:
+    image: *node_image
+    commands:
+      - npm run -w be test:integration
+    environment:
+      DATABASE_URL: postgres://woodpecker_test:woodpecker_test@postgres:5432/woodpecker_test?sslmode=disable
+      JWT_SECRET: ci-jwt-secret-not-used-in-production
+      NODE_ENV: test
+    depends_on:
+      - main-db-setup
+
+  main-fe-checks:
+    image: *node_image
+    commands:
+      - npm run -w fe lint
+      - npm run -w fe typecheck
+      - npm run -w fe build
+    depends_on:
+      - main-shared-build
+
+services:
+  postgres:
+    image: *postgres_image
+    environment:
+      POSTGRES_USER: woodpecker_test
+      POSTGRES_PASSWORD: woodpecker_test
+      POSTGRES_DB: woodpecker_test

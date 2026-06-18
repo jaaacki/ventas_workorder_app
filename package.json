@@ -24,5 +24,8 @@
   "overrides": {
     "@types/react": false,
     "@types/react-dom": false
+  },
+  "devDependencies": {
+    "eslint": "^9.21.0"
   }
 }

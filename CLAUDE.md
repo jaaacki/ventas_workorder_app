@@ -10,6 +10,19 @@ This file defines how Claude Code and other contributors should work in this rep
 - **All PRs target `dev`.** Once `dev` is approved, merge it into `main` via a separate PR.
 - **Never commit directly to `dev` or `main`.**
 
+## Git History Source Of Truth
+
+- Use GitHub issues, branches/worktrees, commits, PR descriptions/comments/reviews, CI/Woodpecker results, and merge history as the durable development record.
+- Do not create temporary repo markdown such as `PLAN.md`, `STATUS.md`, `NOTES.md`, `IMPLEMENTATION.md`, `SUMMARY.md`, `TODO.md`, or committed `.claude/plan.md`.
+- Local scratch notes must stay untracked/ignored and be removed before final status.
+- Start work from a GitHub issue. If none exists, create or identify one before implementation.
+- Use an isolated branch/worktree for each issue unless repo policy says otherwise.
+- Link related issues. Create an umbrella issue when multiple related issues need shared coordination, ordering, acceptance criteria, or rollout tracking.
+- Put implementation summaries, validation evidence, risks, and follow-ups in the PR body/comments, not local markdown.
+- For normal work, open a PR to the repo's integration branch, usually `dev`, and use local Woodpecker or the repo's configured CI as the validation record.
+- For hotfixes, create/identify the issue first, branch/worktree from `main`, PR back to `main` unless explicit emergency policy allows direct push, then backport/forward-port with linked issue/PR as needed.
+- Durable repo docs (`README.md`, `docs/`, `CLAUDE.md`/`AGENTS.md`, specs, changelogs) are allowed when they document stable repo/product facts.
+
 ## Local environment
 
 - The canonical local environment is **Docker**. Use `docker compose` or the project's wrapper scripts for builds, tests, migrations, and seeds.

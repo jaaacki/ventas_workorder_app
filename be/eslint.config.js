@@ -10,7 +10,7 @@ export default tseslint.config(
     files: ['src/**/*.ts'],
     languageOptions: {
       parser: tseslint.parser,
-      parserOptions: { project: './tsconfig.lint.json' }
+      parserOptions: { project: './tsconfig.lint.json' },
       globals: globals.node,
     },
     rules: {

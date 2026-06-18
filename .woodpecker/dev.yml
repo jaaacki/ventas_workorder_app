@@ -1,0 +1,84 @@
+# Local Woodpecker CI — dev branch integration.
+# Agents must not run project test/build commands on the host.
+# Runs full integration tests against a real PostgreSQL database.
+when:
+  event: push
+  branch: [dev]
+
+variables:
+  - &node_image node:22-alpine
+  - &postgres_image postgres:16-alpine
+
+steps:
+  dev-install:
+    image: *node_image
+    commands:
+      - npm ci
+
+  dev-shared-build:
+    image: *node_image
+    commands:
+      - npm run -w shared typecheck
+      - npm run -w shared build
+    depends_on:
+      - dev-install
+
+  dev-be-generate:
+    image: *node_image
+    commands:
+      - npm run -w be db:generate
+    environment:
+      DATABASE_URL: postgres://woodpecker_test:woodpecker_test@localhost:5432/woodpecker_test?sslmode=disable
+    depends_on:
+      - dev-shared-build
+
+  dev-be-checks:
+    image: *node_image
+    commands:
+      - npm run -w be lint
+      - npm run -w be typecheck
+      - npm run -w be test:unit
+      - npm run -w be build
+    depends_on:
+      - dev-be-generate
+
+  dev-db-setup:
+    image: *node_image
+    commands:
+      - npm run -w be db:generate
+      - npm run -w be db:deploy
+      - npm run -w be db:seed
+    environment:
+      DATABASE_URL: postgres://woodpecker_test:woodpecker_test@postgres:5432/woodpecker_test?sslmode=disable
+      JWT_SECRET: ci-jwt-secret-not-used-in-production
+      NODE_ENV: test
+    depends_on:
+      - dev-shared-build
+
+  dev-be-integration-test:
+    image: *node_image
+    commands:
+      - npm run -w be test:integration
+    environment:
+      DATABASE_URL: postgres://woodpecker_test:woodpecker_test@postgres:5432/woodpecker_test?sslmode=disable
+      JWT_SECRET: ci-jwt-secret-not-used-in-production
+      NODE_ENV: test
+    depends_on:
+      - dev-db-setup
+
+  dev-fe-checks:
+    image: *node_image
+    commands:
+      - npm run -w fe lint
+      - npm run -w fe typecheck
+      - npm run -w fe build
+    depends_on:
+      - dev-shared-build
+
+services:
+  postgres:
+    image: *postgres_image
+    environment:
+      POSTGRES_USER: woodpecker_test
+      POSTGRES_PASSWORD: woodpecker_test
+      POSTGRES_DB: woodpecker_test

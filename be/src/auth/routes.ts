@@ -3,6 +3,7 @@ import '@fastify/jwt';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../db/prisma.js';
+import type { JwtPayload } from '../plugins/auth.js';
 
 const errorResponse = z.object({ error: z.string() });
 
@@ -135,7 +136,7 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req) => {
       const staff = await prisma.staff.findUniqueOrThrow({
-        where: { id: req.user.id },
+        where: { id: (req.user as JwtPayload).id },
         include: { role: true },
       });
       return sanitizeUser(staff);

@@ -8,7 +8,7 @@ when:
   branch: [dev, main]
 
 variables:
-  - &node_image node:24-alpine
+  - &node_image node:22-alpine
 
 steps:
   pr-install:
@@ -50,7 +50,7 @@ when:
   branch: [dev, main]
 
 variables:
-  - &node_image node:24-alpine
+  - &node_image node:22-alpine
   - &postgres_image postgres:16-alpine
 
 steps:

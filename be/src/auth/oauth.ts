@@ -14,7 +14,6 @@ import {
   skipSubjectCheck,
 } from 'openid-client';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import cookie from '@fastify/cookie';
 import type { Env } from '../config/env.js';
 import { prisma } from '../db/prisma.js';
 

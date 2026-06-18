@@ -14,7 +14,7 @@ async function authPlugin(fastify: FastifyInstance) {
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         await request.jwtVerify<JwtPayload>();
-      } catch (err) {
+      } catch {
         return reply.status(401).send({ error: 'Unauthorized' });
       }
     }

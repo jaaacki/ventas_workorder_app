@@ -27,7 +27,7 @@ const workOrderSummarySchema = z
     phaseOrder: z.number().nullable(),
     prodStart: z.date().nullable(),
     prodEnd: z.date().nullable(),
-    workflow: workflowRefSchema,
+    workflow: workflowRefSchema.nullable(),
   })
   .passthrough();
 
@@ -41,7 +41,7 @@ const workOrderDetailSchema = z
     phaseOrder: z.number().nullable(),
     prodStart: z.date().nullable(),
     prodEnd: z.date().nullable(),
-    workflow: workflowRefSchema,
+    workflow: workflowRefSchema.nullable(),
     phase: phaseRefSchema.nullable(),
   })
   .passthrough();

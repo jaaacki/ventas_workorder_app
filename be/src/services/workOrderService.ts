@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 
 export interface CreateWorkOrderInput {
@@ -124,7 +124,7 @@ export async function advanceWorkOrder(id: string, actorId: string) {
     },
   });
 
-  return prisma.workOrder.findUnique({
+  return prisma.workOrder.findUniqueOrThrow({
     where: { id },
     include: workOrderDetailInclude,
   });

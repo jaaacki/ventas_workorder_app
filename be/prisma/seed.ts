@@ -49,6 +49,72 @@ async function seedOwner(ownerRoleId: string) {
   console.log('Seeded owner user');
 }
 
+async function seedAmGraftWorkflow() {
+  // Ordered AmGraft manufacturing phases, derived from
+  // docs/CORE_ESSENCE.md section 3 (preparation -> production ->
+  // sterilisation/BET gate -> finish/release).
+  const phases = [
+    { phaseName: 'Preparation', phaseShort: 'PREP' },
+    { phaseName: 'Production', phaseShort: 'PROD' },
+    { phaseName: 'Sterilisation', phaseShort: 'STER' },
+    { phaseName: 'BET Verification', phaseShort: 'BET' },
+    { phaseName: 'Release', phaseShort: 'REL' },
+  ];
+
+  const workflow = await prisma.workflow.upsert({
+    where: { code: 'AMG' },
+    update: {},
+    create: {
+      name: 'AmGraft',
+      code: 'AMG',
+      description: 'AmGraft® tissue-engineered dental graft manufacturing workflow.',
+      active: true,
+    },
+  });
+
+  // Upsert each Phase with a stable id. Phase.id is `String @id` with no
+  // default, so we supply an explicit id (and matching keyText).
+  for (let index = 0; index < phases.length; index += 1) {
+    const phase = phases[index];
+    const phaseId = `AMG:${phase.phaseName}`;
+    await prisma.phase.upsert({
+      where: { id: phaseId },
+      update: {
+        phaseName: phase.phaseName,
+        phaseShort: phase.phaseShort,
+        phaseOrder: index,
+        keyText: phaseId,
+      },
+      create: {
+        id: phaseId,
+        phaseName: phase.phaseName,
+        phaseShort: phase.phaseShort,
+        phaseOrder: index,
+        keyText: phaseId,
+      },
+    });
+  }
+
+  // Bind phases to the AMG workflow via WorkflowPhase. Idempotent: clear
+  // existing bindings for this workflow then re-create them in order.
+  await prisma.workflowPhase.deleteMany({
+    where: { workflowId: workflow.id },
+  });
+  for (let index = 0; index < phases.length; index += 1) {
+    const phase = phases[index];
+    await prisma.workflowPhase.create({
+      data: {
+        workflowId: workflow.id,
+        phaseId: `AMG:${phase.phaseName}`,
+        sortOrder: index,
+      },
+    });
+  }
+
+  console.log(`Seeded AmGraft workflow (${workflow.code}) with ${phases.length} phases`);
+  return workflow;
+}
+
 async function main() {
   const roles = await seedRoles();
   const ownerRole = roles.find((r) => r.key === 'owner');
@@ -57,6 +123,7 @@ async function main() {
   }
 
   await seedOwner(ownerRole.id);
+  await seedAmGraftWorkflow();
 
   // Backfill any staff without a role to the default user role.
   const userRole = roles.find((r) => r.key === 'user');

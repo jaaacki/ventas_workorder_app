@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   workOrder: {
     findMany: vi.fn(),
     findUnique: vi.fn(),
+    findUniqueOrThrow: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
   },
@@ -100,11 +101,11 @@ describe('workOrderService', () => {
             { phaseId: 'p2', sortOrder: 1 },
           ],
         },
-      })
-      // second call: return the refreshed detail after the update
-      .mockResolvedValueOnce({ id: 'wo-1', phaseId: 'p2', phaseOrder: 1 });
+      });
 
     mocks.workOrder.update.mockResolvedValue({ id: 'wo-1' });
+    // advanceWorkOrder returns the refreshed detail via findUniqueOrThrow
+    mocks.workOrder.findUniqueOrThrow.mockResolvedValue({ id: 'wo-1', phaseId: 'p2', phaseOrder: 1 });
 
     const result = await advanceWorkOrder('wo-1', 'actor1');
 

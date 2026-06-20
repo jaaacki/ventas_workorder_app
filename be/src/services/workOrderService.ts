@@ -113,6 +113,20 @@ export async function advanceWorkOrder(id: string, actorId: string) {
     throw new Error('work order is at its final phase');
   }
 
+  // Sterilisation / BET gate: leaving a sterilisation-gate phase requires a
+  // passing sterilisation result recorded against the work order.
+  const currentPhaseName = orderedPhases[currentIndex].phase?.phaseName;
+  if (currentPhaseName && /steril|bet/i.test(currentPhaseName)) {
+    const passing = await prisma.sterilise.findFirst({
+      where: { workOrderId: id, result: true },
+    });
+    if (!passing) {
+      throw new Error(
+        'sterilisation/BET gate not satisfied: record a passing sterilisation result',
+      );
+    }
+  }
+
   const nextPhase = orderedPhases[currentIndex + 1];
 
   await prisma.workOrder.update({

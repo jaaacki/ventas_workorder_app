@@ -9,6 +9,7 @@ import { authRoutes } from './auth/routes.js';
 import { oauthRoutes } from './auth/oauth.js';
 import { healthRoutes } from './routes/health.js';
 import { workflowRoutes } from './routes/workflows.js';
+import { workOrderRoutes } from './routes/workOrders.js';
 
 async function buildServer() {
   const config = parseEnv();
@@ -43,6 +44,7 @@ async function buildServer() {
 
   await app.register(healthRoutes, { prefix: '/api/health' });
   await app.register(workflowRoutes, { prefix: '/api/workflows' });
+  await app.register(workOrderRoutes, { prefix: '/api/work-orders' });
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(oauthRoutes, { prefix: '/api/auth/oauth' });
 

@@ -1,0 +1,83 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
+
+const mocks = vi.hoisted(() => ({
+  het: {
+    findMany: vi.fn(),
+    update: vi.fn(),
+  },
+  workOrderHet: { upsert: vi.fn() },
+}));
+
+vi.mock('../../db/prisma.js', () => ({
+  prisma: {
+    het: mocks.het,
+    workOrderHet: mocks.workOrderHet,
+  },
+}));
+
+import * as hetService from '../hetService.js';
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe('hetService', () => {
+  it('listHets excludes deleted and orders newest first', async () => {
+    mocks.het.findMany.mockResolvedValue([{ id: 'h1' }]);
+    await hetService.listHets();
+    expect(mocks.het.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { deleted: false },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+  });
+
+  it('useHet sets usedById to the work order and creates the WorkOrderHet link', async () => {
+    mocks.het.update.mockResolvedValue({ id: 'h1', usedById: 'wo1' });
+    mocks.workOrderHet.upsert.mockResolvedValue({});
+
+    const result = await hetService.useHet('h1', { workOrderId: 'wo1', actorId: 'actor1' });
+
+    expect(mocks.het.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'h1' },
+        data: { usedById: 'wo1' },
+      }),
+    );
+    expect(mocks.workOrderHet.upsert).toHaveBeenCalledWith({
+      where: { workOrderId_hetId: { workOrderId: 'wo1', hetId: 'h1' } },
+      create: { workOrderId: 'wo1', hetId: 'h1' },
+      update: {},
+    });
+    expect(result).toEqual({ id: 'h1', usedById: 'wo1' });
+  });
+
+  it('finishHet sets finishedById to the work order', async () => {
+    mocks.het.update.mockResolvedValue({ id: 'h1', finishedById: 'wo1' });
+
+    const result = await hetService.finishHet('h1', { workOrderId: 'wo1', actorId: 'actor1' });
+
+    expect(mocks.het.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'h1' },
+        data: { finishedById: 'wo1' },
+      }),
+    );
+    expect(result).toEqual({ id: 'h1', finishedById: 'wo1' });
+  });
+
+  it('useHet rethrows a P2025 when the HET is missing', async () => {
+    const p2025 = new Prisma.PrismaClientKnownRequestError('record not found', {
+      code: 'P2025',
+      clientVersion: 'test',
+    });
+    mocks.het.update.mockRejectedValue(p2025);
+
+    await expect(
+      hetService.useHet('missing', { workOrderId: 'wo1', actorId: 'actor1' }),
+    ).rejects.toBe(p2025);
+    expect(mocks.workOrderHet.upsert).not.toHaveBeenCalled();
+  });
+});

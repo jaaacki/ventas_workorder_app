@@ -44,6 +44,8 @@ model Staff {
   signedSterilises   Sterilise[]  @relation("SteriliseSignBy")
   createdManufacturers Manufacturer[] @relation("ManufacturerCreatedBy")
   updatedManufacturers Manufacturer[] @relation("ManufacturerUpdatedBy")
+  createdWorkflows     Workflow[]   @relation("WorkflowCreatedBy")
+  updatedWorkflows     Workflow[]   @relation("WorkflowUpdatedBy")
 
   @@map("staff")
 }
@@ -175,6 +177,38 @@ model Het {
   @@map("het")
 }
 
+model Workflow {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  description String?
+  active      Boolean  @default(true)
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy   Staff?          @relation("WorkflowCreatedBy", fields: [createdById], references: [id])
+  updatedBy   Staff?          @relation("WorkflowUpdatedBy", fields: [updatedById], references: [id])
+  phases      WorkflowPhase[]
+  workOrders  WorkOrder[]
+
+  @@map("workflow")
+}
+
+model WorkflowPhase {
+  workflowId String
+  phaseId    String
+  sortOrder  Int
+
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  phase      Phase    @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+
+  @@id([workflowId, phaseId])
+  @@unique([workflowId, sortOrder])
+  @@map("workflowPhase")
+}
+
 model Phase {
   id             String             @id
   createdAt      DateTime           @default(now())
@@ -193,6 +227,7 @@ model Phase {
   bom            Bom?               @relation(fields: [bomId], references: [id])
   procedures     PhaseProcedure[]
   phaseEquips    PhasePhaseEquip[]
+  workflows      WorkflowPhase[]
   currentWorkOrders WorkOrder[]      @relation("WorkOrderCurrentPhase")
   nextWorkOrders WorkOrder[]         @relation("WorkOrderNextPhase")
 
@@ -265,6 +300,7 @@ model WorkOrder {
   previousWoId           String?
   steralisationCurrentId String?               @unique
   nextPhaseId            String?
+  workflowId             String?
 
   createdBy              Staff?                @relation("WorkOrderCreatedBy", fields: [createdById], references: [id])
   updatedBy              Staff?                @relation("WorkOrderUpdatedBy", fields: [updatedById], references: [id])
@@ -277,6 +313,7 @@ model WorkOrder {
   nextWorkOrders         WorkOrder[]           @relation("WorkOrderPrevious")
   steralisationCurrent   Sterilise?            @relation("WorkOrderSterilisationCurrent", fields: [steralisationCurrentId], references: [id])
   nextPhase              Phase?                @relation("WorkOrderNextPhase", fields: [nextPhaseId], references: [id])
+  workflow               Workflow?             @relation(fields: [workflowId], references: [id])
   woSerials              WoSerial[]
   sterilises             Sterilise[]
   batchHets              WorkOrderHet[]
@@ -284,6 +321,7 @@ model WorkOrder {
   usedHets               Het[]                 @relation("HetUsedBy")
   finishedHets           Het[]                 @relation("HetFinishedBy")
 
+  @@index([workflowId])
   @@map("workOrder")
 }
 

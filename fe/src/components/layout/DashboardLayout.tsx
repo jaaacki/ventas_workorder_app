@@ -2,12 +2,14 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useAuthStore } from '@/store/authStore';
-import { LayoutDashboard, Users, Shield, Menu, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Shield, Menu, LogOut, Workflow, ClipboardList } from 'lucide-react';
 
 const navItems = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['owner', 'admin', 'user'] },
   { label: 'Users', href: '/dashboard/users', icon: Users, roles: ['owner', 'admin'] },
   { label: 'Roles', href: '/dashboard/roles', icon: Shield, roles: ['owner'] },
+  { label: 'Workflows', href: '/dashboard/workflows', icon: Workflow, roles: ['owner', 'admin'] },
+  { label: 'Work Orders', href: '/dashboard/work-orders', icon: ClipboardList, roles: ['owner', 'admin', 'user'] },
 ];
 
 export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {

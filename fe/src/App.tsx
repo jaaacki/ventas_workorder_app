@@ -7,6 +7,8 @@ import AuthCallbackPage from './pages/AuthCallbackPage';
 import DashboardHome from './pages/DashboardHome';
 import UsersPage from './pages/UsersPage';
 import RolesPage from './pages/RolesPage';
+import WorkflowsPage from './pages/WorkflowsPage';
+import WorkOrdersPage from './pages/WorkOrdersPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 function App() {
@@ -42,6 +44,26 @@ function App() {
             <ProtectedRoute roles={['owner']}>
               <DashboardLayout>
                 <RolesPage />
+              </DashboardLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/workflows"
+          element={
+            <ProtectedRoute roles={['owner', 'admin']}>
+              <DashboardLayout>
+                <WorkflowsPage />
+              </DashboardLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/work-orders"
+          element={
+            <ProtectedRoute roles={['owner', 'admin', 'user']}>
+              <DashboardLayout>
+                <WorkOrdersPage />
               </DashboardLayout>
             </ProtectedRoute>
           }

@@ -4,6 +4,8 @@
 when:
   event: pull_request
   branch: [dev, main]
+  # instance: PR/DEV run only on jmacpro; MAIN (main.yml) runs on home-syno. See issue #31.
+  instance: [jmacpro.noonoon.cc]
 
 variables:
   - &node_image node:22-alpine

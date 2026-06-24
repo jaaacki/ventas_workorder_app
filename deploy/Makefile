@@ -1,4 +1,4 @@
-.PHONY: up down build logs shell-be shell-fe db-migrate db-seed db-reset db-export db-snapshot db-restore db-import-cycle
+.PHONY: up down build logs shell-be shell-fe db-migrate db-seed db-reset db-export db-import db-snapshot db-restore db-import-cycle
 
 SNAPSHOT_DIR := $(CURDIR)/data/snapshots
 PG_USER := workorder
@@ -39,6 +39,9 @@ db-reset:
 # and BOM_WO_SHEET_ID in be/.env.
 db-export:
 	docker compose -f docker-compose.yml exec be npm run db:export
+
+db-reset:
+	docker compose -f docker-compose.yml exec be npx prisma migrate reset --force --skip-seed
 
 # D4 (PR#3): pre/post-import snapshots so the repeatability claim is
 # verifiable by hand on workorder-stg. Snapshots land in deploy/data/snapshots/

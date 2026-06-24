@@ -1,4 +1,4 @@
-.PHONY: up down build logs shell-be shell-fe db-migrate db-seed db-reset
+.PHONY: up down build logs shell-be shell-fe db-migrate db-seed db-reset db-export db-import
 
 up:
 	docker compose -f docker-compose.yml up -d
@@ -26,6 +26,9 @@ db-seed:
 
 db-import:
 	docker compose -f docker-compose.yml exec be npm run db:import
+
+db-export:
+	docker compose -f docker-compose.yml exec be npm run db:export
 
 db-reset:
 	docker compose -f docker-compose.yml exec be npx prisma migrate reset --force --skip-seed

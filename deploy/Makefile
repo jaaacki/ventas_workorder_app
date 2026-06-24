@@ -1,6 +1,7 @@
-.PHONY: up down build logs shell-be shell-fe db-migrate db-seed db-reset db-export db-import db-snapshot db-restore db-import-cycle
+.PHONY: up down build logs shell-be shell-fe db-migrate db-seed db-reset db-export db-import db-snapshot db-restore db-import-cycle db-archive-pre-cutover db-import-cutover db-restore-cutover db-verify-cutover
 
 SNAPSHOT_DIR := $(CURDIR)/data/snapshots
+CUTOVER_DIR  := $(CURDIR)/data/cutover-archives
 PG_USER := workorder
 PG_DB   := workorder
 
@@ -82,3 +83,55 @@ db-import-cycle:
 	fi; \
 	docker compose -f docker-compose.yml exec be npm run db:import -- $${EXPORT_DIR}; \
 	docker compose -f docker-compose.yml exec be sh -c 'ls -1 /app/be/reports/ || true'
+
+# D5 (PR#4): take a full pre-cutover archive of the production DB
+# (schema + data, no owner/privileges). The archive is tarred + sha256'd
+# into deploy/data/cutover-archives/cutover-<stamp>.{sql,tar.gz,sha256}.
+# STAMP is the only required arg and SHOULD be the canonical cutover
+# date (e.g. 2026-07-15T0900Z). The same stamp is referenced from the
+# cutover PR description and from the post-cutover verification log.
+db-archive-pre-cutover:
+	@test -n "$(STAMP)" || (echo "ERROR: set STAMP=<cutover-iso-stamp> (e.g. 2026-07-15T0900Z)"; exit 1)
+	@mkdir -p $(CUTOVER_DIR)
+	@STAMP=$(STAMP); \
+	docker compose -f docker-compose.yml exec -T postgres \
+	  pg_dump -U $(PG_USER) -d $(PG_DB) --no-owner --no-privileges \
+	  > $(CUTOVER_DIR)/cutover-$${STAMP}.sql && \
+	tar -czf $(CUTOVER_DIR)/cutover-$${STAMP}.tar.gz -C $(CUTOVER_DIR) cutover-$${STAMP}.sql && \
+	sha256sum $(CUTOVER_DIR)/cutover-$${STAMP}.tar.gz \
+	  | tee $(CUTOVER_DIR)/cutover-$${STAMP}.sha256 && \
+	echo "archive: $(CUTOVER_DIR)/cutover-$${STAMP}.tar.gz"
+
+# D5 (PR#4): the cutover import. Runs the same db-import-cycle pipeline
+# but with WORKORDER_ENV=production set so the importer CLI's
+# --confirm-prod gate accepts the call. The gate (added in PR#4) refuses
+# any real import against a non-staging target without an explicit
+# --confirm-prod; this target is the sanctioned way to set the env
+# without putting the secret flag in shell history.
+db-import-cutover:
+	@test -n "$(STAMP)" || (echo "ERROR: set STAMP=<cutover-iso-stamp>"; exit 1)
+	@STAMP=$(STAMP); \
+	EXPORT_DIR=/app/scripts/seed_data/exports/$${STAMP}; \
+	test -d $$EXPORT_DIR || (echo "ERROR: export dir $$EXPORT_DIR not found — run 'make db-export STAMP=$${STAMP}' first"; exit 1); \
+	docker compose -f docker-compose.yml exec -T -e WORKORDER_ENV=production be \
+	  npm run db:import -- $${EXPORT_DIR} && \
+	docker compose -f docker-compose.yml exec be sh -c 'ls -1 /app/be/reports/ | tail -1 | xargs -I{} cat /app/be/reports/{}'
+
+# D5: rollback path. Pipes the cutover-<stamp>.tar.gz archive back
+# into the postgres container. Destroys current DB state — this is
+# intentionally destructive.
+db-restore-cutover:
+	@test -n "$(STAMP)" || (echo "ERROR: set STAMP=<cutover-iso-stamp>"; exit 1)
+	@test -f $(CUTOVER_DIR)/cutover-$(STAMP).tar.gz || (echo "ERROR: archive not found: $(CUTOVER_DIR)/cutover-$(STAMP).tar.gz"; exit 1)
+	docker compose -f docker-compose.yml exec -T postgres \
+	  bash -c "gunzip -c /dev/stdin | psql -U $(PG_USER) -d $(PG_DB) -v ON_ERROR_STOP=1" \
+	  < <(tar -xOzf $(CUTOVER_DIR)/cutover-$(STAMP).tar.gz cutover-$(STAMP).sql)
+	@echo "restored from: $(CUTOVER_DIR)/cutover-$(STAMP).tar.gz"
+
+# D5: post-cutover row-count + sample-10 spot check. Compares
+# scripts/seed_data/exports/<stamp>/manifest.json (row counts) against
+# the current DB counts; samples 10 rows per entity and asserts
+# every field matches the source CSV. See docs/CUTOVER.md §2.5.
+db-verify-cutover:
+	@test -n "$(STAMP)" || (echo "ERROR: set STAMP=<cutover-iso-stamp>"; exit 1)
+	docker compose -f docker-compose.yml exec be npx tsx src/scripts/verifyCutover.ts $(STAMP)

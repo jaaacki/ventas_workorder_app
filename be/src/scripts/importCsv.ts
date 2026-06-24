@@ -663,9 +663,24 @@ export async function importAll(
 if (import.meta.url === `file://${process.argv[1]}`) {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
+  const confirmProd = args.includes('--confirm-prod');
   const seedDirArg = args.find((a) => !a.startsWith('--')) ?? '/app/scripts/seed_data';
-  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
   const reportPath = path.join('/app/be/reports', `import-${stamp}.json`);
+
+  // Production safety gate (D5 of issue #36): refuse to run a real (non
+  // --dry-run) import unless the env declares WORKORDER_ENV=staging OR the
+  // operator passes --confirm-prod explicitly. Staging is the safe default
+  // for the cutover dry-run; --confirm-prod is the one-shot override for
+  // the actual cutover.
+  if (!dryRun && process.env.WORKORDER_ENV !== 'staging' && !confirmProd) {
+    console.error(
+      'REFUSED: importing against a non-staging target requires --confirm-prod.\n' +
+        'Set WORKORDER_ENV=staging for cutover dry-runs, or pass --confirm-prod\n' +
+        'exactly once for the production cutover. See docs/CUTOVER.md.',
+    );
+    process.exit(2);
+  }
 
   importAll(seedDirArg, { dryRun, reportPath })
     .then(() => prisma.$disconnect())

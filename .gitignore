@@ -45,5 +45,8 @@ data/
 scripts/seed_data/*.json
 scripts/seed_data/*.csv
 
+# Export archives (issue #36 D2)
+scripts/seed_data/exports/
+
 # Playwright browser session artifacts
 .playwright-mcp/

@@ -167,13 +167,19 @@ export const tableConfigs: TableConfig[] = [
      * workOrder.manuId cross-product. Runs after `workOrder` has been imported.
      */
     afterImport: async ({ prisma: p, dryRun }: ImportContext) => {
-      const wos = await p.workOrder.findMany({
+      // `findMany` returns rows or null; tolerate null for the case where
+      // the queried table is empty (first-ever import against a clean DB)
+      // and for tests that mock findMany to return null.
+      const wosRaw = await p.workOrder.findMany({
         select: { id: true, manuId: true },
         where: { manuId: { not: null } },
       });
-      const hetJoinRows = await p.workOrderHet.findMany({
+      const wos: Array<{ id: string; manuId: string | null }> = Array.isArray(wosRaw) ? wosRaw : [];
+      const hetJoinRowsRaw = await p.workOrderHet.findMany({
         select: { workOrderId: true, hetId: true },
       });
+      const hetJoinRows: Array<{ workOrderId: string; hetId: string }> =
+        Array.isArray(hetJoinRowsRaw) ? hetJoinRowsRaw : [];
       const joinByWo = new Map<string, string[]>();
       for (const j of hetJoinRows) {
         const arr = joinByWo.get(j.workOrderId) ?? [];
@@ -302,7 +308,7 @@ export const tableConfigs: TableConfig[] = [
     columnMap: {
       phaseEquipId: { field: 'id', type: 'text' },
       phaseId: { field: 'phaseId', type: 'text' },
-      equipmentName: { field: 'equipmentName', type: 'text' },
+      equipmentName: { field: 'name', type: 'text' },
       keyText: { field: 'keyText', type: 'text' },
       createdOn: { field: 'createdAt', type: 'date' },
       updatedOn: { field: 'updatedAt', type: 'date' },
@@ -379,7 +385,7 @@ export const tableConfigs: TableConfig[] = [
       workOrderId: { field: 'workOrderId', type: 'text' },
       manuId: { field: 'manuId', type: 'text' },
       direction: { field: 'direction', type: 'text' },
-      result: { field: 'result', type: 'text' },
+      result: { field: 'result', type: 'boolean' },
       betReading: { field: 'betReading', type: 'decimal' },
       quantity: { field: 'quantity', type: 'number' },
       comment: { field: 'comment', type: 'text' },
@@ -425,9 +431,31 @@ function mapRow(row: Row, config: TableConfig): { mapped: Record<string, unknown
     const val = mapper(raw);
     if (val !== undefined) mapped[mapping.field] = val;
   }
-  // Track columns present in CSV but not in columnMap
+  // Ensure the PK column is populated. Tables whose `sourceIdColumn` is the
+  // natural key (e.g. staff uses email) don't have a columnMap entry mapping
+  // it to the model's PK — copy the sourceId value through to the PK so the
+  // upsert `where` clause can match.
+  const pkColumn = config.pkColumn ?? 'id';
+  if (mapped[pkColumn] === undefined) {
+    const sourceIdRaw = value(row, [config.sourceIdColumn]);
+    if (sourceIdRaw !== undefined) {
+      // Re-run the same mapper the source column would have used, if it has
+      // one, so types stay consistent. Otherwise coerce to string.
+      const sourceMapping = config.columnMap[config.sourceIdColumn];
+      const mapper = sourceMapping ? fieldMappers[sourceMapping.type] : (v: string | undefined) => v;
+      const val = mapper(sourceIdRaw);
+      if (val !== undefined) mapped[pkColumn] = val;
+    }
+  }
+  // Track columns present in CSV but not in columnMap. Columns that are
+  // declared as relation splits (e.g. workOrder.batchHetIds → workOrderHet
+  // join rows) are not in columnMap on purpose — exclude them so the
+  // validation report doesn't flag legitimate relation columns as drift.
+  const relationCols = new Set(Object.keys(config.relations ?? {}));
   for (const csvCol of Object.keys(row)) {
-    if (!(csvCol in config.columnMap)) unmapped.push(csvCol);
+    if (!(csvCol in config.columnMap) && !relationCols.has(csvCol)) {
+      unmapped.push(csvCol);
+    }
   }
   return { mapped, unmapped };
 }
@@ -618,10 +646,9 @@ export async function importTable(
       reason: `${unmappedCols.size} unmapped CSV columns: ${[...unmappedCols].join(', ')}`,
     });
   }
-
-  if (config.afterImport) {
-    await config.afterImport({ prisma, config, rows, report, dryRun });
-  }
+  // Note: config.afterImport is invoked from importAll() AFTER all tables have
+  // been imported, so cross-table derivations can see workOrder/workOrderHet
+  // rows. Calling it here would run too early.
 }
 
 export async function importAll(
@@ -644,6 +671,16 @@ export async function importAll(
   for (const config of tableConfigs) {
     console.log(`Importing ${config.model}…`);
     await importTable(config, seedDir, report, dryRun);
+  }
+
+  // Run cross-table afterImport hooks AFTER every table has been imported.
+  // Some derivations (e.g. ManufacturerHet, GAP-1) need workOrderHet and
+  // workOrder rows to be present before they can resolve their cross-product,
+  // so they cannot run inside `importTable` for their own entity.
+  for (const config of tableConfigs) {
+    if (!config.afterImport) continue;
+    const rows: Row[] = []; // afterImport is read-only with respect to rows; pass empty.
+    await config.afterImport({ prisma, config, rows, report, dryRun });
   }
 
   report.finishedAt = new Date().toISOString();

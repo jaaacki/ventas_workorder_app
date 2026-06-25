@@ -77,7 +77,7 @@ async function checksumOfTable(model: string): Promise<string> {
     workOrderHet: ['workOrderId', 'hetId'],
     workOrderPhaseEquip: ['workOrderId', 'phaseEquipId'],
     steriliseHet: ['steriliseId', 'hetId'],
-    manufacturerHet: ['manuId', 'hetId'],
+    manufacturerHet: ['manufacturerId', 'hetId'],
   };
   const cols = probes[model];
   if (!cols) {

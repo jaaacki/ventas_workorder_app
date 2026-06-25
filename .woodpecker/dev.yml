@@ -68,6 +68,24 @@ steps:
     depends_on:
       - dev-db-setup
 
+  # D4 of issue #36: prove the import pipeline is byte-stable across N
+  # consecutive cycles. Runs the repeatability test against the migrated
+  # postgres. The test wipes its own data in beforeEach, so it must run
+  # AFTER the regular integration suite (which holds its own state) — we
+  # make the dependency explicit.
+  dev-be-import-repeatability:
+    image: *node_image
+    commands:
+      - npm run -w be test:integration -- importRepeatability
+    environment:
+      DATABASE_URL: postgres://woodpecker_test:woodpecker_test@postgres:5432/woodpecker_test?sslmode=disable
+      JWT_SECRET: ci-jwt-secret-not-used-in-production
+      NODE_ENV: test
+      REPEATABILITY_CYCLES: '3'
+    depends_on:
+      - dev-db-setup
+      - dev-be-integration-test
+
   dev-fe-checks:
     image: *node_image
     commands:

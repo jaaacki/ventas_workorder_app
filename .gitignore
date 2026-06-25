@@ -40,10 +40,17 @@ uploads/
 
 # Woodpecker / local CI data (mirrors ~/Dev/docker layout)
 data/
+deploy/data/
 
 # Keep seed data? No, generated seed files can be large
 scripts/seed_data/*.json
 scripts/seed_data/*.csv
+
+# Export archives (issue #36 D2)
+scripts/seed_data/exports/
+
+# Validation reports (issue #36 D3)
+be/reports/
 
 # Playwright browser session artifacts
 .playwright-mcp/

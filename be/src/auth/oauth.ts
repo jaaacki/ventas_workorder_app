@@ -171,10 +171,8 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
       let tokenSet;
       try {
         config = await getClient(providerConfig);
-        const callbackUrl = new URL(
-          req.raw.url || '/',
-          `${req.protocol}://${req.hostname}`
-        );
+        const callbackUrl = new URL(providerConfig.redirectUri!);
+        callbackUrl.search = new URLSearchParams(req.query as Record<string, string>).toString();
         tokenSet = await authorizationCodeGrant(config, callbackUrl, {
           expectedState: stateCookie,
           expectedNonce: nonceCookie,

@@ -8,6 +8,8 @@ export type Row = Record<string, string | undefined>;
 function value(row: Row, keys: string[]): string | undefined {
   for (const key of keys) {
     if (row[key] !== undefined && row[key] !== '') return row[key];
+    const actualKey = Object.keys(row).find((k) => k.toLowerCase() === key.toLowerCase());
+    if (actualKey && row[actualKey] !== undefined && row[actualKey] !== '') return row[actualKey];
   }
   return undefined;
 }
@@ -144,7 +146,7 @@ export const tableConfigs: TableConfig[] = [
     columnMap: {
       email: { field: 'email', type: 'text' },
       name: { field: 'name', type: 'text' },
-      bitrixId: { field: 'bitrixId', type: 'text' },
+      ID: { field: 'bitrixId', type: 'text' },
       active: { field: 'active', type: 'boolean' },
     },
   },
@@ -158,8 +160,6 @@ export const tableConfigs: TableConfig[] = [
       manuNumber: { field: 'manuNumber', type: 'text' },
       createdOn: { field: 'createdAt', type: 'date' },
       updatedOn: { field: 'updatedAt', type: 'date' },
-      createdBy: { field: 'createdById', type: 'text' },
-      updatedBy: { field: 'updatedById', type: 'text' },
     },
     /**
      * GAP-1 (issue #36): legacy AppSheet had no explicit manufacturer↔HET
@@ -220,8 +220,6 @@ export const tableConfigs: TableConfig[] = [
       keyText: { field: 'keyText', type: 'text' },
       createdOn: { field: 'createdAt', type: 'date' },
       updatedOn: { field: 'updatedAt', type: 'date' },
-      createdBy: { field: 'createdById', type: 'text' },
-      updatedBy: { field: 'updatedById', type: 'text' },
     },
   },
   {
@@ -233,8 +231,6 @@ export const tableConfigs: TableConfig[] = [
       bomName: { field: 'bomName', type: 'text' },
       createdOn: { field: 'createdAt', type: 'date' },
       updatedOn: { field: 'updatedAt', type: 'date' },
-      createdBy: { field: 'createdById', type: 'text' },
-      updatedBy: { field: 'updatedById', type: 'text' },
     },
   },
   {
@@ -252,8 +248,6 @@ export const tableConfigs: TableConfig[] = [
       deleted: { field: 'deleted', type: 'boolean' },
       createdOn: { field: 'createdAt', type: 'date' },
       updatedOn: { field: 'updatedAt', type: 'date' },
-      createdBy: { field: 'createdById', type: 'text' },
-      updatedBy: { field: 'updatedById', type: 'text' },
     },
   },
   {
@@ -272,15 +266,11 @@ export const tableConfigs: TableConfig[] = [
       deliverId: { field: 'deliverId', type: 'text' },
       collectId: { field: 'collectId', type: 'text' },
       quantity: { field: 'quantity', type: 'number' },
-      usedById: { field: 'usedById', type: 'text' },
-      finishedById: { field: 'finishedById', type: 'text' },
       deleted: { field: 'deleted', type: 'boolean' },
       forceField: { field: 'forceField', type: 'number' },
       keyText: { field: 'keyText', type: 'text' },
       createdOn: { field: 'createdAt', type: 'date' },
       updatedOn: { field: 'updatedAt', type: 'date' },
-      createdBy: { field: 'createdById', type: 'text' },
-      updatedBy: { field: 'updatedById', type: 'text' },
     },
   },
   {
@@ -291,29 +281,25 @@ export const tableConfigs: TableConfig[] = [
       phaseId: { field: 'id', type: 'text' },
       phaseName: { field: 'phaseName', type: 'text' },
       phaseShort: { field: 'phaseShort', type: 'text' },
-      phaseOrder: { field: 'phaseOrder', type: 'number' },
+      order: { field: 'phaseOrder', type: 'number' },
       description: { field: 'description', type: 'text' },
       bomId: { field: 'bomId', type: 'text' },
       keyText: { field: 'keyText', type: 'text' },
       createdOn: { field: 'createdAt', type: 'date' },
       updatedOn: { field: 'updatedAt', type: 'date' },
-      createdBy: { field: 'createdById', type: 'text' },
-      updatedBy: { field: 'updatedById', type: 'text' },
     },
   },
   {
     fileName: 'phaseEquip.csv',
     model: 'phaseEquip',
-    sourceIdColumn: 'phaseEquipId',
+    sourceIdColumn: 'id',
     columnMap: {
-      phaseEquipId: { field: 'id', type: 'text' },
-      phaseId: { field: 'phaseId', type: 'text' },
-      equipmentName: { field: 'name', type: 'text' },
+      id: { field: 'id', type: 'text' },
+      name: { field: 'name', type: 'text' },
+      description: { field: 'description', type: 'text' },
       keyText: { field: 'keyText', type: 'text' },
       createdOn: { field: 'createdAt', type: 'date' },
       updatedOn: { field: 'updatedAt', type: 'date' },
-      createdBy: { field: 'createdById', type: 'text' },
-      updatedBy: { field: 'updatedById', type: 'text' },
     },
   },
   {
@@ -335,15 +321,9 @@ export const tableConfigs: TableConfig[] = [
       reportPdf: { field: 'reportPdfPath', type: 'text' },
       delete: { field: 'deleted', type: 'boolean' },
       forceField: { field: 'forceField', type: 'number' },
-      previousWo: { field: 'previousWoId', type: 'text' },
-      steralisationCurrent: { field: 'steralisationCurrentId', type: 'text' },
       nextPhase: { field: 'nextPhaseId', type: 'text' },
-      startSignBy: { field: 'startSignById', type: 'text' },
-      endSignBy: { field: 'endSignById', type: 'text' },
       createdOn: { field: 'createdAt', type: 'date' },
       updatedOn: { field: 'updatedAt', type: 'date' },
-      createdBy: { field: 'createdById', type: 'text' },
-      updatedBy: { field: 'updatedById', type: 'text' },
     },
     relations: {
       batchHetIds: {
@@ -366,37 +346,32 @@ export const tableConfigs: TableConfig[] = [
     sourceIdColumn: 'woSerialId',
     columnMap: {
       woSerialId: { field: 'id', type: 'text' },
-      workOrderId: { field: 'workOrderId', type: 'text' },
-      bomRefId: { field: 'bomRefId', type: 'text' },
+      woId: { field: 'workOrderId', type: 'text' },
+      bomRef: { field: 'bomRefId', type: 'text' },
       serialNumber: { field: 'serialNumber', type: 'text' },
       keyText: { field: 'keyText', type: 'text' },
       createdOn: { field: 'createdOn', type: 'date' },
       updatedOn: { field: 'updatedOn', type: 'date' },
-      createdBy: { field: 'createdById', type: 'text' },
-      updatedBy: { field: 'updatedById', type: 'text' },
     },
   },
   {
     fileName: 'sterilise.csv',
     model: 'sterilise',
-    sourceIdColumn: 'steriliseId',
+    sourceIdColumn: 'sterId',
     columnMap: {
-      steriliseId: { field: 'id', type: 'text' },
-      workOrderId: { field: 'workOrderId', type: 'text' },
+      sterId: { field: 'id', type: 'text' },
+      woId: { field: 'workOrderId', type: 'text' },
       manuId: { field: 'manuId', type: 'text' },
       direction: { field: 'direction', type: 'text' },
       result: { field: 'result', type: 'boolean' },
       betReading: { field: 'betReading', type: 'decimal' },
       quantity: { field: 'quantity', type: 'number' },
       comment: { field: 'comment', type: 'text' },
-      imagePath: { field: 'imagePath', type: 'text' },
+      image: { field: 'imagePath', type: 'text' },
       signOn: { field: 'signOn', type: 'date' },
-      signBy: { field: 'signById', type: 'text' },
       signature: { field: 'signaturePath', type: 'text' },
       createdOn: { field: 'createdAt', type: 'date' },
       updatedOn: { field: 'updatedAt', type: 'date' },
-      createdBy: { field: 'createdById', type: 'text' },
-      updatedBy: { field: 'updatedById', type: 'text' },
     },
     relations: {
       batchHetId: {

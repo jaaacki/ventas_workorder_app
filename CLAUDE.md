@@ -45,20 +45,22 @@ This file defines how Claude Code and other contributors should work in this rep
 
 - Woodpecker CI files live in `.woodpecker/`:
   - `.woodpecker/pr.yml` — fast PR checks (lint, typecheck, unit tests, build). No database.
-  - `.woodpecker/dev.yml` — full integration tests against a real PostgreSQL database for `dev` pushes.
-  - `.woodpecker/main.yml` — same integration checks for `main` pushes; production handoff is handled by remote CI/CD unless this repo says otherwise.
+  - `.woodpecker/dev.yml` — full integration tests against a real PostgreSQL database for `dev` pushes on `jmacpro.noonoon.cc`.
+  - `.woodpecker/main.yml` — same integration checks for `main` pushes on `home-syno` / `ci.familyhub.id`; this is the main-branch production handoff check.
 - Backend tests are split into `vitest.unit.config.ts` and `vitest.integration.config.ts`.
 - Test files are excluded from `tsc` build output via `tsconfig.json`.
 
 ## Local DevOps / Woodpecker Workflow
 
-- Local CI runs in Woodpecker at `https://jmacpro.noonoon.cc/ci`.
+- PR and `dev` CI run in Woodpecker at `https://jmacpro.noonoon.cc/ci`.
+- `main` CI runs on the `home-syno` Woodpecker instance at `https://ci.familyhub.id`.
+- Use `wpci home-syno ...` for main-branch CI inspection, for example `wpci home-syno pipeline last jaaacki/ventas_workorder_app`.
 - Persistent local infra is managed outside this repo under `~/Dev/docker`.
 - Agents must not run project package, test, build, database, or app-server commands on the host.
 - Agents may inspect files, edit files, run Git commands, and run safe structural checks such as `git diff --check`.
-- Validation happens by pushing a branch/PR and reading the local Woodpecker result.
+- Validation happens by pushing a branch/PR and reading the matching Woodpecker result.
 - PR checks are fast feedback. Passing PR checks means the branch is a candidate for merge into `dev`.
-- `main` remains the production handoff branch; remote CI/CD owns staging/production deployment unless this repo says otherwise.
+- `main` remains the production handoff branch. The repo-owned `main` check runs on `home-syno`; any staging/production deployment beyond that is handled outside this repo unless configured here.
 - Do not recreate git-runner, GitHub runner, or host-local dependency/test workflows.
 
 ## Security

@@ -77,7 +77,7 @@ async function checksumOfTable(model: string): Promise<string> {
     workOrderHet: ['workOrderId', 'hetId'],
     workOrderPhaseEquip: ['workOrderId', 'phaseEquipId'],
     steriliseHet: ['steriliseId', 'hetId'],
-    manufacturerHet: ['manuId', 'hetId'],
+    manufacturerHet: ['manufacturerId', 'hetId'],
   };
   const cols = probes[model];
   if (!cols) {
@@ -239,12 +239,12 @@ function writeSeed(dir: string, seed = 1): void {
     ]),
   );
 
-  // woSerial (sourceIdColumn = woSerialId → id; FK workOrderId)
+  // woSerial (sourceIdColumn = woSerialId → id; FK workOrderId, bomRefId)
   fs.writeFileSync(
     path.join(dir, 'woSerial.csv'),
     csv([
-      ['woSerialId', 'workOrderId', 'serialNumber'],
-      [`WSR-${stem(1)}`, `WKO-${stem(1)}`, `SN-${seed}`],
+      ['woSerialId', 'workOrderId', 'bomRefId', 'serialNumber'],
+      [`WSR-${stem(1)}`, `WKO-${stem(1)}`, `BOL-${stem(1)}`, `SN-${seed}`],
     ]),
   );
 

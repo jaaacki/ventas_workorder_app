@@ -86,6 +86,7 @@ export interface TableConfig {
   /** PK column on the Prisma model — defaults to 'id'. */
   pkColumn?: string;
   columnMap: Record<string, { field: string; type: keyof typeof fieldMappers }>;
+  createRelations?: Record<string, { relation: string; targetField?: string }>;
   relations?: Record<
     string,
     {
@@ -281,6 +282,7 @@ export const tableConfigs: TableConfig[] = [
       phaseId: { field: 'id', type: 'text' },
       phaseName: { field: 'phaseName', type: 'text' },
       phaseShort: { field: 'phaseShort', type: 'text' },
+      phaseOrder: { field: 'phaseOrder', type: 'number' },
       order: { field: 'phaseOrder', type: 'number' },
       description: { field: 'description', type: 'text' },
       bomId: { field: 'bomId', type: 'text' },
@@ -292,9 +294,11 @@ export const tableConfigs: TableConfig[] = [
   {
     fileName: 'phaseEquip.csv',
     model: 'phaseEquip',
-    sourceIdColumn: 'id',
+    sourceIdColumn: 'phaseEquipId',
     columnMap: {
+      phaseEquipId: { field: 'id', type: 'text' },
       id: { field: 'id', type: 'text' },
+      equipmentName: { field: 'name', type: 'text' },
       name: { field: 'name', type: 'text' },
       description: { field: 'description', type: 'text' },
       keyText: { field: 'keyText', type: 'text' },
@@ -346,20 +350,28 @@ export const tableConfigs: TableConfig[] = [
     sourceIdColumn: 'woSerialId',
     columnMap: {
       woSerialId: { field: 'id', type: 'text' },
+      workOrderId: { field: 'workOrderId', type: 'text' },
       woId: { field: 'workOrderId', type: 'text' },
+      bomRefId: { field: 'bomRefId', type: 'text' },
       bomRef: { field: 'bomRefId', type: 'text' },
       serialNumber: { field: 'serialNumber', type: 'text' },
       keyText: { field: 'keyText', type: 'text' },
       createdOn: { field: 'createdOn', type: 'date' },
       updatedOn: { field: 'updatedOn', type: 'date' },
     },
+    createRelations: {
+      workOrderId: { relation: 'workOrder' },
+      bomRefId: { relation: 'bomRef' },
+    },
   },
   {
     fileName: 'sterilise.csv',
     model: 'sterilise',
-    sourceIdColumn: 'sterId',
+    sourceIdColumn: 'steriliseId',
     columnMap: {
+      steriliseId: { field: 'id', type: 'text' },
       sterId: { field: 'id', type: 'text' },
+      workOrderId: { field: 'workOrderId', type: 'text' },
       woId: { field: 'workOrderId', type: 'text' },
       manuId: { field: 'manuId', type: 'text' },
       direction: { field: 'direction', type: 'text' },
@@ -372,6 +384,10 @@ export const tableConfigs: TableConfig[] = [
       signature: { field: 'signaturePath', type: 'text' },
       createdOn: { field: 'createdAt', type: 'date' },
       updatedOn: { field: 'updatedAt', type: 'date' },
+    },
+    createRelations: {
+      workOrderId: { relation: 'workOrder' },
+      manuId: { relation: 'manufacturer' },
     },
     relations: {
       batchHetId: {
@@ -456,6 +472,7 @@ async function upsertMany(
   data: Record<string, unknown>[],
   report: ImportReport,
   dryRun: boolean,
+  createRelations: TableConfig['createRelations'] = {},
 ): Promise<{ upserted: number; updated: number }> {
   const delegate = (prisma as any)[model];
   if (!delegate || typeof delegate.upsert !== 'function') {
@@ -478,10 +495,19 @@ async function upsertMany(
       continue;
     }
     try {
+      const create = { ...row };
+      for (const [field, relation] of Object.entries(createRelations)) {
+        const targetValue = row[field];
+        if (targetValue === undefined || targetValue === null || targetValue === '') continue;
+        delete create[field];
+        create[relation.relation] = {
+          connect: { [relation.targetField ?? 'id']: targetValue },
+        };
+      }
       const result = await delegate.upsert({
         where: { [pkColumn]: pkValue },
         update: row,
-        create: row,
+        create,
       });
       // Prisma doesn't return "was created vs updated". Probe to count.
       // Cheap because we just wrote; if `createdAt` equals now, it was just created.
@@ -591,7 +617,14 @@ export async function importTable(
   }
 
   if (mapped.length > 0) {
-    const { upserted, updated } = await upsertMany(config.model, pkColumn, mapped, report, dryRun);
+    const { upserted, updated } = await upsertMany(
+      config.model,
+      pkColumn,
+      mapped,
+      report,
+      dryRun,
+      config.createRelations,
+    );
     entityStats.upserted += upserted;
     entityStats.updated += updated;
     report.totals.upserted += upserted;
@@ -602,11 +635,11 @@ export async function importTable(
     for (const [col, rel] of Object.entries(config.relations)) {
       const joins: Array<Record<string, string>> = [];
       for (let i = 0; i < rows.length; i++) {
-        const sourceId = value(rows[i]!, [config.sourceIdColumn]);
+        const sourceId = mapRow(rows[i]!, config).mapped[pkColumn];
         if (!sourceId) continue;
         const targets = listValue(rows[i]![col]);
         for (const targetId of targets) {
-          joins.push({ [rel.sourceFk]: sourceId, [rel.targetFk]: targetId });
+          joins.push({ [rel.sourceFk]: String(sourceId), [rel.targetFk]: targetId });
         }
       }
       const joined = await upsertJoins(rel.joinTable, joins, report, dryRun);

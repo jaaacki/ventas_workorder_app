@@ -29,6 +29,10 @@ type ProviderConfig = {
   redirectUri: string | undefined;
 };
 
+function isProviderConfigured(config: ProviderConfig): boolean {
+  return Boolean(config.clientId && config.clientSecret && config.redirectUri);
+}
+
 function getProviderConfig(provider: z.infer<typeof providerParam>, env: Env): ProviderConfig {
   if (provider === 'google') {
     return {
@@ -50,17 +54,24 @@ function getProviderConfig(provider: z.infer<typeof providerParam>, env: Env): P
 }
 
 async function getClient(config: ProviderConfig): Promise<Configuration> {
-  if (!config.clientId || !config.clientSecret || !config.redirectUri) {
+  if (!isProviderConfigured(config)) {
     throw new Error('OAuth provider is not configured');
   }
+  const clientId = config.clientId;
+  const clientSecret = config.clientSecret;
+  const redirectUri = config.redirectUri;
+  if (!clientId || !clientSecret || !redirectUri) {
+    throw new Error('OAuth provider is not configured');
+  }
+
   return discovery(
     new URL(config.issuerUrl),
-    config.clientId,
+    clientId,
     {
-      redirect_uris: [config.redirectUri],
+      redirect_uris: [redirectUri],
       response_types: ['code'],
     },
-    ClientSecretPost(config.clientSecret)
+    ClientSecretPost(clientSecret)
   );
 }
 
@@ -97,6 +108,7 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
           302: z.any(),
           400: errorResponse,
           501: errorResponse,
+          502: errorResponse,
         },
       },
     },
@@ -104,6 +116,10 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
       const { provider } = req.params;
       const env = app.config;
       const providerConfig = getProviderConfig(provider, env);
+      if (!isProviderConfigured(providerConfig)) {
+        return reply.status(501).send({ error: `OAuth provider ${provider} is not configured` });
+      }
+
       try {
         const config = await getClient(providerConfig);
         const state = randomState();
@@ -127,7 +143,7 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
         return reply.redirect(url.toString());
       } catch (err) {
         app.log.warn(err, 'OAuth authorize failed');
-        return reply.status(501).send({ error: `OAuth provider ${provider} is not configured` });
+        return reply.status(502).send({ error: `OAuth provider ${provider} authorization failed` });
       }
     }
   );
@@ -160,6 +176,12 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
       }
 
       const providerConfig = getProviderConfig(provider, env);
+      if (!isProviderConfigured(providerConfig)) {
+        return reply.redirect(
+          `${env.FRONTEND_URL}/login?error=${encodeURIComponent(`OAuth provider ${provider} is not configured`)}`
+        );
+      }
+
       const stateCookie = readOAuthCookie(req, 'oauth_state');
       const nonceCookie = readOAuthCookie(req, 'oauth_nonce');
       const pkceCookie = readOAuthCookie(req, 'oauth_pkce');
@@ -180,7 +202,9 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
         });
       } catch (err) {
         app.log.warn(err, 'OAuth callback failed');
-        return reply.status(501).send({ error: `OAuth provider ${provider} is not configured` });
+        return reply.redirect(
+          `${env.FRONTEND_URL}/login?error=${encodeURIComponent(`OAuth provider ${provider} callback failed`)}`
+        );
       }
 
       const claims = tokenSet.claims();

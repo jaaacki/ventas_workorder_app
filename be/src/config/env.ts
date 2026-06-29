@@ -11,6 +11,7 @@ export const envSchema = z.object({
   OWNER_EMAIL: z.string().email().optional(),
   OWNER_PASSWORD: z.string().min(8).optional(),
   GOOGLE_SERVICE_ACCOUNT_JSON: z.string().optional(),
+  BOM_WO_SHEET_ID: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REDIRECT_URI: z.string().url().optional(),

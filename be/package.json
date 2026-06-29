@@ -16,6 +16,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
+    "db:export": "tsx src/scripts/exportGoogleSheet.ts",
     "db:import": "tsx src/scripts/importCsv.ts",
     "db:reset": "prisma migrate reset --force --skip-seed"
   },

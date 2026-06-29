@@ -154,7 +154,7 @@ model Het {
   licenseName        String?
   address            String?
   hetNumber          String?
-  parcelTrackingNumber Int?
+  parcelTrackingNumber String?
   deliverId          String?
   collectId          String?
   usedById           String?

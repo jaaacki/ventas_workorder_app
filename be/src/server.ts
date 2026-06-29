@@ -15,6 +15,9 @@ async function buildServer() {
   const config = parseEnv();
 
   const app = Fastify({
+    // Behind Cloudflare -> Synology reverse proxy -> fe nginx; trust X-Forwarded-* headers
+    // so req.protocol/ip reflect the real client (https) for cookies, CORS, OAuth redirects.
+    trustProxy: true,
     logger: {
       level: config.LOG_LEVEL,
       transport: config.NODE_ENV === 'development' ? { target: 'pino-pretty' } : undefined,

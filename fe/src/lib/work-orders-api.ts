@@ -20,7 +20,7 @@ export interface WorkOrderSummary {
   phaseOrder: number | null;
   prodStart: string | null;
   prodEnd: string | null;
-  workflow: WorkOrderWorkflowRef;
+  workflow: WorkOrderWorkflowRef | null;
 }
 
 export interface WorkOrderDetail {
@@ -32,8 +32,8 @@ export interface WorkOrderDetail {
   phaseOrder: number | null;
   prodStart: string | null;
   prodEnd: string | null;
-  workflow: WorkOrderWorkflowRef;
-  phase: WorkOrderPhaseRef;
+  workflow: WorkOrderWorkflowRef | null;
+  phase: WorkOrderPhaseRef | null;
 }
 
 export async function fetchWorkOrders(): Promise<WorkOrderSummary[]> {

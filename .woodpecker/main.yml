@@ -5,6 +5,8 @@
 when:
   event: push
   branch: [main]
+  # instance: MAIN runs only on home-syno (Synology Woodpecker, ci.familyhub.id). PR/DEV run on jmacpro. See issue #31.
+  instance: [ci.familyhub.id]
 
 variables:
   - &node_image node:22-alpine

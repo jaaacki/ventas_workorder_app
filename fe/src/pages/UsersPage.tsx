@@ -3,10 +3,10 @@ import { fetchStaff, fetchRoles, updateStaffRole, updateStaffActive } from '@/li
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { AdminPanel, EmptyState, MetricCard, PageHeader, StatusPill } from '@/components/tailadmin';
 import { toast } from 'sonner';
+import { Shield, UserCheck, Users } from 'lucide-react';
 
 export default function UsersPage() {
   const queryClient = useQueryClient();
@@ -38,19 +38,24 @@ export default function UsersPage() {
   if (staffLoading || rolesLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-white/[0.03]">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Users</h1>
-      <Card>
-        <CardHeader>
-          <CardTitle>Staff accounts</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <PageHeader title="Users" description="Manage staff accounts, role assignment, and active access." />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <MetricCard icon={<Users className="h-6 w-6" />} label="Staff accounts" value={staff?.length ?? 0} />
+        <MetricCard icon={<UserCheck className="h-6 w-6" />} label="Active users" value={staff?.filter((s) => s.active).length ?? 0} />
+      </div>
+      <AdminPanel title="Staff accounts" description="Owner users can update roles. Admins can enable or disable accounts.">
+        {!staff?.length ? (
+          <EmptyState icon={<Shield className="h-6 w-6" />} title="No staff accounts" description="Staff users will appear here after they are created or sign in." />
+        ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -64,7 +69,7 @@ export default function UsersPage() {
             <TableBody>
               {staff?.map((s) => (
                 <TableRow key={s.id}>
-                  <TableCell className="font-medium">{s.name || '-'}</TableCell>
+                  <TableCell className="font-medium text-gray-800 dark:text-white/90">{s.name || '-'}</TableCell>
                   <TableCell>{s.email}</TableCell>
                   <TableCell>
                     {isOwner ? (
@@ -85,11 +90,11 @@ export default function UsersPage() {
                         </SelectContent>
                       </Select>
                     ) : (
-                      <Badge variant="secondary">{s.role?.name || s.role?.key}</Badge>
+                      <StatusPill tone="neutral">{s.role?.name || s.role?.key}</StatusPill>
                     )}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={s.active ? 'default' : 'destructive'}>{s.active ? 'Active' : 'Inactive'}</Badge>
+                    <StatusPill tone={s.active ? 'success' : 'error'}>{s.active ? 'Active' : 'Inactive'}</StatusPill>
                   </TableCell>
                   {isAdmin && (
                     <TableCell>
@@ -107,8 +112,8 @@ export default function UsersPage() {
               ))}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+        )}
+      </AdminPanel>
     </div>
   );
 }

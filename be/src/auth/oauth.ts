@@ -98,6 +98,14 @@ function clearOAuthCookies(reply: FastifyReply) {
   reply.clearCookie('oauth_pkce', { path: '/api/auth/oauth' });
 }
 
+export function buildOAuthCallbackUrl(redirectUri: string, rawUrl: string | undefined): URL {
+  const callbackUrl = new URL(redirectUri);
+  if (!rawUrl) return callbackUrl;
+
+  callbackUrl.search = new URL(rawUrl, redirectUri).search;
+  return callbackUrl;
+}
+
 export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
   app.get(
     '/:provider/authorize',
@@ -193,8 +201,7 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
       let tokenSet;
       try {
         config = await getClient(providerConfig);
-        const callbackUrl = new URL(providerConfig.redirectUri!);
-        callbackUrl.search = new URLSearchParams(req.query as Record<string, string>).toString();
+        const callbackUrl = buildOAuthCallbackUrl(providerConfig.redirectUri!, req.raw.url);
         tokenSet = await authorizationCodeGrant(config, callbackUrl, {
           expectedState: stateCookie,
           expectedNonce: nonceCookie,

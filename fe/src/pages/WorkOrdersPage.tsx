@@ -14,6 +14,14 @@ import { AdminPanel, EmptyState, MetricCard, PageHeader, StatusPill } from '@/co
 import { toast } from 'sonner';
 import { ArrowRight, ClipboardList, Clock, Plus, Workflow as WorkflowIcon } from 'lucide-react';
 
+function workflowLabel(workOrder: { workflow: { name: string; code: string } | null; workflowId: string | null }) {
+  if (workOrder.workflow) {
+    return `${workOrder.workflow.name} (${workOrder.workflow.code})`;
+  }
+
+  return workOrder.workflowId ? `Missing workflow (${workOrder.workflowId})` : 'No workflow assigned';
+}
+
 export default function WorkOrdersPage() {
   const queryClient = useQueryClient();
   const { data: workOrders, isLoading } = useQuery({
@@ -134,7 +142,7 @@ export default function WorkOrdersPage() {
                       {wo.woNumber || 'Unnumbered'}
                     </span>
                     <p className="mt-1 text-xs font-medium uppercase tracking-wide text-gray-400">
-                      {wo.workflow.name} ({wo.workflow.code})
+                      {workflowLabel(wo)}
                     </p>
                   </div>
                   <StatusPill tone="brand">Phase {wo.phaseOrder ?? '-'}</StatusPill>

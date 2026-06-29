@@ -144,6 +144,9 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         if (err instanceof Error && err.message === 'work order is at its final phase') {
           return reply.status(409).send({ error: 'work order is at its final phase' });
         }
+        if (err instanceof Error && err.message.startsWith('sterilisation/BET gate')) {
+          return reply.status(409).send({ error: err.message });
+        }
         if (err instanceof Prisma.PrismaClientKnownRequestError) {
           if (err.code === 'P2025') {
             return reply.status(404).send({ error: 'Work order not found' });

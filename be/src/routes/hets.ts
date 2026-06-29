@@ -1,0 +1,111 @@
+import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { z } from 'zod';
+import { Prisma } from '@prisma/client';
+import type { JwtPayload } from '../plugins/auth.js';
+import * as hetService from '../services/hetService.js';
+
+const errorResponse = z.object({ error: z.string() });
+
+const hetSchema = z
+  .object({
+    id: z.string(),
+    createdAt: z.date(),
+    updatedAt: z.date(),
+    createdById: z.string().nullable(),
+    updatedById: z.string().nullable(),
+    usedById: z.string().nullable(),
+    finishedById: z.string().nullable(),
+    deleted: z.boolean(),
+  })
+  .passthrough();
+
+const hetLinkBodySchema = z.object({
+  workOrderId: z.string().min(1),
+});
+
+function actorIdOf(req: { user: unknown }): string {
+  return (req.user as JwtPayload).id;
+}
+
+export const hetRoutes: FastifyPluginAsyncZod = async function (app) {
+  app.get(
+    '/',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        response: { 200: z.array(hetSchema), 401: errorResponse },
+      },
+    },
+    async () => {
+      return hetService.listHets();
+    },
+  );
+
+  app.post(
+    '/:id/use',
+    {
+      onRequest: [app.requireRole('admin', 'owner')],
+      schema: {
+        params: z.object({ id: z.string() }),
+        body: hetLinkBodySchema,
+        response: {
+          200: hetSchema,
+          400: errorResponse,
+          401: errorResponse,
+          403: errorResponse,
+          404: errorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      try {
+        return await hetService.useHet(req.params.id, {
+          workOrderId: req.body.workOrderId,
+          actorId: actorIdOf(req),
+        });
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError) {
+          if (err.code === 'P2025') {
+            return reply.status(404).send({ error: 'HET or work order not found' });
+          }
+          if (err.code === 'P2003') {
+            return reply.status(400).send({ error: 'Referenced work order does not exist' });
+          }
+        }
+        throw err;
+      }
+    },
+  );
+
+  app.post(
+    '/:id/finish',
+    {
+      onRequest: [app.requireRole('admin', 'owner')],
+      schema: {
+        params: z.object({ id: z.string() }),
+        body: hetLinkBodySchema,
+        response: {
+          200: hetSchema,
+          401: errorResponse,
+          403: errorResponse,
+          404: errorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      try {
+        return await hetService.finishHet(req.params.id, {
+          workOrderId: req.body.workOrderId,
+          actorId: actorIdOf(req),
+        });
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError) {
+          if (err.code === 'P2025') {
+            return reply.status(404).send({ error: 'HET not found' });
+          }
+        }
+        throw err;
+      }
+    },
+  );
+};

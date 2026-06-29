@@ -5,10 +5,9 @@ import { fetchWorkflows, createWorkflow } from '@/lib/workflows-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { AdminPanel, EmptyState, MetricCard, PageHeader, StatusPill } from '@/components/tailadmin';
 import { toast } from 'sonner';
-import { Plus, Workflow as WorkflowIcon } from 'lucide-react';
+import { Boxes, Plus, Workflow as WorkflowIcon } from 'lucide-react';
 
 export default function WorkflowsPage() {
   const queryClient = useQueryClient();
@@ -46,26 +45,28 @@ export default function WorkflowsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Workflows</h1>
-        <p className="text-sm text-muted-foreground">
-          Product families — each workflow defines an ordered set of manufacturing phases.
-        </p>
+      <PageHeader
+        title="Workflows"
+        description="Product families: each workflow defines an ordered set of manufacturing phases."
+      />
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <MetricCard icon={<WorkflowIcon className="h-6 w-6" />} label="Configured workflows" value={workflows?.length ?? 0} />
+        <MetricCard icon={<Boxes className="h-6 w-6" />} label="Total phases" value={workflows?.reduce((sum, w) => sum + w._count.phases, 0) ?? 0} />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <AdminPanel
+        title="New workflow"
+        description="Create a product workflow. Phases are bound once phase data exists."
+        action={
+          <span className="hidden items-center gap-2 text-sm text-gray-500 sm:flex">
             <Plus className="h-4 w-4" /> New workflow
-          </CardTitle>
-          <CardDescription>
-            Create a product workflow (e.g. AmGraft®). Phases are bound once phase data exists.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </span>
+        }
+      >
           <form
             onSubmit={submit}
-            className="grid gap-3 sm:grid-cols-[1fr_160px_2fr_auto] sm:items-end"
+            className="grid gap-4 lg:grid-cols-[1fr_160px_2fr_auto] lg:items-end"
           >
             <div className="grid gap-1.5">
               <Label htmlFor="wf-name">Name</Label>
@@ -95,49 +96,44 @@ export default function WorkflowsPage() {
               />
             </div>
             <Button type="submit" disabled={createMutation.isPending || !name.trim() || !code.trim()}>
+              <Plus className="h-4 w-4" />
               Create
             </Button>
           </form>
-        </CardContent>
-      </Card>
+      </AdminPanel>
 
-      <div>
-        <h2 className="mb-3 text-lg font-medium">Configured workflows</h2>
+      <AdminPanel title="Configured workflows">
         {isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <div className="flex h-40 items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+          </div>
         ) : !workflows?.length ? (
-          <Card>
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              No workflows yet — create your first one above.
-            </CardContent>
-          </Card>
+          <EmptyState icon={<WorkflowIcon className="h-6 w-6" />} title="No workflows yet" description="Create your first product workflow above." />
         ) : (
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             {workflows.map((w) => (
-              <Card key={w.id}>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
+              <div key={w.id} className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
                     <span className="flex items-center gap-2">
-                      <WorkflowIcon className="h-4 w-4" />
+                      <WorkflowIcon className="h-4 w-4 text-brand-500" />
                       {w.name}
                     </span>
-                    <Badge variant={w.active ? 'default' : 'secondary'}>
-                      {w.active ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </CardTitle>
-                  <CardDescription>{w.code}</CardDescription>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  <div className="min-h-5">{w.description || '—'}</div>
-                  <div className="mt-2 text-xs">
+                    <p className="mt-1 text-xs font-medium uppercase tracking-wide text-gray-400">{w.code}</p>
+                  </div>
+                  <StatusPill tone={w.active ? 'success' : 'neutral'}>{w.active ? 'Active' : 'Inactive'}</StatusPill>
+                </div>
+                <div className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+                  <div className="min-h-5">{w.description || 'No description'}</div>
+                  <div className="mt-3 text-xs">
                     {w._count.phases} phase(s) · {w._count.workOrders} work order(s)
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             ))}
           </div>
         )}
-      </div>
+      </AdminPanel>
     </div>
   );
 }

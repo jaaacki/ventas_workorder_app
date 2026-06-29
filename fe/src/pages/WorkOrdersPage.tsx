@@ -10,10 +10,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { AdminPanel, EmptyState, MetricCard, PageHeader, StatusPill } from '@/components/tailadmin';
 import { toast } from 'sonner';
-import { Plus, ClipboardList } from 'lucide-react';
+import { ArrowRight, ClipboardList, Clock, Plus, Workflow as WorkflowIcon } from 'lucide-react';
 
 export default function WorkOrdersPage() {
   const queryClient = useQueryClient();
@@ -63,28 +62,33 @@ export default function WorkOrdersPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Work Orders</h1>
-        <p className="text-sm text-muted-foreground">
-          Create work orders and advance them through their workflow phases.
-        </p>
+      <PageHeader
+        title="Work Orders"
+        description="Create work orders and advance them through their workflow phases."
+      />
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <MetricCard icon={<ClipboardList className="h-6 w-6" />} label="Active work orders" value={workOrders?.length ?? 0} />
+        <MetricCard icon={<WorkflowIcon className="h-6 w-6" />} label="Available workflows" value={workflows?.length ?? 0} />
+        <MetricCard icon={<Clock className="h-6 w-6" />} label="Open phase tracking" value="Live" detail={<StatusPill tone="brand">Now</StatusPill>} />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <AdminPanel
+        title="New work order"
+        description="Choose a workflow to start a new work order."
+        action={
+          <span className="hidden items-center gap-2 text-sm text-gray-500 sm:flex">
             <Plus className="h-4 w-4" />
             New work order
-          </CardTitle>
-          <CardDescription>Choose a workflow to start a new work order.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="flex flex-col gap-4 md:flex-row md:items-end" onSubmit={submit}>
+          </span>
+        }
+      >
+          <form className="grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end" onSubmit={submit}>
             <div className="flex-1 space-y-2">
               <Label htmlFor="workflow">Workflow</Label>
               <select
                 id="workflow"
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="flex h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs transition-colors focus-visible:border-brand-300 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
                 value={workflowId}
                 onChange={(e) => setWorkflowId(e.target.value)}
               >
@@ -106,42 +110,39 @@ export default function WorkOrdersPage() {
               />
             </div>
             <Button type="submit" disabled={createMutation.isPending || !workflowId.trim()}>
+              <Plus className="h-4 w-4" />
               Create
             </Button>
           </form>
-        </CardContent>
-      </Card>
+      </AdminPanel>
 
-      <div>
-        <h2 className="mb-3 text-lg font-medium">Active work orders</h2>
+      <AdminPanel title="Active work orders">
         {isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <div className="flex h-40 items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+          </div>
         ) : !workOrders?.length ? (
-          <Card>
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              No work orders yet — create your first one above.
-            </CardContent>
-          </Card>
+          <EmptyState icon={<ClipboardList className="h-6 w-6" />} title="No work orders yet" description="Create your first work order above." />
         ) : (
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             {workOrders.map((wo) => (
-              <Card key={wo.id}>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
+              <div key={wo.id} className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
                     <span className="flex items-center gap-2">
-                      <ClipboardList className="h-4 w-4" />
+                      <ClipboardList className="h-4 w-4 text-brand-500" />
                       {wo.woNumber || 'Unnumbered'}
                     </span>
-                    <Badge variant="secondary">
-                      Phase {wo.phaseOrder ?? '—'}
-                    </Badge>
-                  </CardTitle>
-                  <CardDescription>{wo.workflow.name} ({wo.workflow.code})</CardDescription>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
+                    <p className="mt-1 text-xs font-medium uppercase tracking-wide text-gray-400">
+                      {wo.workflow.name} ({wo.workflow.code})
+                    </p>
+                  </div>
+                  <StatusPill tone="brand">Phase {wo.phaseOrder ?? '-'}</StatusPill>
+                </div>
+                <div className="mt-4 text-sm text-gray-500 dark:text-gray-400">
                   <div className="text-xs">
-                    Start: {wo.prodStart ? new Date(wo.prodStart).toLocaleString() : '—'} · End:{' '}
-                    {wo.prodEnd ? new Date(wo.prodEnd).toLocaleString() : '—'}
+                    Start: {wo.prodStart ? new Date(wo.prodStart).toLocaleString() : '-'} · End:{' '}
+                    {wo.prodEnd ? new Date(wo.prodEnd).toLocaleString() : '-'}
                   </div>
                   <div className="mt-3">
                     <Button
@@ -150,14 +151,15 @@ export default function WorkOrdersPage() {
                       disabled={advanceMutation.isPending}
                     >
                       Advance
+                      <ArrowRight className="h-4 w-4" />
                     </Button>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             ))}
           </div>
         )}
-      </div>
+      </AdminPanel>
     </div>
   );
 }

@@ -36,9 +36,19 @@ export interface WorkOrderDetail {
   phase: WorkOrderPhaseRef | null;
 }
 
+function asWorkOrderList(data: unknown): WorkOrderSummary[] {
+  if (Array.isArray(data)) return data as WorkOrderSummary[];
+  if (data && typeof data === 'object') {
+    const envelope = data as { data?: unknown; items?: unknown };
+    if (Array.isArray(envelope.items)) return envelope.items as WorkOrderSummary[];
+    if (Array.isArray(envelope.data)) return envelope.data as WorkOrderSummary[];
+  }
+  return [];
+}
+
 export async function fetchWorkOrders(): Promise<WorkOrderSummary[]> {
-  const { data } = await api.get<WorkOrderSummary[]>('/api/work-orders');
-  return data;
+  const { data } = await api.get<unknown>('/api/work-orders');
+  return asWorkOrderList(data);
 }
 
 export async function fetchWorkOrder(id: string): Promise<WorkOrderDetail> {

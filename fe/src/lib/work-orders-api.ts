@@ -37,6 +37,12 @@ export interface WorkOrderCounts {
   sterilisationRecords: number;
 }
 
+export type WorkOrderLifecycleState =
+  | 'NotStarted'
+  | 'InProgress'
+  | 'ReadyToAdvance'
+  | 'ReleasePending';
+
 export interface WorkOrderSterilisationRef {
   id: string;
   direction: string | null;
@@ -73,7 +79,8 @@ export interface WorkOrderSummary {
   manufacturer: WorkOrderManufacturerRef | null;
   sterilises: WorkOrderSterilisationRef[];
   woSerials: WorkOrderSerialRef[];
-  operationalStatus: 'Ready' | 'Blocked' | 'Release' | string;
+  lifecycleState: WorkOrderLifecycleState;
+  operationalStatus: 'Blocked' | WorkOrderLifecycleState | string;
   readinessBlockers: string[];
   currentPhaseLabel: string;
   phaseTimeline: WorkOrderPhaseTimelineItem[];
@@ -81,16 +88,7 @@ export interface WorkOrderSummary {
 }
 
 export interface WorkOrderDetail extends WorkOrderSummary {
-  id: string;
-  woNumber: string | null;
-  workflowId: string | null;
-  hetId: string | null;
   phaseId: string | null;
-  phaseOrder: number | null;
-  prodStart: string | null;
-  prodEnd: string | null;
-  workflow: WorkOrderWorkflowRef | null;
-  phase: WorkOrderPhaseRef | null;
 }
 
 function asWorkOrderList(data: unknown): WorkOrderSummary[] {
@@ -118,6 +116,16 @@ export async function createWorkOrder(payload: {
   hetId?: string;
 }): Promise<WorkOrderDetail> {
   const { data } = await api.post<WorkOrderDetail>('/api/work-orders', payload);
+  return data;
+}
+
+export async function startWorkOrderPhase(id: string): Promise<WorkOrderDetail> {
+  const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/start`);
+  return data;
+}
+
+export async function finishWorkOrderPhase(id: string): Promise<WorkOrderDetail> {
+  const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/finish`);
   return data;
 }
 

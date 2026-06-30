@@ -124,6 +124,64 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
   );
 
   app.post(
+    '/:id/start',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        params: z.object({ id: z.string() }),
+        response: {
+          200: workOrderDetailSchema,
+          401: errorResponse,
+          404: errorResponse,
+          409: errorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      try {
+        return await workOrderService.startWorkOrderPhase(req.params.id, actorIdOf(req));
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith('cannot start:')) {
+          return reply.status(409).send({ error: err.message });
+        }
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+          return reply.status(404).send({ error: 'Work order not found' });
+        }
+        throw err;
+      }
+    },
+  );
+
+  app.post(
+    '/:id/finish',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        params: z.object({ id: z.string() }),
+        response: {
+          200: workOrderDetailSchema,
+          401: errorResponse,
+          404: errorResponse,
+          409: errorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      try {
+        return await workOrderService.finishWorkOrderPhase(req.params.id, actorIdOf(req));
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith('cannot finish:')) {
+          return reply.status(409).send({ error: err.message });
+        }
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+          return reply.status(404).send({ error: 'Work order not found' });
+        }
+        throw err;
+      }
+    },
+  );
+
+  app.post(
     '/:id/advance',
     {
       onRequest: [app.authenticate],
@@ -145,6 +203,9 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
           return reply.status(409).send({ error: 'work order is at its final phase' });
         }
         if (err instanceof Error && err.message.startsWith('sterilisation/BET gate')) {
+          return reply.status(409).send({ error: err.message });
+        }
+        if (err instanceof Error && err.message.startsWith('cannot advance:')) {
           return reply.status(409).send({ error: err.message });
         }
         if (err instanceof Prisma.PrismaClientKnownRequestError) {

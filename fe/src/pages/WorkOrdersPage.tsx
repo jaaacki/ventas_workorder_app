@@ -1,10 +1,13 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { fetchWorkflows } from '@/lib/workflows-api';
 import {
   fetchWorkOrders,
   createWorkOrder,
+  startWorkOrderPhase,
+  finishWorkOrderPhase,
   advanceWorkOrder,
   type WorkOrderSummary,
 } from '@/lib/work-orders-api';
@@ -26,8 +29,6 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
-const phaseOrder = ['Preparation', 'Production', 'Sterilisation', 'BET Verification', 'Release'];
-
 function workflowLabel(workOrder: WorkOrderSummary) {
   if (workOrder.workflow) return `${workOrder.workflow.name} (${workOrder.workflow.code})`;
   return workOrder.workflowId ? `Missing workflow (${workOrder.workflowId})` : 'No workflow assigned';
@@ -38,15 +39,39 @@ function formatDate(value?: string | null) {
 }
 
 function statusTone(status: string): 'brand' | 'success' | 'warning' | 'error' | 'neutral' {
-  if (status === 'Ready') return 'success';
-  if (status === 'Release') return 'brand';
+  if (status === 'ReadyToAdvance') return 'success';
+  if (status === 'ReleasePending') return 'brand';
   if (status === 'Blocked') return 'warning';
   return 'neutral';
 }
 
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    NotStarted: 'Not started',
+    InProgress: 'In progress',
+    ReadyToAdvance: 'Ready to advance',
+    ReleasePending: 'Release pending',
+    Blocked: 'Blocked',
+  };
+  return labels[status] ?? status;
+}
+
 function groupByPhase(workOrders: WorkOrderSummary[]) {
   const grouped = new Map<string, WorkOrderSummary[]>();
-  for (const phase of phaseOrder) grouped.set(phase, []);
+  const phaseLabels = new Map<string, number>();
+
+  for (const workOrder of workOrders) {
+    for (const phase of workOrder.phaseTimeline ?? []) {
+      phaseLabels.set(
+        phase.phaseName || phase.phaseShort || `Phase ${phase.sortOrder + 1}`,
+        phase.sortOrder,
+      );
+    }
+  }
+
+  for (const [phase] of Array.from(phaseLabels.entries()).sort((a, b) => a[1] - b[1])) {
+    grouped.set(phase, []);
+  }
 
   for (const workOrder of workOrders) {
     const phase = workOrder.currentPhaseLabel || 'Unassigned';
@@ -54,7 +79,7 @@ function groupByPhase(workOrders: WorkOrderSummary[]) {
     grouped.get(phase)?.push(workOrder);
   }
 
-  return Array.from(grouped.entries()).filter(([, items], index) => items.length > 0 || index < phaseOrder.length);
+  return Array.from(grouped.entries()).filter(([, items]) => items.length > 0 || phaseLabels.size > 0);
 }
 
 function WorkOrderCard({
@@ -83,7 +108,7 @@ function WorkOrderCard({
           </div>
           <div className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">{workflowLabel(workOrder)}</div>
         </div>
-        <StatusPill tone={statusTone(workOrder.operationalStatus)}>{workOrder.operationalStatus}</StatusPill>
+        <StatusPill tone={statusTone(workOrder.operationalStatus)}>{statusLabel(workOrder.operationalStatus)}</StatusPill>
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-gray-500 dark:text-gray-400">
@@ -105,11 +130,19 @@ function WorkOrderCard({
 function DetailPanel({
   workOrder,
   onAdvance,
+  onStart,
+  onFinish,
   advancing,
+  starting,
+  finishing,
 }: {
   workOrder: WorkOrderSummary | null;
   onAdvance: (id: string) => void;
+  onStart: (id: string) => void;
+  onFinish: (id: string) => void;
   advancing: boolean;
+  starting: boolean;
+  finishing: boolean;
 }) {
   if (!workOrder) {
     return (
@@ -123,11 +156,19 @@ function DetailPanel({
     );
   }
 
+  const canAdvance =
+    workOrder.lifecycleState === 'ReadyToAdvance' &&
+    workOrder.operationalStatus !== 'Blocked' &&
+    workOrder.operationalStatus !== 'ReleasePending';
+  const canStart = workOrder.lifecycleState === 'NotStarted' && workOrder.operationalStatus !== 'Blocked';
+  const canFinish = workOrder.lifecycleState === 'InProgress';
+  const actionPending = advancing || starting || finishing;
+
   return (
     <AdminPanel
       title={workOrder.woNumber || workOrder.id}
       description={`${workflowLabel(workOrder)} · ${workOrder.currentPhaseLabel}`}
-      action={<StatusPill tone={statusTone(workOrder.operationalStatus)}>{workOrder.operationalStatus}</StatusPill>}
+      action={<StatusPill tone={statusTone(workOrder.operationalStatus)}>{statusLabel(workOrder.operationalStatus)}</StatusPill>}
     >
       <div className="space-y-5">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -204,10 +245,24 @@ function DetailPanel({
         </div>
 
         <div className="flex justify-end">
-          <Button onClick={() => onAdvance(workOrder.id)} disabled={advancing || workOrder.operationalStatus === 'Release'}>
-            Advance phase
-            <ArrowRight className="h-4 w-4" />
-          </Button>
+          {workOrder.operationalStatus === 'Blocked' ? (
+            <Button disabled>Resolve blockers first</Button>
+          ) : canStart ? (
+            <Button onClick={() => onStart(workOrder.id)} disabled={actionPending}>
+              Start phase
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          ) : canFinish ? (
+            <Button onClick={() => onFinish(workOrder.id)} disabled={actionPending}>
+              Finish phase
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button onClick={() => onAdvance(workOrder.id)} disabled={actionPending || !canAdvance}>
+              Advance phase
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
     </AdminPanel>
@@ -216,6 +271,7 @@ function DetailPanel({
 
 export default function WorkOrdersPage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: workOrders = [], isLoading } = useQuery({
     queryKey: ['work-orders'],
     queryFn: fetchWorkOrders,
@@ -227,7 +283,11 @@ export default function WorkOrdersPage() {
 
   const [workflowId, setWorkflowId] = useState('');
   const [hetId, setHetId] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedId = searchParams.get('wo');
+
+  const selectWorkOrder = (id: string) => {
+    setSearchParams({ wo: id });
+  };
 
   const selectedWorkOrder = useMemo(
     () => workOrders.find((wo) => wo.id === selectedId) ?? workOrders[0] ?? null,
@@ -237,7 +297,7 @@ export default function WorkOrdersPage() {
   const grouped = useMemo(() => groupByPhase(workOrders), [workOrders]);
   const blockedCount = workOrders.filter((wo) => wo.operationalStatus === 'Blocked').length;
   const qaCount = workOrders.filter((wo) => /steril|bet/i.test(wo.currentPhaseLabel)).length;
-  const releaseCount = workOrders.filter((wo) => wo.operationalStatus === 'Release').length;
+  const releaseCount = workOrders.filter((wo) => wo.operationalStatus === 'ReleasePending').length;
 
   const createMutation = useMutation({
     mutationFn: createWorkOrder,
@@ -246,10 +306,32 @@ export default function WorkOrdersPage() {
       toast.success('Work order created');
       setWorkflowId('');
       setHetId('');
-      setSelectedId(created.id);
+      selectWorkOrder(created.id);
     },
     onError: (e: AxiosError<{ error?: string }>) =>
       toast.error(e.response?.data?.error || 'Failed to create work order'),
+  });
+
+  const startMutation = useMutation({
+    mutationFn: startWorkOrderPhase,
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ['work-orders'] });
+      toast.success(`Started ${updated.woNumber || updated.id}`);
+      selectWorkOrder(updated.id);
+    },
+    onError: (e: AxiosError<{ error?: string }>) =>
+      toast.error(e.response?.data?.error || 'Failed to start phase'),
+  });
+
+  const finishMutation = useMutation({
+    mutationFn: finishWorkOrderPhase,
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ['work-orders'] });
+      toast.success(`Finished ${updated.woNumber || updated.id}`);
+      selectWorkOrder(updated.id);
+    },
+    onError: (e: AxiosError<{ error?: string }>) =>
+      toast.error(e.response?.data?.error || 'Failed to finish phase'),
   });
 
   const advanceMutation = useMutation({
@@ -257,7 +339,7 @@ export default function WorkOrdersPage() {
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['work-orders'] });
       toast.success(`Advanced ${updated.woNumber || updated.id}`);
-      setSelectedId(updated.id);
+      selectWorkOrder(updated.id);
     },
     onError: (e: AxiosError<{ error?: string }>) =>
       toast.error(e.response?.data?.error || 'Failed to advance work order'),
@@ -346,7 +428,7 @@ export default function WorkOrdersPage() {
                           key={wo.id}
                           workOrder={wo}
                           selected={selectedWorkOrder?.id === wo.id}
-                          onSelect={() => setSelectedId(wo.id)}
+                          onSelect={() => selectWorkOrder(wo.id)}
                         />
                       ))
                     ) : (
@@ -364,7 +446,11 @@ export default function WorkOrdersPage() {
         <DetailPanel
           workOrder={selectedWorkOrder}
           onAdvance={(id) => advanceMutation.mutate(id)}
+          onStart={(id) => startMutation.mutate(id)}
+          onFinish={(id) => finishMutation.mutate(id)}
           advancing={advanceMutation.isPending}
+          starting={startMutation.isPending}
+          finishing={finishMutation.isPending}
         />
       </div>
     </div>

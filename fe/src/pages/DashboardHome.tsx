@@ -5,6 +5,17 @@ import { useAuthStore } from '@/store/authStore';
 import { AdminPanel, EmptyState, MetricCard, PageHeader, StatusPill } from '@/components/tailadmin';
 import { AlertTriangle, ArrowRight, ClipboardList, Factory, FlaskConical, PackageCheck } from 'lucide-react';
 
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    NotStarted: 'Not started',
+    InProgress: 'In progress',
+    ReadyToAdvance: 'Ready to advance',
+    ReleasePending: 'Release pending',
+    Blocked: 'Blocked',
+  };
+  return labels[status] ?? status;
+}
+
 export default function DashboardHome() {
   const { user } = useAuthStore();
   const { data: workOrders = [], isLoading } = useQuery({
@@ -14,9 +25,11 @@ export default function DashboardHome() {
 
   const blocked = workOrders.filter((wo) => wo.operationalStatus === 'Blocked');
   const qaGate = workOrders.filter((wo) => /steril|bet/i.test(wo.currentPhaseLabel));
-  const release = workOrders.filter((wo) => wo.operationalStatus === 'Release');
-  const ready = workOrders.filter((wo) => wo.operationalStatus === 'Ready');
-  const priority = [...blocked, ...qaGate, ...release].slice(0, 6);
+  const release = workOrders.filter((wo) => wo.operationalStatus === 'ReleasePending');
+  const ready = workOrders.filter((wo) => wo.lifecycleState === 'ReadyToAdvance' && wo.operationalStatus !== 'Blocked');
+  const priority = Array.from(
+    new Map([...blocked, ...qaGate, ...release].map((wo) => [wo.id, wo])).values(),
+  ).slice(0, 6);
 
   return (
     <div className="space-y-6">
@@ -52,7 +65,7 @@ export default function DashboardHome() {
               {priority.map((wo) => (
                 <Link
                   key={wo.id}
-                  to="/dashboard/work-orders"
+                  to={`/dashboard/work-orders?wo=${encodeURIComponent(wo.id)}`}
                   className="flex items-center justify-between gap-4 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.03]"
                 >
                   <div className="min-w-0">
@@ -61,8 +74,8 @@ export default function DashboardHome() {
                       {wo.currentPhaseLabel} · {wo.het?.hetNumber || wo.hetId || 'No HET'}
                     </div>
                   </div>
-                  <StatusPill tone={wo.operationalStatus === 'Blocked' ? 'warning' : wo.operationalStatus === 'Ready' ? 'success' : 'brand'}>
-                    {wo.operationalStatus}
+                  <StatusPill tone={wo.operationalStatus === 'Blocked' ? 'warning' : wo.lifecycleState === 'ReadyToAdvance' ? 'success' : 'brand'}>
+                    {statusLabel(wo.operationalStatus)}
                   </StatusPill>
                 </Link>
               ))}

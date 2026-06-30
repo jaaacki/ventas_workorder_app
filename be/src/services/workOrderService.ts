@@ -98,7 +98,7 @@ export async function createWorkOrder(input: CreateWorkOrderInput, actorId: stri
 
   // WorkOrder.id has no @default; reuse woNumber as the id so the work order is
   // addressable by the same human-readable identifier used in the UI.
-  return prisma.workOrder.create({
+  const created = await prisma.workOrder.create({
     data: {
       id: woNumber,
       woNumber,
@@ -109,14 +109,21 @@ export async function createWorkOrder(input: CreateWorkOrderInput, actorId: stri
       createdById: actorId,
       updatedById: actorId,
     },
-    include: workOrderDetailInclude,
   });
+  return getDecoratedWorkOrderOrThrow(created.id);
 }
 
 type OperationalWorkOrder = Prisma.WorkOrderGetPayload<{ include: typeof workOrderOperationalInclude }>;
 
 function isGatePhase(phaseName?: string | null) {
   return Boolean(phaseName && /steril|bet/i.test(phaseName));
+}
+
+function getLifecycleState(workOrder: OperationalWorkOrder, atFinalPhase: boolean) {
+  if (!workOrder.prodStart) return 'NotStarted';
+  if (!workOrder.prodEnd) return 'InProgress';
+  if (atFinalPhase) return 'ReleasePending';
+  return 'ReadyToAdvance';
 }
 
 function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder) {
@@ -130,11 +137,10 @@ function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder) {
   const blockers: string[] = [];
 
   if (!workOrder.hetId) blockers.push('HET not assigned');
-  if (!workOrder.prodStart) blockers.push('Phase not started');
-  if (!workOrder.prodEnd) blockers.push('Phase not finished');
   if (isGatePhase(workOrder.phase?.phaseName) && !hasPassingSterilisation) {
     blockers.push('Sterilisation/BET pass required');
   }
+  if (atFinalPhase && !workOrder.prodEnd) blockers.push('Release phase not finished');
 
   const phaseTimeline = phases.map((p, index) => ({
     id: p.phase.id,
@@ -154,7 +160,8 @@ function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder) {
 
   return {
     ...workOrder,
-    operationalStatus: atFinalPhase ? 'Release' : blockers.length ? 'Blocked' : 'Ready',
+    lifecycleState: getLifecycleState(workOrder, atFinalPhase),
+    operationalStatus: blockers.length ? 'Blocked' : atFinalPhase ? 'ReleasePending' : getLifecycleState(workOrder, atFinalPhase),
     readinessBlockers: blockers,
     currentPhaseLabel: workOrder.phase?.phaseName ?? workOrder.phaseShort ?? `Phase ${workOrder.phaseOrder ?? '-'}`,
     phaseTimeline,
@@ -164,6 +171,14 @@ function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder) {
       sterilisationRecords: sterilises.length,
     },
   };
+}
+
+async function getDecoratedWorkOrderOrThrow(id: string) {
+  const workOrder = await prisma.workOrder.findUniqueOrThrow({
+    where: { id },
+    include: workOrderOperationalInclude,
+  });
+  return decorateOperationalWorkOrder(workOrder);
 }
 
 export async function listWorkOrders() {
@@ -180,6 +195,68 @@ export async function getWorkOrder(id: string) {
     include: workOrderOperationalInclude,
   });
   return workOrder ? decorateOperationalWorkOrder(workOrder) : null;
+}
+
+export async function startWorkOrderPhase(id: string, actorId: string) {
+  const workOrder = await prisma.workOrder.findUnique({
+    where: { id },
+    select: { id: true, hetId: true, prodStart: true },
+  });
+
+  if (!workOrder) {
+    throw new Prisma.PrismaClientKnownRequestError('Work order not found', {
+      code: 'P2025',
+      clientVersion: 'unknown',
+    });
+  }
+
+  if (!workOrder.hetId) {
+    throw new Error('cannot start: HET not assigned');
+  }
+
+  if (!workOrder.prodStart) {
+    await prisma.workOrder.update({
+      where: { id },
+      data: {
+        prodStart: new Date(),
+        startSignById: actorId,
+        updatedById: actorId,
+      },
+    });
+  }
+
+  return getDecoratedWorkOrderOrThrow(id);
+}
+
+export async function finishWorkOrderPhase(id: string, actorId: string) {
+  const workOrder = await prisma.workOrder.findUnique({
+    where: { id },
+    select: { id: true, prodStart: true, prodEnd: true },
+  });
+
+  if (!workOrder) {
+    throw new Prisma.PrismaClientKnownRequestError('Work order not found', {
+      code: 'P2025',
+      clientVersion: 'unknown',
+    });
+  }
+
+  if (!workOrder.prodStart) {
+    throw new Error('cannot finish: phase not started');
+  }
+
+  if (!workOrder.prodEnd) {
+    await prisma.workOrder.update({
+      where: { id },
+      data: {
+        prodEnd: new Date(),
+        endSignById: actorId,
+        updatedById: actorId,
+      },
+    });
+  }
+
+  return getDecoratedWorkOrderOrThrow(id);
 }
 
 export async function advanceWorkOrder(id: string, actorId: string) {
@@ -200,6 +277,18 @@ export async function advanceWorkOrder(id: string, actorId: string) {
 
   if (currentIndex === -1 || currentIndex === orderedPhases.length - 1) {
     throw new Error('work order is at its final phase');
+  }
+
+  if (!workOrder.hetId) {
+    throw new Error('cannot advance: HET not assigned');
+  }
+
+  if (!workOrder.prodStart) {
+    throw new Error('cannot advance: phase not started');
+  }
+
+  if (!workOrder.prodEnd) {
+    throw new Error('cannot advance: phase not finished');
   }
 
   // Sterilisation / BET gate: leaving a sterilisation-gate phase requires a
@@ -227,8 +316,5 @@ export async function advanceWorkOrder(id: string, actorId: string) {
     },
   });
 
-  return prisma.workOrder.findUniqueOrThrow({
-    where: { id },
-    include: workOrderDetailInclude,
-  });
+  return getDecoratedWorkOrderOrThrow(id);
 }

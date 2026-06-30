@@ -3,7 +3,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: workorder-stg-db
-    restart: unless-stopped
+    restart: always
     environment:
       POSTGRES_USER: workorder
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -35,7 +35,7 @@ services:
       dockerfile: be/Dockerfile
       target: production
     container_name: workorder-stg-be
-    restart: unless-stopped
+    restart: always
     env_file: .env
     depends_on:
       postgres: { condition: service_healthy }
@@ -47,7 +47,7 @@ services:
       dockerfile: fe/Dockerfile
       target: production
     container_name: workorder-stg-fe
-    restart: unless-stopped
+    restart: always
     ports:
       - "8100:80"
     depends_on:

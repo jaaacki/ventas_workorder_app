@@ -88,8 +88,9 @@ steps:
       - git remote set-url origin https://github.com/jaaacki/ventas_workorder_app.git
       - git fetch origin main
       - git reset --hard "$DEPLOY_SHA"
+      - chown -R 1026:100 /volume2/homes/noonoon/docker/workorder-stg/.git
       - git status --short --branch
-      - docker compose -f compose.stg.yml build be fe be-migrate
+      - DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 docker compose -f compose.stg.yml build be fe be-migrate
       - docker compose -f compose.stg.yml up -d --remove-orphans
       - docker compose -f compose.stg.yml ps
       - wget -qO- https://stg-workorder.ventas.bio/api/health

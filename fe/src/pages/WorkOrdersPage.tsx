@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 import { fetchWorkflows } from '@/lib/workflows-api';
@@ -6,25 +6,217 @@ import {
   fetchWorkOrders,
   createWorkOrder,
   advanceWorkOrder,
+  type WorkOrderSummary,
 } from '@/lib/work-orders-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AdminPanel, EmptyState, MetricCard, PageHeader, StatusPill } from '@/components/tailadmin';
 import { toast } from 'sonner';
-import { ArrowRight, ClipboardList, Clock, Plus, Workflow as WorkflowIcon } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowRight,
+  Boxes,
+  CheckCircle2,
+  ClipboardList,
+  Factory,
+  FlaskConical,
+  PackageCheck,
+  Plus,
+  ShieldCheck,
+} from 'lucide-react';
 
-function workflowLabel(workOrder: { workflow: { name: string; code: string } | null; workflowId: string | null }) {
-  if (workOrder.workflow) {
-    return `${workOrder.workflow.name} (${workOrder.workflow.code})`;
+const phaseOrder = ['Preparation', 'Production', 'Sterilisation', 'BET Verification', 'Release'];
+
+function workflowLabel(workOrder: WorkOrderSummary) {
+  if (workOrder.workflow) return `${workOrder.workflow.name} (${workOrder.workflow.code})`;
+  return workOrder.workflowId ? `Missing workflow (${workOrder.workflowId})` : 'No workflow assigned';
+}
+
+function formatDate(value?: string | null) {
+  return value ? new Date(value).toLocaleString() : '-';
+}
+
+function statusTone(status: string): 'brand' | 'success' | 'warning' | 'error' | 'neutral' {
+  if (status === 'Ready') return 'success';
+  if (status === 'Release') return 'brand';
+  if (status === 'Blocked') return 'warning';
+  return 'neutral';
+}
+
+function groupByPhase(workOrders: WorkOrderSummary[]) {
+  const grouped = new Map<string, WorkOrderSummary[]>();
+  for (const phase of phaseOrder) grouped.set(phase, []);
+
+  for (const workOrder of workOrders) {
+    const phase = workOrder.currentPhaseLabel || 'Unassigned';
+    if (!grouped.has(phase)) grouped.set(phase, []);
+    grouped.get(phase)?.push(workOrder);
   }
 
-  return workOrder.workflowId ? `Missing workflow (${workOrder.workflowId})` : 'No workflow assigned';
+  return Array.from(grouped.entries()).filter(([, items], index) => items.length > 0 || index < phaseOrder.length);
+}
+
+function WorkOrderCard({
+  workOrder,
+  selected,
+  onSelect,
+}: {
+  workOrder: WorkOrderSummary;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`w-full rounded-lg border p-3 text-left transition ${
+        selected
+          ? 'border-brand-300 bg-brand-50 shadow-theme-xs dark:border-brand-500/50 dark:bg-brand-500/10'
+          : 'border-gray-200 bg-white hover:border-brand-200 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-brand-500/40'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold text-gray-800 dark:text-white/90">
+            {workOrder.woNumber || workOrder.id}
+          </div>
+          <div className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">{workflowLabel(workOrder)}</div>
+        </div>
+        <StatusPill tone={statusTone(workOrder.operationalStatus)}>{workOrder.operationalStatus}</StatusPill>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-gray-500 dark:text-gray-400">
+        <span>{workOrder.het?.hetNumber || workOrder.hetId || 'No HET'}</span>
+        <span>{workOrder.counts?.serials ?? 0} serials</span>
+        <span>{workOrder.counts?.sterilisationRecords ?? 0} gates</span>
+      </div>
+
+      {workOrder.readinessBlockers?.length > 0 && (
+        <div className="mt-3 flex items-start gap-2 rounded-md bg-warning-50 px-2.5 py-2 text-xs text-warning-600 dark:bg-warning-500/10 dark:text-warning-500">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span className="line-clamp-2">{workOrder.readinessBlockers.join(', ')}</span>
+        </div>
+      )}
+    </button>
+  );
+}
+
+function DetailPanel({
+  workOrder,
+  onAdvance,
+  advancing,
+}: {
+  workOrder: WorkOrderSummary | null;
+  onAdvance: (id: string) => void;
+  advancing: boolean;
+}) {
+  if (!workOrder) {
+    return (
+      <AdminPanel title="Work order detail">
+        <EmptyState
+          icon={<ClipboardList className="h-6 w-6" />}
+          title="Select a work order"
+          description="Open a production run to inspect blockers, phase state, HET, serials, equipment, and QA gates."
+        />
+      </AdminPanel>
+    );
+  }
+
+  return (
+    <AdminPanel
+      title={workOrder.woNumber || workOrder.id}
+      description={`${workflowLabel(workOrder)} · ${workOrder.currentPhaseLabel}`}
+      action={<StatusPill tone={statusTone(workOrder.operationalStatus)}>{workOrder.operationalStatus}</StatusPill>}
+    >
+      <div className="space-y-5">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+            <div className="text-xs text-gray-500">HET / batch</div>
+            <div className="mt-1 text-sm font-medium text-gray-800 dark:text-white/90">
+              {workOrder.het?.hetNumber || workOrder.hetId || 'Not assigned'}
+            </div>
+            <div className="mt-1 text-xs text-gray-500">{workOrder.het?.clinicName || 'No clinic recorded'}</div>
+          </div>
+          <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+            <div className="text-xs text-gray-500">Batch record</div>
+            <div className="mt-1 text-sm font-medium text-gray-800 dark:text-white/90">
+              {workOrder.manufacturer?.manuNumber || 'Not generated'}
+            </div>
+            <div className="mt-1 text-xs text-gray-500">{workOrder.manufacturer?.manuName || 'Manufacturer pending'}</div>
+          </div>
+          <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+            <div className="text-xs text-gray-500">Started</div>
+            <div className="mt-1 text-sm font-medium text-gray-800 dark:text-white/90">{formatDate(workOrder.prodStart)}</div>
+          </div>
+          <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+            <div className="text-xs text-gray-500">Finished</div>
+            <div className="mt-1 text-sm font-medium text-gray-800 dark:text-white/90">{formatDate(workOrder.prodEnd)}</div>
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 text-sm font-semibold text-gray-800 dark:text-white/90">Phase timeline</div>
+          <div className="grid gap-2 sm:grid-cols-5">
+            {workOrder.phaseTimeline?.map((phase) => (
+              <div
+                key={phase.id}
+                className={`rounded-lg border px-3 py-2 text-sm ${
+                  phase.state === 'complete'
+                    ? 'border-success-500/30 bg-success-50 text-success-600 dark:border-success-500/30 dark:bg-success-500/10 dark:text-success-500'
+                    : phase.state === 'current'
+                      ? 'border-brand-300 bg-brand-50 text-brand-600 dark:border-brand-500/40 dark:bg-brand-500/10 dark:text-brand-400'
+                      : 'border-gray-200 bg-gray-50 text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400'
+                }`}
+              >
+                <div className="truncate font-medium">{phase.phaseName || phase.phaseShort || `Phase ${phase.sortOrder + 1}`}</div>
+                <div className="mt-1 text-xs capitalize opacity-80">{phase.state}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {workOrder.readinessBlockers?.length > 0 ? (
+          <div className="rounded-lg border border-warning-500/30 bg-warning-50 p-3 dark:border-warning-500/30 dark:bg-warning-500/10">
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-warning-600 dark:text-warning-500">
+              <AlertTriangle className="h-4 w-4" />
+              Current blockers
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {workOrder.readinessBlockers.map((blocker) => (
+                <span key={blocker} className="rounded-md bg-white px-2 py-1 text-xs text-warning-600 dark:bg-gray-950 dark:text-warning-500">
+                  {blocker}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 rounded-lg border border-success-500/30 bg-success-50 p-3 text-sm text-success-600 dark:border-success-500/30 dark:bg-success-500/10 dark:text-success-500">
+            <CheckCircle2 className="h-4 w-4" />
+            No active blockers recorded for this phase.
+          </div>
+        )}
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <MetricCard icon={<Boxes className="h-5 w-5" />} label="Serial records" value={workOrder.counts?.serials ?? 0} />
+          <MetricCard icon={<Factory className="h-5 w-5" />} label="Equipment records" value={workOrder.counts?.equipment ?? 0} />
+          <MetricCard icon={<FlaskConical className="h-5 w-5" />} label="Sterilisation/BET" value={workOrder.counts?.sterilisationRecords ?? 0} />
+        </div>
+
+        <div className="flex justify-end">
+          <Button onClick={() => onAdvance(workOrder.id)} disabled={advancing || workOrder.operationalStatus === 'Release'}>
+            Advance phase
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </AdminPanel>
+  );
 }
 
 export default function WorkOrdersPage() {
   const queryClient = useQueryClient();
-  const { data: workOrders, isLoading } = useQuery({
+  const { data: workOrders = [], isLoading } = useQuery({
     queryKey: ['work-orders'],
     queryFn: fetchWorkOrders,
   });
@@ -35,14 +227,26 @@ export default function WorkOrdersPage() {
 
   const [workflowId, setWorkflowId] = useState('');
   const [hetId, setHetId] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const selectedWorkOrder = useMemo(
+    () => workOrders.find((wo) => wo.id === selectedId) ?? workOrders[0] ?? null,
+    [selectedId, workOrders],
+  );
+
+  const grouped = useMemo(() => groupByPhase(workOrders), [workOrders]);
+  const blockedCount = workOrders.filter((wo) => wo.operationalStatus === 'Blocked').length;
+  const qaCount = workOrders.filter((wo) => /steril|bet/i.test(wo.currentPhaseLabel)).length;
+  const releaseCount = workOrders.filter((wo) => wo.operationalStatus === 'Release').length;
 
   const createMutation = useMutation({
     mutationFn: createWorkOrder,
-    onSuccess: () => {
+    onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ['work-orders'] });
       toast.success('Work order created');
       setWorkflowId('');
       setHetId('');
+      setSelectedId(created.id);
     },
     onError: (e: AxiosError<{ error?: string }>) =>
       toast.error(e.response?.data?.error || 'Failed to create work order'),
@@ -50,9 +254,10 @@ export default function WorkOrdersPage() {
 
   const advanceMutation = useMutation({
     mutationFn: advanceWorkOrder,
-    onSuccess: () => {
+    onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['work-orders'] });
-      toast.success('Work order advanced');
+      toast.success(`Advanced ${updated.woNumber || updated.id}`);
+      setSelectedId(updated.id);
     },
     onError: (e: AxiosError<{ error?: string }>) =>
       toast.error(e.response?.data?.error || 'Failed to advance work order'),
@@ -61,9 +266,7 @@ export default function WorkOrdersPage() {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!workflowId.trim()) return;
-    const payload: { workflowId: string; hetId?: string } = {
-      workflowId: workflowId.trim(),
-    };
+    const payload: { workflowId: string; hetId?: string } = { workflowId: workflowId.trim() };
     if (hetId.trim()) payload.hetId = hetId.trim();
     createMutation.mutate(payload);
   };
@@ -71,103 +274,99 @@ export default function WorkOrdersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Work Orders"
-        description="Create work orders and advance them through their workflow phases."
+        title="Production"
+        description="Run factory-floor work, QA gates, and release readiness from the work-order board."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <MetricCard icon={<ClipboardList className="h-6 w-6" />} label="Active work orders" value={workOrders?.length ?? 0} />
-        <MetricCard icon={<WorkflowIcon className="h-6 w-6" />} label="Available workflows" value={workflows?.length ?? 0} />
-        <MetricCard icon={<Clock className="h-6 w-6" />} label="Open phase tracking" value="Live" detail={<StatusPill tone="brand">Now</StatusPill>} />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard icon={<ClipboardList className="h-6 w-6" />} label="Active work orders" value={workOrders.length} />
+        <MetricCard icon={<AlertTriangle className="h-6 w-6" />} label="Blocked" value={blockedCount} detail={<StatusPill tone="warning">Needs action</StatusPill>} />
+        <MetricCard icon={<ShieldCheck className="h-6 w-6" />} label="QA gates" value={qaCount} />
+        <MetricCard icon={<PackageCheck className="h-6 w-6" />} label="At release" value={releaseCount} />
       </div>
 
       <AdminPanel
-        title="New work order"
-        description="Choose a workflow to start a new work order."
+        title="Start production run"
+        description="Create a work order from a product workflow and assign the HET when it is known."
         action={
           <span className="hidden items-center gap-2 text-sm text-gray-500 sm:flex">
             <Plus className="h-4 w-4" />
-            New work order
+            New run
           </span>
         }
       >
-          <form className="grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end" onSubmit={submit}>
-            <div className="flex-1 space-y-2">
-              <Label htmlFor="workflow">Workflow</Label>
-              <select
-                id="workflow"
-                className="flex h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs transition-colors focus-visible:border-brand-300 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                value={workflowId}
-                onChange={(e) => setWorkflowId(e.target.value)}
-              >
-                <option value="">Select a workflow…</option>
-                {workflows?.map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.name} ({w.code})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex-1 space-y-2">
-              <Label htmlFor="hetId">HET ID (optional)</Label>
-              <Input
-                id="hetId"
-                value={hetId}
-                onChange={(e) => setHetId(e.target.value)}
-                placeholder="e.g. HET-0001"
-              />
-            </div>
-            <Button type="submit" disabled={createMutation.isPending || !workflowId.trim()}>
-              <Plus className="h-4 w-4" />
-              Create
-            </Button>
-          </form>
+        <form className="grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end" onSubmit={submit}>
+          <div className="flex-1 space-y-2">
+            <Label htmlFor="workflow">Product workflow</Label>
+            <select
+              id="workflow"
+              className="flex h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs transition-colors focus-visible:border-brand-300 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              value={workflowId}
+              onChange={(e) => setWorkflowId(e.target.value)}
+            >
+              <option value="">Select product workflow</option>
+              {workflows?.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name} ({w.code})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex-1 space-y-2">
+            <Label htmlFor="hetId">HET ID</Label>
+            <Input id="hetId" value={hetId} onChange={(e) => setHetId(e.target.value)} placeholder="e.g. HET-0001" />
+          </div>
+          <Button type="submit" disabled={createMutation.isPending || !workflowId.trim()}>
+            <Plus className="h-4 w-4" />
+            Start run
+          </Button>
+        </form>
       </AdminPanel>
 
-      <AdminPanel title="Active work orders">
-        {isLoading ? (
-          <div className="flex h-40 items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
-          </div>
-        ) : !workOrders?.length ? (
-          <EmptyState icon={<ClipboardList className="h-6 w-6" />} title="No work orders yet" description="Create your first work order above." />
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {workOrders.map((wo) => (
-              <div key={wo.id} className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <span className="flex items-center gap-2">
-                      <ClipboardList className="h-4 w-4 text-brand-500" />
-                      {wo.woNumber || 'Unnumbered'}
-                    </span>
-                    <p className="mt-1 text-xs font-medium uppercase tracking-wide text-gray-400">
-                      {workflowLabel(wo)}
-                    </p>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(420px,0.8fr)]">
+        <AdminPanel title="Production board" description="Grouped by the current phase each work order is waiting on.">
+          {isLoading ? (
+            <div className="flex h-40 items-center justify-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+            </div>
+          ) : !workOrders.length ? (
+            <EmptyState icon={<Factory className="h-6 w-6" />} title="No active production runs" description="Start a production run above." />
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+              {grouped.map(([phase, items]) => (
+                <section key={phase} className="min-h-44 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-white/[0.03]">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="truncate text-sm font-semibold text-gray-800 dark:text-white/90">{phase}</div>
+                    <StatusPill tone="neutral">{items.length}</StatusPill>
                   </div>
-                  <StatusPill tone="brand">Phase {wo.phaseOrder ?? '-'}</StatusPill>
-                </div>
-                <div className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-                  <div className="text-xs">
-                    Start: {wo.prodStart ? new Date(wo.prodStart).toLocaleString() : '-'} · End:{' '}
-                    {wo.prodEnd ? new Date(wo.prodEnd).toLocaleString() : '-'}
+                  <div className="space-y-2">
+                    {items.length ? (
+                      items.map((wo) => (
+                        <WorkOrderCard
+                          key={wo.id}
+                          workOrder={wo}
+                          selected={selectedWorkOrder?.id === wo.id}
+                          onSelect={() => setSelectedId(wo.id)}
+                        />
+                      ))
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-gray-200 p-4 text-center text-sm text-gray-400 dark:border-gray-800">
+                        No work waiting here
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-3">
-                    <Button
-                      size="sm"
-                      onClick={() => advanceMutation.mutate(wo.id)}
-                      disabled={advanceMutation.isPending}
-                    >
-                      Advance
-                      <ArrowRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </AdminPanel>
+                </section>
+              ))}
+            </div>
+          )}
+        </AdminPanel>
+
+        <DetailPanel
+          workOrder={selectedWorkOrder}
+          onAdvance={(id) => advanceMutation.mutate(id)}
+          advancing={advanceMutation.isPending}
+        />
+      </div>
     </div>
   );
 }

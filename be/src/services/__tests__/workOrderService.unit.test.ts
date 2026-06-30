@@ -35,17 +35,25 @@ describe('workOrderService', () => {
   it('listWorkOrders returns work orders ordered by newest first', async () => {
     mocks.workOrder.findMany.mockResolvedValue([{ id: 'wo-1' }]);
     const result = await listWorkOrders();
-    expect(result).toEqual([{ id: 'wo-1' }]);
-    expect(mocks.workOrder.findMany).toHaveBeenCalledWith({
-      include: { workflow: { select: { id: true, name: true, code: true } } },
-      orderBy: { createdAt: 'desc' },
+    expect(result[0]).toMatchObject({
+      id: 'wo-1',
+      operationalStatus: 'Blocked',
+      readinessBlockers: ['HET not assigned', 'Phase not started', 'Phase not finished'],
+      counts: { serials: 0, equipment: 0, sterilisationRecords: 0 },
     });
+    const call = mocks.workOrder.findMany.mock.calls[0][0] as { include: unknown; orderBy: { createdAt: string } };
+    expect(call.include).toBeDefined();
+    expect(call.orderBy).toEqual({ createdAt: 'desc' });
   });
 
   it('getWorkOrder queries by id with workflow + phase includes', async () => {
     mocks.workOrder.findUnique.mockResolvedValue({ id: 'wo-1' });
     const result = await getWorkOrder('wo-1');
-    expect(result).toEqual({ id: 'wo-1' });
+    expect(result).toMatchObject({
+      id: 'wo-1',
+      operationalStatus: 'Blocked',
+      currentPhaseLabel: 'Phase -',
+    });
     const call = mocks.workOrder.findUnique.mock.calls[0][0] as { where: { id: string } };
     expect(call.where).toEqual({ id: 'wo-1' });
   });

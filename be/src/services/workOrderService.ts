@@ -13,6 +13,40 @@ export interface CreateWorkOrderInput {
 const workOrderDetailInclude = {
   workflow: { select: { id: true, name: true, code: true } },
   phase: { select: { id: true, phaseName: true, phaseShort: true, phaseOrder: true } },
+  het: { select: { id: true, hetNumber: true, clinicName: true, quantity: true } },
+  manufacturer: { select: { id: true, manuNumber: true, manuName: true } },
+  sterilises: {
+    select: { id: true, direction: true, result: true, betReading: true, quantity: true, createdAt: true },
+    orderBy: { createdAt: 'desc' as const },
+  },
+  woSerials: {
+    select: {
+      id: true,
+      serialNumber: true,
+      bomRef: { select: { id: true, description: true, quantity: true, uom: true, hasSerial: true } },
+    },
+  },
+  phaseEquips: {
+    select: { phaseEquip: { select: { id: true, equipId: true, name: true } } },
+  },
+} satisfies Prisma.WorkOrderInclude;
+
+const workOrderOperationalInclude = {
+  ...workOrderDetailInclude,
+  workflow: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      phases: {
+        select: {
+          sortOrder: true,
+          phase: { select: { id: true, phaseName: true, phaseShort: true, phaseOrder: true } },
+        },
+        orderBy: { sortOrder: 'asc' as const },
+      },
+    },
+  },
 } satisfies Prisma.WorkOrderInclude;
 
 /**
@@ -79,18 +113,73 @@ export async function createWorkOrder(input: CreateWorkOrderInput, actorId: stri
   });
 }
 
+type OperationalWorkOrder = Prisma.WorkOrderGetPayload<{ include: typeof workOrderOperationalInclude }>;
+
+function isGatePhase(phaseName?: string | null) {
+  return Boolean(phaseName && /steril|bet/i.test(phaseName));
+}
+
+function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder) {
+  const phases = workOrder.workflow?.phases ?? [];
+  const currentIndex = phases.findIndex((p) => p.phase.id === workOrder.phaseId);
+  const atFinalPhase = currentIndex >= 0 && currentIndex === phases.length - 1;
+  const sterilises = workOrder.sterilises ?? [];
+  const woSerials = workOrder.woSerials ?? [];
+  const phaseEquips = workOrder.phaseEquips ?? [];
+  const hasPassingSterilisation = sterilises.some((s) => s.result === true);
+  const blockers: string[] = [];
+
+  if (!workOrder.hetId) blockers.push('HET not assigned');
+  if (!workOrder.prodStart) blockers.push('Phase not started');
+  if (!workOrder.prodEnd) blockers.push('Phase not finished');
+  if (isGatePhase(workOrder.phase?.phaseName) && !hasPassingSterilisation) {
+    blockers.push('Sterilisation/BET pass required');
+  }
+
+  const phaseTimeline = phases.map((p, index) => ({
+    id: p.phase.id,
+    phaseName: p.phase.phaseName,
+    phaseShort: p.phase.phaseShort,
+    phaseOrder: p.phase.phaseOrder,
+    sortOrder: p.sortOrder,
+    state:
+      currentIndex === -1
+        ? 'pending'
+        : index < currentIndex
+          ? 'complete'
+          : index === currentIndex
+            ? 'current'
+            : 'pending',
+  }));
+
+  return {
+    ...workOrder,
+    operationalStatus: atFinalPhase ? 'Release' : blockers.length ? 'Blocked' : 'Ready',
+    readinessBlockers: blockers,
+    currentPhaseLabel: workOrder.phase?.phaseName ?? workOrder.phaseShort ?? `Phase ${workOrder.phaseOrder ?? '-'}`,
+    phaseTimeline,
+    counts: {
+      serials: woSerials.length,
+      equipment: phaseEquips.length,
+      sterilisationRecords: sterilises.length,
+    },
+  };
+}
+
 export async function listWorkOrders() {
-  return prisma.workOrder.findMany({
-    include: { workflow: { select: { id: true, name: true, code: true } } },
+  const workOrders = await prisma.workOrder.findMany({
+    include: workOrderOperationalInclude,
     orderBy: { createdAt: 'desc' },
   });
+  return workOrders.map(decorateOperationalWorkOrder);
 }
 
 export async function getWorkOrder(id: string) {
-  return prisma.workOrder.findUnique({
+  const workOrder = await prisma.workOrder.findUnique({
     where: { id },
-    include: workOrderDetailInclude,
+    include: workOrderOperationalInclude,
   });
+  return workOrder ? decorateOperationalWorkOrder(workOrder) : null;
 }
 
 export async function advanceWorkOrder(id: string, actorId: string) {

@@ -10,7 +10,7 @@ const workflowRefSchema = z.object({
   id: z.string(),
   name: z.string(),
   code: z.string(),
-});
+}).passthrough();
 
 const phaseRefSchema = z.object({
   id: z.string(),

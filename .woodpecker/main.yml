@@ -85,6 +85,7 @@ steps:
       - test -n "$DEPLOY_SHA"
       - git config --global --add safe.directory /volume2/homes/noonoon/docker/workorder-stg
       - rm -f compose.stg.yml
+      - git remote set-url origin https://github.com/jaaacki/ventas_workorder_app.git
       - git fetch origin main
       - git reset --hard "$DEPLOY_SHA"
       - git status --short --branch

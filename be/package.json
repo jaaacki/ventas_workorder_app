@@ -18,6 +18,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:export": "tsx src/scripts/exportGoogleSheet.ts",
     "db:import": "tsx src/scripts/importCsv.ts",
+    "audit:work-orders": "tsx src/scripts/auditWorkOrderParity.ts",
     "db:reset": "prisma migrate reset --force --skip-seed"
   },
   "dependencies": {

@@ -39,47 +39,33 @@ function formatDate(value?: string | null) {
 }
 
 function statusTone(status: string): 'brand' | 'success' | 'warning' | 'error' | 'neutral' {
+  if (status.startsWith('2. ')) return 'success';
+  if (status.startsWith('3. ')) return 'warning';
+  if (status.startsWith('4. ')) return 'brand';
+  if (status.startsWith('5. ')) return 'neutral';
   if (status === 'ReadyToAdvance') return 'success';
   if (status === 'ReleasePending') return 'brand';
   if (status === 'Blocked') return 'warning';
   return 'neutral';
 }
 
-function statusLabel(status: string) {
-  const labels: Record<string, string> = {
-    NotStarted: 'Not started',
-    InProgress: 'In progress',
-    ReadyToAdvance: 'Ready to advance',
-    ReleasePending: 'Release pending',
-    Blocked: 'Blocked',
-  };
-  return labels[status] ?? status;
-}
+const LEGACY_KANBAN_COLUMNS = [
+  '1. In Progress',
+  '2. Next Phase',
+  '3. In Quarantine',
+  '4. Finished Goods',
+  '5. WO Completed',
+] as const;
 
-function groupByPhase(workOrders: WorkOrderSummary[]) {
-  const grouped = new Map<string, WorkOrderSummary[]>();
-  const phaseLabels = new Map<string, number>();
-
+function groupByLegacyState(workOrders: WorkOrderSummary[]) {
+  const grouped = new Map<string, WorkOrderSummary[]>(LEGACY_KANBAN_COLUMNS.map((column) => [column, []]));
   for (const workOrder of workOrders) {
-    for (const phase of workOrder.phaseTimeline ?? []) {
-      phaseLabels.set(
-        phase.phaseName || phase.phaseShort || `Phase ${phase.sortOrder + 1}`,
-        phase.sortOrder,
-      );
-    }
+    const bucket = workOrder.legacyStateBucket || '1. In Progress';
+    if (!grouped.has(bucket)) grouped.set(bucket, []);
+    grouped.get(bucket)?.push(workOrder);
   }
 
-  for (const [phase] of Array.from(phaseLabels.entries()).sort((a, b) => a[1] - b[1])) {
-    grouped.set(phase, []);
-  }
-
-  for (const workOrder of workOrders) {
-    const phase = workOrder.currentPhaseLabel || 'Unassigned';
-    if (!grouped.has(phase)) grouped.set(phase, []);
-    grouped.get(phase)?.push(workOrder);
-  }
-
-  return Array.from(grouped.entries()).filter(([, items]) => items.length > 0 || phaseLabels.size > 0);
+  return Array.from(grouped.entries());
 }
 
 function WorkOrderCard({
@@ -108,19 +94,21 @@ function WorkOrderCard({
           </div>
           <div className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">{workflowLabel(workOrder)}</div>
         </div>
-        <StatusPill tone={statusTone(workOrder.operationalStatus)}>{statusLabel(workOrder.operationalStatus)}</StatusPill>
+        <StatusPill tone={statusTone(workOrder.legacyStateBucket)}>
+          {workOrder.legacyStateBucket.replace(/^\d+\.\s*/, '')}
+        </StatusPill>
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-gray-500 dark:text-gray-400">
         <span>{workOrder.het?.hetNumber || workOrder.hetId || 'No HET'}</span>
-        <span>{workOrder.counts?.serials ?? 0} serials</span>
-        <span>{workOrder.counts?.sterilisationRecords ?? 0} gates</span>
+        <span>Phase {workOrder.phaseOrder ?? '-'}/{workOrder.phaseOrderCurrent ?? '-'}</span>
+        <span>{workOrder.counts?.serials ?? 0}/{workOrder.serialRequiredCount ?? 0} serials</span>
       </div>
 
-      {workOrder.readinessBlockers?.length > 0 && (
+      {workOrder.missingAdvanceRequirements?.length > 0 && (
         <div className="mt-3 flex items-start gap-2 rounded-md bg-warning-50 px-2.5 py-2 text-xs text-warning-600 dark:bg-warning-500/10 dark:text-warning-500">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span className="line-clamp-2">{workOrder.readinessBlockers.join(', ')}</span>
+          <span className="line-clamp-2">{workOrder.missingAdvanceRequirements.join(', ')}</span>
         </div>
       )}
     </button>
@@ -156,10 +144,7 @@ function DetailPanel({
     );
   }
 
-  const canAdvance =
-    workOrder.lifecycleState === 'ReadyToAdvance' &&
-    workOrder.operationalStatus !== 'Blocked' &&
-    workOrder.operationalStatus !== 'ReleasePending';
+  const canAdvance = workOrder.canAdvanceLegacy;
   const canStart = workOrder.lifecycleState === 'NotStarted' && workOrder.operationalStatus !== 'Blocked';
   const canFinish = workOrder.lifecycleState === 'InProgress';
   const actionPending = advancing || starting || finishing;
@@ -167,8 +152,8 @@ function DetailPanel({
   return (
     <AdminPanel
       title={workOrder.woNumber || workOrder.id}
-      description={`${workflowLabel(workOrder)} · ${workOrder.currentPhaseLabel}`}
-      action={<StatusPill tone={statusTone(workOrder.operationalStatus)}>{statusLabel(workOrder.operationalStatus)}</StatusPill>}
+      description={`${workflowLabel(workOrder)} · ${workOrder.currentPhaseLabel} · ${workOrder.legacyProductionState}`}
+      action={<StatusPill tone={statusTone(workOrder.legacyStateBucket)}>{workOrder.legacyStateBucket.replace(/^\d+\.\s*/, '')}</StatusPill>}
     >
       <div className="space-y-5">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -187,12 +172,16 @@ function DetailPanel({
             <div className="mt-1 text-xs text-gray-500">{workOrder.manufacturer?.manuName || 'Manufacturer pending'}</div>
           </div>
           <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
-            <div className="text-xs text-gray-500">Started</div>
-            <div className="mt-1 text-sm font-medium text-gray-800 dark:text-white/90">{formatDate(workOrder.prodStart)}</div>
+            <div className="text-xs text-gray-500">Phase progress</div>
+            <div className="mt-1 text-sm font-medium text-gray-800 dark:text-white/90">
+              {workOrder.phaseOrder ?? '-'} / {workOrder.phaseOrderCurrent ?? '-'}
+            </div>
+            <div className="mt-1 text-xs text-gray-500">{workOrder.legacyProductionState}</div>
           </div>
           <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
-            <div className="text-xs text-gray-500">Finished</div>
-            <div className="mt-1 text-sm font-medium text-gray-800 dark:text-white/90">{formatDate(workOrder.prodEnd)}</div>
+            <div className="text-xs text-gray-500">Production timestamps</div>
+            <div className="mt-1 text-sm font-medium text-gray-800 dark:text-white/90">{formatDate(workOrder.prodStart)}</div>
+            <div className="mt-1 text-xs text-gray-500">Finished {formatDate(workOrder.prodEnd)}</div>
           </div>
         </div>
 
@@ -217,36 +206,44 @@ function DetailPanel({
           </div>
         </div>
 
-        {workOrder.readinessBlockers?.length > 0 ? (
+        {workOrder.missingAdvanceRequirements?.length > 0 ? (
           <div className="rounded-lg border border-warning-500/30 bg-warning-50 p-3 dark:border-warning-500/30 dark:bg-warning-500/10">
             <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-warning-600 dark:text-warning-500">
               <AlertTriangle className="h-4 w-4" />
-              Current blockers
+              Next phase requirements
             </div>
-            <div className="flex flex-wrap gap-2">
-              {workOrder.readinessBlockers.map((blocker) => (
-                <span key={blocker} className="rounded-md bg-white px-2 py-1 text-xs text-warning-600 dark:bg-gray-950 dark:text-warning-500">
-                  {blocker}
-                </span>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {workOrder.advanceRequirements.map((requirement) => (
+                <div
+                  key={requirement.key}
+                  className="flex items-center justify-between gap-3 rounded-md bg-white px-2 py-1.5 text-xs dark:bg-gray-950"
+                >
+                  <span className={requirement.met ? 'text-gray-600 dark:text-gray-300' : 'text-warning-600 dark:text-warning-500'}>
+                    {requirement.label}
+                  </span>
+                  <StatusPill tone={requirement.met ? 'success' : requirement.parityGap ? 'error' : 'warning'}>
+                    {requirement.met ? 'OK' : requirement.parityGap ? 'Gap' : 'Missing'}
+                  </StatusPill>
+                </div>
               ))}
             </div>
           </div>
         ) : (
           <div className="flex items-center gap-2 rounded-lg border border-success-500/30 bg-success-50 p-3 text-sm text-success-600 dark:border-success-500/30 dark:bg-success-500/10 dark:text-success-500">
             <CheckCircle2 className="h-4 w-4" />
-            No active blockers recorded for this phase.
+            AppSheet next-phase requirements are satisfied.
           </div>
         )}
 
         <div className="grid gap-3 sm:grid-cols-3">
-          <MetricCard icon={<Boxes className="h-5 w-5" />} label="Serial records" value={workOrder.counts?.serials ?? 0} />
+          <MetricCard icon={<Boxes className="h-5 w-5" />} label="Serial records" value={`${workOrder.counts?.serials ?? 0}/${workOrder.serialRequiredCount ?? 0}`} />
           <MetricCard icon={<Factory className="h-5 w-5" />} label="Equipment records" value={workOrder.counts?.equipment ?? 0} />
           <MetricCard icon={<FlaskConical className="h-5 w-5" />} label="Sterilisation/BET" value={workOrder.counts?.sterilisationRecords ?? 0} />
         </div>
 
         <div className="flex justify-end">
-          {workOrder.operationalStatus === 'Blocked' ? (
-            <Button disabled>Resolve blockers first</Button>
+          {!canAdvance && workOrder.legacyStateBucket === '2. Next Phase' ? (
+            <Button disabled>Next phase blocked</Button>
           ) : canStart ? (
             <Button onClick={() => onStart(workOrder.id)} disabled={actionPending}>
               Start phase
@@ -294,10 +291,10 @@ export default function WorkOrdersPage() {
     [selectedId, workOrders],
   );
 
-  const grouped = useMemo(() => groupByPhase(workOrders), [workOrders]);
-  const blockedCount = workOrders.filter((wo) => wo.operationalStatus === 'Blocked').length;
-  const qaCount = workOrders.filter((wo) => /steril|bet/i.test(wo.currentPhaseLabel)).length;
-  const releaseCount = workOrders.filter((wo) => wo.operationalStatus === 'ReleasePending').length;
+  const grouped = useMemo(() => groupByLegacyState(workOrders), [workOrders]);
+  const nextPhaseCount = workOrders.filter((wo) => wo.legacyStateBucket === '2. Next Phase').length;
+  const quarantineCount = workOrders.filter((wo) => wo.legacyStateBucket === '3. In Quarantine').length;
+  const completedCount = workOrders.filter((wo) => wo.legacyStateBucket === '5. WO Completed').length;
 
   const createMutation = useMutation({
     mutationFn: createWorkOrder,
@@ -361,10 +358,10 @@ export default function WorkOrdersPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard icon={<ClipboardList className="h-6 w-6" />} label="Active work orders" value={workOrders.length} />
-        <MetricCard icon={<AlertTriangle className="h-6 w-6" />} label="Blocked" value={blockedCount} detail={<StatusPill tone="warning">Needs action</StatusPill>} />
-        <MetricCard icon={<ShieldCheck className="h-6 w-6" />} label="QA gates" value={qaCount} />
-        <MetricCard icon={<PackageCheck className="h-6 w-6" />} label="At release" value={releaseCount} />
+        <MetricCard icon={<ClipboardList className="h-6 w-6" />} label="Work orders" value={workOrders.length} />
+        <MetricCard icon={<ArrowRight className="h-6 w-6" />} label="Next phase" value={nextPhaseCount} detail={<StatusPill tone="success">Review</StatusPill>} />
+        <MetricCard icon={<ShieldCheck className="h-6 w-6" />} label="In quarantine" value={quarantineCount} />
+        <MetricCard icon={<PackageCheck className="h-6 w-6" />} label="Completed" value={completedCount} />
       </div>
 
       <AdminPanel
@@ -406,7 +403,7 @@ export default function WorkOrdersPage() {
       </AdminPanel>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(420px,0.8fr)]">
-        <AdminPanel title="Production board" description="Grouped by the current phase each work order is waiting on.">
+        <AdminPanel title="Production kanban" description="Grouped by the legacy AppSheet production state derived from HET/batch phase progress.">
           {isLoading ? (
             <div className="flex h-40 items-center justify-center">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
@@ -418,7 +415,7 @@ export default function WorkOrdersPage() {
               {grouped.map(([phase, items]) => (
                 <section key={phase} className="min-h-44 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-white/[0.03]">
                   <div className="mb-3 flex items-center justify-between gap-3">
-                    <div className="truncate text-sm font-semibold text-gray-800 dark:text-white/90">{phase}</div>
+                    <div className="truncate text-sm font-semibold text-gray-800 dark:text-white/90">{phase.replace(/^\d+\.\s*/, '')}</div>
                     <StatusPill tone="neutral">{items.length}</StatusPill>
                   </div>
                   <div className="space-y-2">

@@ -371,4 +371,146 @@ describe('workOrderService', () => {
     );
     expect(mocks.workOrder.update).not.toHaveBeenCalled();
   });
+
+  it('derives legacy AppSheet buckets from HET phase progress', async () => {
+    mocks.workOrder.findMany.mockResolvedValue([
+      {
+        id: 'wo-progress',
+        hetId: 'h1',
+        phaseOrder: 1,
+        phaseShort: 'P1',
+        prodStart: new Date('2026-06-30T08:00:00Z'),
+        prodEnd: null,
+        workflow: { phases: [] },
+        phase: { phaseShort: 'P1' },
+        steralisationCurrent: null,
+        sterilises: [],
+        woSerials: [],
+        phaseEquips: [],
+        batchHets: [],
+      },
+      {
+        id: 'wo-next',
+        hetId: 'h2',
+        phaseOrder: 2,
+        phaseShort: 'P2',
+        prodStart: new Date('2026-06-30T08:00:00Z'),
+        prodEnd: new Date('2026-06-30T09:00:00Z'),
+        workflow: { phases: [] },
+        phase: { phaseShort: 'P2', bom: { lines: [] } },
+        nextPhase: { phaseShort: 'P3' },
+        steralisationCurrent: null,
+        sterilises: [],
+        woSerials: [],
+        phaseEquips: [],
+        batchHets: [],
+      },
+      {
+        id: 'wo-quarantine',
+        hetId: 'h3',
+        phaseOrder: 3,
+        phaseShort: 'P3',
+        prodStart: null,
+        prodEnd: null,
+        workflow: { phases: [] },
+        phase: { phaseShort: 'P3' },
+        steralisationCurrent: { id: 's1', result: false, createdAt: new Date('2026-06-30T09:00:00Z') },
+        sterilises: [],
+        woSerials: [],
+        phaseEquips: [],
+        batchHets: [],
+      },
+      {
+        id: 'wo-finished',
+        hetId: 'h4',
+        phaseOrder: 16,
+        phaseShort: 'P16',
+        prodStart: new Date('2026-06-30T08:00:00Z'),
+        prodEnd: new Date('2026-06-30T09:00:00Z'),
+        workflow: { phases: [] },
+        phase: { phaseShort: 'P16' },
+        steralisationCurrent: null,
+        sterilises: [],
+        woSerials: [],
+        phaseEquips: [],
+        batchHets: [],
+      },
+      {
+        id: 'wo-completed',
+        hetId: 'h5',
+        phaseOrder: 4,
+        phaseShort: 'P4',
+        prodStart: new Date('2026-06-30T08:00:00Z'),
+        prodEnd: new Date('2026-06-30T09:00:00Z'),
+        workflow: { phases: [] },
+        phase: { phaseShort: 'P4' },
+        steralisationCurrent: null,
+        sterilises: [],
+        woSerials: [],
+        phaseEquips: [],
+        batchHets: [],
+      },
+      {
+        id: 'wo-leading',
+        hetId: 'h5',
+        phaseOrder: 5,
+        phaseShort: 'P5',
+        prodStart: null,
+        prodEnd: null,
+        workflow: { phases: [] },
+        phase: { phaseShort: 'P5' },
+        steralisationCurrent: null,
+        sterilises: [],
+        woSerials: [],
+        phaseEquips: [],
+        batchHets: [],
+      },
+    ]);
+
+    const result = await listWorkOrders();
+
+    expect(result.map((workOrder) => [workOrder.id, workOrder.legacyStateBucket])).toEqual([
+      ['wo-progress', '1. In Progress'],
+      ['wo-next', '2. Next Phase'],
+      ['wo-quarantine', '3. In Quarantine'],
+      ['wo-finished', '4. Finished Goods'],
+      ['wo-completed', '5. WO Completed'],
+      ['wo-leading', '1. In Progress'],
+    ]);
+    expect(result.find((workOrder) => workOrder.id === 'wo-completed')).toMatchObject({
+      phaseOrderCurrent: 5,
+      legacyProductionState: '5. WO Completed',
+    });
+  });
+
+  it('does not mark next-phase rows advanceable when AppSheet image parity is unavailable', async () => {
+    mocks.workOrder.findMany.mockResolvedValue([
+      {
+        id: 'wo-next',
+        hetId: 'h1',
+        phaseOrder: 6,
+        phaseShort: 'P6',
+        prodStart: new Date('2026-06-30T08:00:00Z'),
+        prodEnd: new Date('2026-06-30T09:00:00Z'),
+        workflow: { phases: [] },
+        phase: { phaseShort: 'P6', bom: { lines: [{ id: 'bom-1' }] } },
+        nextPhase: { phaseShort: 'P7' },
+        steralisationCurrent: null,
+        sterilises: [],
+        woSerials: [{ id: 'serial-1' }],
+        phaseEquips: [],
+        batchHets: [],
+      },
+    ]);
+
+    const [result] = await listWorkOrders();
+
+    expect(result).toMatchObject({
+      legacyStateBucket: '2. Next Phase',
+      serialCheckDone: true,
+      canAdvanceLegacy: false,
+      missingAdvanceRequirements: ['Work-order image captured'],
+      parityGaps: ['workOrder.image is not present in the imported schema; AppSheet image gating cannot be satisfied yet'],
+    });
+  });
 });

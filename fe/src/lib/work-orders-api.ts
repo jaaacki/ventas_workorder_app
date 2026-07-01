@@ -37,6 +37,13 @@ export interface WorkOrderCounts {
   sterilisationRecords: number;
 }
 
+export type LegacyWorkOrderStateBucket =
+  | '1. In Progress'
+  | '2. Next Phase'
+  | '3. In Quarantine'
+  | '4. Finished Goods'
+  | '5. WO Completed';
+
 export type WorkOrderLifecycleState =
   | 'NotStarted'
   | 'InProgress'
@@ -64,6 +71,13 @@ export interface WorkOrderSerialRef {
   };
 }
 
+export interface WorkOrderAdvanceRequirement {
+  key: string;
+  label: string;
+  met: boolean;
+  parityGap?: boolean;
+}
+
 export interface WorkOrderSummary {
   id: string;
   woNumber: string | null;
@@ -83,6 +97,16 @@ export interface WorkOrderSummary {
   operationalStatus: 'Blocked' | WorkOrderLifecycleState | string;
   readinessBlockers: string[];
   currentPhaseLabel: string;
+  phaseOrderCurrent: number | null;
+  legacyProductionState: string;
+  legacyStateBucket: LegacyWorkOrderStateBucket;
+  canAdvanceLegacy: boolean;
+  advanceRequirements: WorkOrderAdvanceRequirement[];
+  missingAdvanceRequirements: string[];
+  parityGaps: string[];
+  serialCheckDone: boolean;
+  serialRequiredCount: number;
+  combinedHetCheck: boolean;
   phaseTimeline: WorkOrderPhaseTimelineItem[];
   counts: WorkOrderCounts;
 }

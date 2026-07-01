@@ -12,9 +12,19 @@ export interface CreateWorkOrderInput {
  */
 const workOrderDetailInclude = {
   workflow: { select: { id: true, name: true, code: true } },
-  phase: { select: { id: true, phaseName: true, phaseShort: true, phaseOrder: true } },
+  phase: {
+    select: {
+      id: true,
+      phaseName: true,
+      phaseShort: true,
+      phaseOrder: true,
+      bom: { select: { lines: { where: { deleted: false }, select: { id: true } } } },
+    },
+  },
+  nextPhase: { select: { id: true, phaseName: true, phaseShort: true, phaseOrder: true } },
   het: { select: { id: true, hetNumber: true, clinicName: true, quantity: true } },
   manufacturer: { select: { id: true, manuNumber: true, manuName: true } },
+  steralisationCurrent: { select: { id: true, result: true, createdAt: true } },
   sterilises: {
     select: { id: true, direction: true, result: true, betReading: true, quantity: true, createdAt: true },
     orderBy: { createdAt: 'desc' as const },
@@ -29,6 +39,7 @@ const workOrderDetailInclude = {
   phaseEquips: {
     select: { phaseEquip: { select: { id: true, equipId: true, name: true } } },
   },
+  batchHets: { select: { hetId: true } },
 } satisfies Prisma.WorkOrderInclude;
 
 const workOrderOperationalInclude = {
@@ -114,6 +125,16 @@ export async function createWorkOrder(input: CreateWorkOrderInput, actorId: stri
 }
 
 type OperationalWorkOrder = Prisma.WorkOrderGetPayload<{ include: typeof workOrderOperationalInclude }>;
+type LegacyStateBucket =
+  | '1. In Progress'
+  | '2. Next Phase'
+  | '3. In Quarantine'
+  | '4. Finished Goods'
+  | '5. WO Completed';
+
+interface LegacyWorkOrderContext {
+  phaseOrderCurrent: Map<string, number | null>;
+}
 
 function isGatePhase(phaseName?: string | null) {
   return Boolean(phaseName && /steril|bet/i.test(phaseName));
@@ -126,7 +147,126 @@ function getLifecycleState(workOrder: OperationalWorkOrder, atFinalPhase: boolea
   return 'ReadyToAdvance';
 }
 
-function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder) {
+function legacyHetKeys(workOrder: Pick<OperationalWorkOrder, 'hetId' | 'batchHets'>) {
+  return Array.from(
+    new Set([
+      ...(workOrder.hetId ? [workOrder.hetId] : []),
+      ...((workOrder.batchHets ?? []).map((batchHet) => batchHet.hetId).filter(Boolean) as string[]),
+    ]),
+  );
+}
+
+function buildLegacyWorkOrderContext(workOrders: OperationalWorkOrder[]): LegacyWorkOrderContext {
+  const workOrdersByHet = new Map<string, OperationalWorkOrder[]>();
+
+  for (const workOrder of workOrders) {
+    for (const hetId of legacyHetKeys(workOrder)) {
+      const group = workOrdersByHet.get(hetId) ?? [];
+      group.push(workOrder);
+      workOrdersByHet.set(hetId, group);
+    }
+  }
+
+  const phaseOrderCurrent = new Map<string, number | null>();
+
+  for (const workOrder of workOrders) {
+    const peerIds = new Set<string>();
+    const peers: OperationalWorkOrder[] = [];
+
+    for (const hetId of legacyHetKeys(workOrder)) {
+      for (const peer of workOrdersByHet.get(hetId) ?? []) {
+        if (!peerIds.has(peer.id)) {
+          peerIds.add(peer.id);
+          peers.push(peer);
+        }
+      }
+    }
+
+    const maxPhaseOrder = peers.reduce<number | null>((max, peer) => {
+      if (peer.phaseOrder == null) return max;
+      return max == null ? peer.phaseOrder : Math.max(max, peer.phaseOrder);
+    }, null);
+
+    phaseOrderCurrent.set(workOrder.id, maxPhaseOrder);
+  }
+
+  return { phaseOrderCurrent };
+}
+
+function legacyBucketLabel(bucket: LegacyStateBucket, suffix?: string | null) {
+  return suffix ? `${bucket}: ${suffix}` : bucket;
+}
+
+function getLegacyWorkOrderState(workOrder: OperationalWorkOrder, context: LegacyWorkOrderContext) {
+  const phaseOrder = workOrder.phaseOrder ?? null;
+  const phaseOrderCurrent = context.phaseOrderCurrent.get(workOrder.id) ?? phaseOrder;
+  const phaseShort = workOrder.nextPhase?.phaseShort ?? workOrder.phase?.phaseShort ?? workOrder.phaseShort;
+  const currentPhaseShort = workOrder.phase?.phaseShort ?? workOrder.phaseShort;
+  const currentSterilisation = workOrder.steralisationCurrent ?? null;
+  const serialRequiredCount = workOrder.phase?.bom?.lines?.length ?? 0;
+  const serialCheckDone = serialRequiredCount - (workOrder.woSerials?.length ?? 0) === 0;
+  const combinedHetCheck = (workOrder.batchHets?.length ?? 0) > 0;
+  const hasImageParityGap = true;
+  let legacyStateBucket: LegacyStateBucket;
+  let legacyProductionState: string;
+
+  if (phaseOrderCurrent !== phaseOrder) {
+    legacyStateBucket = '5. WO Completed';
+    legacyProductionState = legacyStateBucket;
+  } else if (workOrder.prodStart && workOrder.prodEnd) {
+    if (phaseOrder != null && phaseOrder < 16) {
+      legacyStateBucket = '2. Next Phase';
+      legacyProductionState = legacyBucketLabel(legacyStateBucket, phaseShort);
+    } else {
+      legacyStateBucket = '4. Finished Goods';
+      legacyProductionState = legacyStateBucket;
+    }
+  } else if (!currentSterilisation || currentSterilisation.result == null) {
+    legacyStateBucket = '1. In Progress';
+    legacyProductionState = legacyBucketLabel(legacyStateBucket, currentPhaseShort);
+  } else {
+    legacyStateBucket = '3. In Quarantine';
+    legacyProductionState = `${legacyStateBucket} (${currentSterilisation.createdAt.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit',
+    }).replace(/\//g, '-')})`;
+  }
+
+  const advanceRequirements = [
+    { key: 'current_phase', label: 'Current HET/batch phase', met: phaseOrderCurrent === phaseOrder },
+    { key: 'prod_start', label: 'Production started', met: Boolean(workOrder.prodStart) },
+    { key: 'prod_end', label: 'Production finished', met: Boolean(workOrder.prodEnd) },
+    { key: 'image', label: 'Work-order image captured', met: false, parityGap: hasImageParityGap },
+    { key: 'serial_check', label: 'Serial/BOM entries complete', met: serialCheckDone },
+  ];
+
+  if (phaseOrder != null && phaseOrder <= 5) {
+    advanceRequirements.push({ key: 'not_combined_het', label: 'Not a combined-HET phase <= 5', met: !combinedHetCheck });
+  }
+
+  const canAdvanceLegacy =
+    phaseOrder != null &&
+    phaseOrder < 16 &&
+    advanceRequirements.every((requirement) => requirement.met);
+
+  return {
+    phaseOrderCurrent,
+    legacyProductionState,
+    legacyStateBucket,
+    canAdvanceLegacy,
+    advanceRequirements,
+    missingAdvanceRequirements: advanceRequirements
+      .filter((requirement) => !requirement.met)
+      .map((requirement) => requirement.label),
+    parityGaps: hasImageParityGap ? ['workOrder.image is not present in the imported schema; AppSheet image gating cannot be satisfied yet'] : [],
+    serialCheckDone,
+    serialRequiredCount,
+    combinedHetCheck,
+  };
+}
+
+function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder, context: LegacyWorkOrderContext) {
   const phases = workOrder.workflow?.phases ?? [];
   const currentIndex = phases.findIndex((p) => p.phase.id === workOrder.phaseId);
   const atFinalPhase = currentIndex >= 0 && currentIndex === phases.length - 1;
@@ -135,6 +275,7 @@ function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder) {
   const phaseEquips = workOrder.phaseEquips ?? [];
   const hasPassingSterilisation = sterilises.some((s) => s.result === true);
   const blockers: string[] = [];
+  const legacyState = getLegacyWorkOrderState(workOrder, context);
 
   if (!workOrder.hetId) blockers.push('HET not assigned');
   if (isGatePhase(workOrder.phase?.phaseName) && !hasPassingSterilisation) {
@@ -164,6 +305,7 @@ function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder) {
     operationalStatus: blockers.length ? 'Blocked' : atFinalPhase ? 'ReleasePending' : getLifecycleState(workOrder, atFinalPhase),
     readinessBlockers: blockers,
     currentPhaseLabel: workOrder.phase?.phaseName ?? workOrder.phaseShort ?? `Phase ${workOrder.phaseOrder ?? '-'}`,
+    ...legacyState,
     phaseTimeline,
     counts: {
       serials: woSerials.length,
@@ -178,15 +320,18 @@ async function getDecoratedWorkOrderOrThrow(id: string) {
     where: { id },
     include: workOrderOperationalInclude,
   });
-  return decorateOperationalWorkOrder(workOrder);
+  const context = await getLegacyContextForWorkOrder(workOrder);
+  return decorateOperationalWorkOrder(workOrder, context);
 }
 
 export async function listWorkOrders() {
   const workOrders = await prisma.workOrder.findMany({
+    where: { deleted: false },
     include: workOrderOperationalInclude,
     orderBy: { createdAt: 'desc' },
   });
-  return workOrders.map(decorateOperationalWorkOrder);
+  const context = buildLegacyWorkOrderContext(workOrders);
+  return workOrders.map((workOrder) => decorateOperationalWorkOrder(workOrder, context));
 }
 
 export async function getWorkOrder(id: string) {
@@ -194,7 +339,28 @@ export async function getWorkOrder(id: string) {
     where: { id },
     include: workOrderOperationalInclude,
   });
-  return workOrder ? decorateOperationalWorkOrder(workOrder) : null;
+  if (!workOrder) return null;
+  const context = await getLegacyContextForWorkOrder(workOrder);
+  return decorateOperationalWorkOrder(workOrder, context);
+}
+
+async function getLegacyContextForWorkOrder(workOrder: OperationalWorkOrder) {
+  const hetIds = legacyHetKeys(workOrder);
+  if (!hetIds.length) return buildLegacyWorkOrderContext([workOrder]);
+
+  const peers = await prisma.workOrder.findMany({
+    where: {
+      deleted: false,
+      OR: [
+        { hetId: { in: hetIds } },
+        { batchHets: { some: { hetId: { in: hetIds } } } },
+      ],
+    },
+    include: workOrderOperationalInclude,
+  });
+
+  if (!peers.some((peer) => peer.id === workOrder.id)) peers.push(workOrder);
+  return buildLegacyWorkOrderContext(peers);
 }
 
 export async function startWorkOrderPhase(id: string, actorId: string) {

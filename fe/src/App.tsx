@@ -12,6 +12,7 @@ import WorkflowsPage from './pages/WorkflowsPage';
 import WorkOrdersPage from './pages/WorkOrdersPage';
 import WorkOrderDetailPage from './pages/WorkOrderDetailPage';
 import ProcurementPage from './pages/ProcurementPage';
+import CollectionUnitDetailPage from './pages/CollectionUnitDetailPage';
 import InventoryPage from './pages/InventoryPage';
 import NotFoundPage from './pages/NotFoundPage';
 
@@ -79,6 +80,16 @@ function App() {
               <ProtectedRoute roles={['owner', 'admin', 'user']}>
                 <DashboardLayout>
                   <WorkOrdersPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/procurement/collection-units/:id"
+            element={
+              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+                <DashboardLayout>
+                  <CollectionUnitDetailPage />
                 </DashboardLayout>
               </ProtectedRoute>
             }

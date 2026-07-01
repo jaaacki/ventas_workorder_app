@@ -23,6 +23,8 @@ cd deploy && make up
 
 - Backend: http://localhost:3001
 - Frontend: http://localhost:3000
+- API docs: http://localhost:3001/api/docs
+- OpenAPI JSON: http://localhost:3001/api/openapi.json
 
 ### Useful commands
 
@@ -47,7 +49,7 @@ npm run shell:fe          # Open a shell in the frontend container
 
 ## Branching
 
-Development follows the issue → worktree → PR → `dev` → `main` flow. See `.claude/plan.md` and the global CLAUDE.md for details.
+Development follows the issue → worktree → PR → `dev` → `main` flow. See `AGENTS.md` and `CLAUDE.md` for repository workflow, validation, and CI policy.
 
 ## License
 

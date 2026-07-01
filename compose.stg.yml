@@ -1,0 +1,59 @@
+name: workorder-stg
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: workorder-stg-db
+    restart: always
+    environment:
+      POSTGRES_USER: workorder
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: workorder
+    volumes:
+      - ./data/stg-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workorder -d workorder"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  be-migrate:
+    build:
+      context: .
+      dockerfile: be/Dockerfile
+      target: build
+    container_name: workorder-stg-migrate
+    env_file: .env
+    working_dir: /app/be
+    command: sh -c "npx prisma migrate deploy && npm run db:seed"
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  be:
+    build:
+      context: .
+      dockerfile: be/Dockerfile
+      target: production
+    container_name: workorder-stg-be
+    restart: always
+    env_file: .env
+    depends_on:
+      postgres: { condition: service_healthy }
+      be-migrate: { condition: service_completed_successfully }
+    volumes:
+      - ./data/legacy:/app/data/legacy
+      - ./data/inventory:/app/data/inventory
+      - ./secrets/workorder-ms.crt:/run/secrets/workorder-ms.crt:ro
+      - ./secrets/workorder-ms.key:/run/secrets/workorder-ms.key:ro
+
+  fe:
+    build:
+      context: .
+      dockerfile: fe/Dockerfile
+      target: production
+    container_name: workorder-stg-fe
+    restart: always
+    ports:
+      - "8100:80"
+    depends_on:
+      be: { condition: service_started }

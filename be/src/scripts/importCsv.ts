@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import csv from 'csv-parser';
 import { prisma } from '../db/prisma.js';
+import { DEFAULT_TENANT_ID } from '../services/tenant.js';
 
 export type Row = Record<string, string | undefined>;
 
@@ -68,6 +69,21 @@ function listValue(v: string | undefined): string[] {
 }
 
 const identity = (v: string | undefined) => v;
+const tenantScopedModels = new Set([
+  'staff',
+  'manufacturer',
+  'procedure',
+  'bom',
+  'bomLine',
+  'het',
+  'workflow',
+  'phase',
+  'phaseEquip',
+  'workOrder',
+  'woSerial',
+  'sterilise',
+  'printLabel',
+]);
 
 const fieldMappers: Record<string, (v: string | undefined) => unknown> = {
   string: identity,
@@ -612,6 +628,9 @@ export async function importTable(
         reason: `missing PK '${pkColumn}'`,
       });
       continue;
+    }
+    if (tenantScopedModels.has(config.model) && m.tenantId === undefined) {
+      m.tenantId = process.env.TENANT_ID || DEFAULT_TENANT_ID;
     }
     mapped.push(m);
   }

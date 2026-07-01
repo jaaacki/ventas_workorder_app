@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   manufacturer: {
-    findUnique: vi.fn(),
+    findFirst: vi.fn(),
     create: vi.fn(),
   },
   workOrder: {
-    findUnique: vi.fn(),
+    findFirst: vi.fn(),
     update: vi.fn(),
   },
   $transaction: vi.fn(),
@@ -31,7 +31,7 @@ beforeEach(() => {
 
 describe('manufacturingService', () => {
   it('generateBatchRecord creates a Manufacturer with a MANU- manuNumber and links the work order', async () => {
-    mocks.workOrder.findUnique.mockResolvedValue({ id: 'wo1' });
+    mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo1', tenantId: 'ventas' });
     mocks.manufacturer.create.mockResolvedValue({ id: 'm1', manuNumber: 'MANU-XYZ' });
 
     const result = await manufacturingService.generateBatchRecord('wo1', 'actor1');
@@ -39,8 +39,9 @@ describe('manufacturingService', () => {
     expect(result).toEqual({ id: 'm1', manuNumber: 'MANU-XYZ' });
 
     const createCall = mocks.manufacturer.create.mock.calls[0][0] as {
-      data: { manuNumber: string; createdById: string; updatedById: string };
+      data: { tenantId: string; manuNumber: string; createdById: string; updatedById: string };
     };
+    expect(createCall.data.tenantId).toBe('ventas');
     expect(createCall.data.manuNumber).toMatch(/^MANU-/);
     expect(createCall.data.manuNumber).not.toEqual('MANU-');
     expect(createCall.data.createdById).toBe('actor1');
@@ -57,7 +58,7 @@ describe('manufacturingService', () => {
   });
 
   it('generateBatchRecord throws a P2025-shaped error when the work order is missing', async () => {
-    mocks.workOrder.findUnique.mockResolvedValue(null);
+    mocks.workOrder.findFirst.mockResolvedValue(null);
 
     await expect(manufacturingService.generateBatchRecord('missing', 'actor1')).rejects.toMatchObject({
       code: 'P2025',

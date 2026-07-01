@@ -2,14 +2,15 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useAuthStore } from '@/store/authStore';
-import { LayoutDashboard, Users, Shield, Menu, LogOut, Workflow, ClipboardList, Search } from 'lucide-react';
+import { LayoutDashboard, Users, Shield, Menu, LogOut, Settings2, Factory, Search, Boxes } from 'lucide-react';
 
 const navItems = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['owner', 'admin', 'user'] },
+  { label: 'Production', href: '/dashboard/work-orders', icon: Factory, roles: ['owner', 'admin', 'user'] },
+  { label: 'Procurement', href: '/dashboard/procurement', icon: Boxes, roles: ['owner', 'admin', 'user'] },
+  { label: 'Configuration', href: '/dashboard/workflows', icon: Settings2, roles: ['owner', 'admin'] },
   { label: 'Users', href: '/dashboard/users', icon: Users, roles: ['owner', 'admin'] },
   { label: 'Roles', href: '/dashboard/roles', icon: Shield, roles: ['owner'] },
-  { label: 'Workflows', href: '/dashboard/workflows', icon: Workflow, roles: ['owner', 'admin'] },
-  { label: 'Work Orders', href: '/dashboard/work-orders', icon: ClipboardList, roles: ['owner', 'admin', 'user'] },
 ];
 
 export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
@@ -72,7 +73,7 @@ export function Header() {
             <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-500" />
             <input
               type="search"
-              placeholder="Search work orders, users, workflows..."
+              placeholder="Search work orders, HET, batches..."
               className="h-11 w-[430px] rounded-lg border border-gray-200 bg-transparent py-2.5 pl-12 pr-4 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10 dark:border-gray-800 dark:bg-white/[0.03] dark:text-white/90"
             />
           </div>

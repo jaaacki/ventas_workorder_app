@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { Prisma as PrismaTypes } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
+import { tenantIdOrDefault } from './tenant.js';
 
 /**
  * Detail include for the batch-record view: the actor stamps and the work
@@ -18,12 +19,13 @@ const manufacturerDetailInclude = {
  * onto the work order (`manuId` + `manuNumber`). Throws a P2025-shaped Prisma
  * error if the work order does not exist.
  */
-export async function generateBatchRecord(workOrderId: string, actorId: string) {
+export async function generateBatchRecord(workOrderId: string, actorId: string, tenantId?: string | null) {
   const manuNumber = `MANU-${Date.now().toString(36).toUpperCase()}`;
+  const scopedTenantId = tenantIdOrDefault(tenantId);
 
   return prisma.$transaction(async (tx) => {
     // Confirm the work order exists; a missing row surfaces as P2025 below.
-    const workOrder = await tx.workOrder.findUnique({ where: { id: workOrderId } });
+    const workOrder = await tx.workOrder.findFirst({ where: { id: workOrderId, tenantId: scopedTenantId } });
     if (!workOrder) {
       throw new Prisma.PrismaClientKnownRequestError('Work order not found', {
         code: 'P2025',
@@ -33,6 +35,7 @@ export async function generateBatchRecord(workOrderId: string, actorId: string) 
 
     const manufacturer = await tx.manufacturer.create({
       data: {
+        tenantId: scopedTenantId,
         manuNumber,
         createdById: actorId,
         updatedById: actorId,
@@ -53,9 +56,9 @@ export async function generateBatchRecord(workOrderId: string, actorId: string) 
   });
 }
 
-export async function getBatchRecord(id: string) {
-  return prisma.manufacturer.findUnique({
-    where: { id },
+export async function getBatchRecord(id: string, tenantId?: string | null) {
+  return prisma.manufacturer.findFirst({
+    where: { id, tenantId: tenantIdOrDefault(tenantId) },
     include: manufacturerDetailInclude,
   });
 }

@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   workflow: {
     findMany: vi.fn(),
-    findUnique: vi.fn(),
+    findFirst: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
   },
@@ -33,7 +33,7 @@ describe('workflowService', () => {
     mocks.workflow.findMany.mockResolvedValue([]);
     await workflowService.listWorkflows({ activeOnly: true });
     expect(mocks.workflow.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { active: true } }),
+      expect.objectContaining({ where: { active: true, tenantId: 'ventas' } }),
     );
   });
 
@@ -41,15 +41,15 @@ describe('workflowService', () => {
     mocks.workflow.findMany.mockResolvedValue([]);
     await workflowService.listWorkflows();
     expect(mocks.workflow.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: undefined }),
+      expect.objectContaining({ where: { tenantId: 'ventas' } }),
     );
   });
 
   it('getWorkflow queries by id', async () => {
     const wf = { id: 'w1', phases: [] };
-    mocks.workflow.findUnique.mockResolvedValue(wf);
+    mocks.workflow.findFirst.mockResolvedValue(wf);
     const result = await workflowService.getWorkflow('w1');
-    expect(mocks.workflow.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'w1' } }));
+    expect(mocks.workflow.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'w1', tenantId: 'ventas' } }));
     expect(result).toBe(wf);
   });
 
@@ -80,6 +80,7 @@ describe('workflowService', () => {
   });
 
   it('updateWorkflow replaces phase bindings atomically', async () => {
+    mocks.workflow.findFirst.mockResolvedValue({ id: 'w1' });
     mocks.workflowPhase.deleteMany.mockResolvedValue({ count: 2 });
     mocks.workflow.update.mockResolvedValue({ id: 'w1', phases: [] });
     await workflowService.updateWorkflow(
@@ -101,6 +102,7 @@ describe('workflowService', () => {
   });
 
   it('updateWorkflow leaves phase bindings untouched when phases not provided', async () => {
+    mocks.workflow.findFirst.mockResolvedValue({ id: 'w1' });
     mocks.workflow.update.mockResolvedValue({ id: 'w1' });
     await workflowService.updateWorkflow('w1', { active: false }, 'actor1');
     expect(mocks.workflowPhase.deleteMany).not.toHaveBeenCalled();

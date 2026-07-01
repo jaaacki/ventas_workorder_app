@@ -7,46 +7,59 @@ datasource db {
   provider = "postgresql"
 }
 
-model Staff {
-  id            String   @id @default(cuid())
-  email         String   @unique
-  name          String?
-  passwordHash  String?
-  bitrixId      String?
-  googleId      String?  @unique
-  microsoftId   String?  @unique
-  active        Boolean  @default(true)
-  roleId        String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+model Tenant {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  role              Role?      @relation(fields: [roleId], references: [id])
-  createdProcedures Procedure[] @relation("ProcedureCreatedBy")
-  updatedProcedures Procedure[] @relation("ProcedureUpdatedBy")
-  createdHets       Het[]       @relation("HetCreatedBy")
-  updatedHets       Het[]       @relation("HetUpdatedBy")
-  createdPhases     Phase[]     @relation("PhaseCreatedBy")
-  updatedPhases     Phase[]     @relation("PhaseUpdatedBy")
-  createdWorkOrders WorkOrder[] @relation("WorkOrderCreatedBy")
-  updatedWorkOrders WorkOrder[] @relation("WorkOrderUpdatedBy")
-  createdBoms        Bom[]        @relation("BomCreatedBy")
-  updatedBoms        Bom[]        @relation("BomUpdatedBy")
-  createdBomLines    BomLine[]    @relation("BomLineCreatedBy")
-  updatedBomLines    BomLine[]    @relation("BomLineUpdatedBy")
-  createdWoSerials   WoSerial[]   @relation("WoSerialCreatedBy")
-  updatedWoSerials   WoSerial[]   @relation("WoSerialUpdatedBy")
-  createdSterilises  Sterilise[]  @relation("SteriliseCreatedBy")
-  updatedSterilises  Sterilise[]  @relation("SteriliseUpdatedBy")
-  createdPhaseEquips PhaseEquip[] @relation("PhaseEquipCreatedBy")
-  updatedPhaseEquips PhaseEquip[] @relation("PhaseEquipUpdatedBy")
-  startedWorkOrders  WorkOrder[]  @relation("WorkOrderStartSignBy")
-  endedWorkOrders    WorkOrder[]  @relation("WorkOrderEndSignBy")
-  signedSterilises   Sterilise[]  @relation("SteriliseSignBy")
+  @@map("tenant")
+}
+
+model Staff {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String?
+  bitrixId     String?
+  googleId     String?  @unique
+  microsoftId  String?  @unique
+  active       Boolean  @default(true)
+  tenantId     String   @default("ventas")
+  roleId       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  role                 Role?          @relation(fields: [roleId], references: [id])
+  createdProcedures    Procedure[]    @relation("ProcedureCreatedBy")
+  updatedProcedures    Procedure[]    @relation("ProcedureUpdatedBy")
+  createdHets          Het[]          @relation("HetCreatedBy")
+  updatedHets          Het[]          @relation("HetUpdatedBy")
+  createdPhases        Phase[]        @relation("PhaseCreatedBy")
+  updatedPhases        Phase[]        @relation("PhaseUpdatedBy")
+  createdWorkOrders    WorkOrder[]    @relation("WorkOrderCreatedBy")
+  updatedWorkOrders    WorkOrder[]    @relation("WorkOrderUpdatedBy")
+  createdBoms          Bom[]          @relation("BomCreatedBy")
+  updatedBoms          Bom[]          @relation("BomUpdatedBy")
+  createdBomLines      BomLine[]      @relation("BomLineCreatedBy")
+  updatedBomLines      BomLine[]      @relation("BomLineUpdatedBy")
+  createdWoSerials     WoSerial[]     @relation("WoSerialCreatedBy")
+  updatedWoSerials     WoSerial[]     @relation("WoSerialUpdatedBy")
+  createdSterilises    Sterilise[]    @relation("SteriliseCreatedBy")
+  updatedSterilises    Sterilise[]    @relation("SteriliseUpdatedBy")
+  createdPhaseEquips   PhaseEquip[]   @relation("PhaseEquipCreatedBy")
+  updatedPhaseEquips   PhaseEquip[]   @relation("PhaseEquipUpdatedBy")
+  startedWorkOrders    WorkOrder[]    @relation("WorkOrderStartSignBy")
+  endedWorkOrders      WorkOrder[]    @relation("WorkOrderEndSignBy")
+  signedSterilises     Sterilise[]    @relation("SteriliseSignBy")
   createdManufacturers Manufacturer[] @relation("ManufacturerCreatedBy")
   updatedManufacturers Manufacturer[] @relation("ManufacturerUpdatedBy")
-  createdWorkflows     Workflow[]   @relation("WorkflowCreatedBy")
-  updatedWorkflows     Workflow[]   @relation("WorkflowUpdatedBy")
+  createdWorkflows     Workflow[]     @relation("WorkflowCreatedBy")
+  updatedWorkflows     Workflow[]     @relation("WorkflowUpdatedBy")
 
+  @@index([tenantId])
   @@map("staff")
 }
 
@@ -66,28 +79,31 @@ model Role {
 }
 
 model Manufacturer {
-  id            String    @id @default(cuid())
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  createdById   String?
-  updatedById   String?
-  manuName      String?
-  manuNumber    String?
-  keyText       String?
+  id          String   @id @default(cuid())
+  tenantId    String   @default("ventas")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+  updatedById String?
+  manuName    String?
+  manuNumber  String?
+  keyText     String?
 
-  createdBy     Staff?       @relation("ManufacturerCreatedBy", fields: [createdById], references: [id])
-  updatedBy     Staff?       @relation("ManufacturerUpdatedBy", fields: [updatedById], references: [id])
-  workOrders    WorkOrder[]
-  sterilises    Sterilise[]
-  batchHets     ManufacturerHet[]
+  createdBy  Staff?            @relation("ManufacturerCreatedBy", fields: [createdById], references: [id])
+  updatedBy  Staff?            @relation("ManufacturerUpdatedBy", fields: [updatedById], references: [id])
+  workOrders WorkOrder[]
+  sterilises Sterilise[]
+  batchHets  ManufacturerHet[]
 
+  @@index([tenantId])
   @@map("manufacturer")
 }
 
 model Procedure {
-  id             String      @id
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  id             String   @id
+  tenantId       String   @default("ventas")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
   createdById    String?
   updatedById    String?
   procedureName  String?
@@ -95,92 +111,111 @@ model Procedure {
   procedureShort String?
   keyText        String?
 
-  createdBy      Staff?           @relation("ProcedureCreatedBy", fields: [createdById], references: [id])
-  updatedBy      Staff?           @relation("ProcedureUpdatedBy", fields: [updatedById], references: [id])
-  phases         PhaseProcedure[]
+  createdBy Staff?           @relation("ProcedureCreatedBy", fields: [createdById], references: [id])
+  updatedBy Staff?           @relation("ProcedureUpdatedBy", fields: [updatedById], references: [id])
+  phases    PhaseProcedure[]
 
+  @@index([tenantId])
   @@map("procedure")
 }
 
 model Bom {
-  id          String    @id
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id          String   @id
+  tenantId    String   @default("ventas")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
   createdById String?
   updatedById String?
   bomName     String?
   keyText     String?
 
-  createdBy   Staff?     @relation("BomCreatedBy", fields: [createdById], references: [id])
-  updatedBy   Staff?     @relation("BomUpdatedBy", fields: [updatedById], references: [id])
-  lines       BomLine[]
-  phases      Phase[]
+  createdBy Staff?    @relation("BomCreatedBy", fields: [createdById], references: [id])
+  updatedBy Staff?    @relation("BomUpdatedBy", fields: [updatedById], references: [id])
+  lines     BomLine[]
+  phases    Phase[]
 
+  @@index([tenantId])
   @@map("bom")
 }
 
 model BomLine {
-  id          String     @id
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id          String   @id
+  tenantId    String   @default("ventas")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
   createdById String?
   updatedById String?
   bomId       String
   bomName     String?
   description String?
-  quantity    Decimal?   @db.Decimal(18, 4)
+  quantity    Decimal? @db.Decimal(18, 4)
   uom         String?
-  hasSerial   Boolean   @default(false)
-  deleted     Boolean   @default(false)
+  hasSerial   Boolean  @default(false)
+  deleted     Boolean  @default(false)
   keyText     String?
 
-  createdBy   Staff?      @relation("BomLineCreatedBy", fields: [createdById], references: [id])
-  updatedBy   Staff?      @relation("BomLineUpdatedBy", fields: [updatedById], references: [id])
-  bom         Bom         @relation(fields: [bomId], references: [id])
-  woSerials   WoSerial[]
+  createdBy Staff?     @relation("BomLineCreatedBy", fields: [createdById], references: [id])
+  updatedBy Staff?     @relation("BomLineUpdatedBy", fields: [updatedById], references: [id])
+  bom       Bom        @relation(fields: [bomId], references: [id])
+  woSerials WoSerial[]
 
+  @@index([tenantId])
   @@map("bomLine")
 }
 
 model Het {
-  id                 String            @id
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
-  createdById        String?
-  updatedById        String?
-  clinicId           String?
-  HCICode            String?
-  clinicName         String?
-  licenseName        String?
-  address            String?
-  hetNumber          String?
-  parcelTrackingNumber String?
-  deliverId          String?
-  collectId          String?
-  usedById           String?
-  finishedById       String?
-  quantity           Int?
-  deleted            Boolean           @default(false)
-  forceField         Int?
-  keyText            String?
-  b11Weight          Decimal?          @db.Decimal(18, 4)
+  id                      String                 @id
+  tenantId                String                 @default("ventas")
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  createdById             String?
+  updatedById             String?
+  clinicId                String?
+  HCICode                 String?
+  clinicName              String?
+  licenseName             String?
+  address                 String?
+  hetNumber               String?
+  parcelTrackingNumber    String?
+  deliverId               String?
+  collectId               String?
+  usedById                String?
+  finishedById            String?
+  quantity                Int?
+  deleted                 Boolean                @default(false)
+  forceField              Int?
+  keyText                 String?
+  b11Weight               Decimal?               @db.Decimal(18, 4)
+  collectionUnitId        String?
+  collectionReceiptLineId String?
+  collectionUnit          CollectionUnit?        @relation(fields: [collectionUnitId], references: [id])
+  collectionReceiptLine   CollectionReceiptLine? @relation(fields: [collectionReceiptLineId], references: [id])
+  inventoryLot            InventoryLot?          @relation("HetInventoryLot")
+  sourceSystem            String?
+  legacyClinicId          String?
+  legacyDeliverId         String?
+  legacyCollectId         String?
 
-  createdBy          Staff?            @relation("HetCreatedBy", fields: [createdById], references: [id])
-  updatedBy          Staff?            @relation("HetUpdatedBy", fields: [updatedById], references: [id])
-  usedBy             WorkOrder?        @relation("HetUsedBy", fields: [usedById], references: [id])
-  finishedBy         WorkOrder?        @relation("HetFinishedBy", fields: [finishedById], references: [id])
-  workOrders         WorkOrder[]       @relation("WorkOrderHet")
-  workOrderHets      WorkOrderHet[]
-  steriliseHets      SteriliseHet[]
-  manufacturerHets   ManufacturerHet[]
+  createdBy        Staff?            @relation("HetCreatedBy", fields: [createdById], references: [id])
+  updatedBy        Staff?            @relation("HetUpdatedBy", fields: [updatedById], references: [id])
+  usedBy           WorkOrder?        @relation("HetUsedBy", fields: [usedById], references: [id])
+  finishedBy       WorkOrder?        @relation("HetFinishedBy", fields: [finishedById], references: [id])
+  workOrders       WorkOrder[]       @relation("WorkOrderHet")
+  workOrderHets    WorkOrderHet[]
+  steriliseHets    SteriliseHet[]
+  manufacturerHets ManufacturerHet[]
 
+  @@index([tenantId])
+  @@index([collectionUnitId])
+  @@index([collectionReceiptLineId])
   @@map("het")
 }
 
 model Workflow {
   id          String   @id @default(cuid())
+  tenantId    String   @default("ventas")
   name        String
-  code        String   @unique
+  code        String
   description String?
   active      Boolean  @default(true)
   createdById String?
@@ -188,11 +223,13 @@ model Workflow {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  createdBy   Staff?          @relation("WorkflowCreatedBy", fields: [createdById], references: [id])
-  updatedBy   Staff?          @relation("WorkflowUpdatedBy", fields: [updatedById], references: [id])
-  phases      WorkflowPhase[]
-  workOrders  WorkOrder[]
+  createdBy  Staff?          @relation("WorkflowCreatedBy", fields: [createdById], references: [id])
+  updatedBy  Staff?          @relation("WorkflowUpdatedBy", fields: [updatedById], references: [id])
+  phases     WorkflowPhase[]
+  workOrders WorkOrder[]
 
+  @@unique([tenantId, code])
+  @@index([tenantId])
   @@map("workflow")
 }
 
@@ -201,8 +238,8 @@ model WorkflowPhase {
   phaseId    String
   sortOrder  Int
 
-  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  phase      Phase    @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  phase    Phase    @relation(fields: [phaseId], references: [id], onDelete: Cascade)
 
   @@id([workflowId, phaseId])
   @@unique([workflowId, sortOrder])
@@ -210,27 +247,29 @@ model WorkflowPhase {
 }
 
 model Phase {
-  id             String             @id
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  createdById    String?
-  updatedById    String?
-  phaseName      String?
-  phaseShort     String?
-  phaseOrder     Int?
-  description    String?
-  bomId          String?
-  keyText        String?
+  id          String   @id
+  tenantId    String   @default("ventas")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+  updatedById String?
+  phaseName   String?
+  phaseShort  String?
+  phaseOrder  Int?
+  description String?
+  bomId       String?
+  keyText     String?
 
-  createdBy      Staff?             @relation("PhaseCreatedBy", fields: [createdById], references: [id])
-  updatedBy      Staff?             @relation("PhaseUpdatedBy", fields: [updatedById], references: [id])
-  bom            Bom?               @relation(fields: [bomId], references: [id])
-  procedures     PhaseProcedure[]
-  phaseEquips    PhasePhaseEquip[]
-  workflows      WorkflowPhase[]
-  currentWorkOrders WorkOrder[]      @relation("WorkOrderCurrentPhase")
-  nextWorkOrders WorkOrder[]         @relation("WorkOrderNextPhase")
+  createdBy         Staff?            @relation("PhaseCreatedBy", fields: [createdById], references: [id])
+  updatedBy         Staff?            @relation("PhaseUpdatedBy", fields: [updatedById], references: [id])
+  bom               Bom?              @relation(fields: [bomId], references: [id])
+  procedures        PhaseProcedure[]
+  phaseEquips       PhasePhaseEquip[]
+  workflows         WorkflowPhase[]
+  currentWorkOrders WorkOrder[]       @relation("WorkOrderCurrentPhase")
+  nextWorkOrders    WorkOrder[]       @relation("WorkOrderNextPhase")
 
+  @@index([tenantId])
   @@map("phase")
 }
 
@@ -245,9 +284,10 @@ model PhaseProcedure {
 }
 
 model PhaseEquip {
-  id          String            @id
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id          String   @id
+  tenantId    String   @default("ventas")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
   createdById String?
   updatedById String?
   equipId     String?
@@ -255,11 +295,12 @@ model PhaseEquip {
   description String?
   keyText     String?
 
-  createdBy   Staff?            @relation("PhaseEquipCreatedBy", fields: [createdById], references: [id])
-  updatedBy   Staff?            @relation("PhaseEquipUpdatedBy", fields: [updatedById], references: [id])
-  phases      PhasePhaseEquip[]
-  workOrders  WorkOrderPhaseEquip[]
+  createdBy  Staff?                @relation("PhaseEquipCreatedBy", fields: [createdById], references: [id])
+  updatedBy  Staff?                @relation("PhaseEquipUpdatedBy", fields: [updatedById], references: [id])
+  phases     PhasePhaseEquip[]
+  workOrders WorkOrderPhaseEquip[]
 
+  @@index([tenantId])
   @@map("phaseEquip")
 }
 
@@ -274,9 +315,10 @@ model PhasePhaseEquip {
 }
 
 model WorkOrder {
-  id                     String                @id
-  createdAt              DateTime              @default(now())
-  updatedAt              DateTime              @updatedAt
+  id                     String    @id
+  tenantId               String    @default("ventas")
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
   createdById            String?
   updatedById            String?
   hetId                  String?
@@ -289,39 +331,42 @@ model WorkOrder {
   prodEnd                DateTime?
   endSignPath            String?
   endSignById            String?
-  prodDuration           Decimal?              @db.Decimal(18, 4)
+  prodDuration           Decimal?  @db.Decimal(18, 4)
   manuId                 String?
   manuNumber             String?
   woNumber               String?
   reportPdfPath          String?
-  deleted                Boolean               @default(false)
+  deleted                Boolean   @default(false)
   forceField             Int?
   keyText                String?
   previousWoId           String?
-  steralisationCurrentId String?               @unique
+  steralisationCurrentId String?   @unique
   nextPhaseId            String?
   workflowId             String?
 
-  createdBy              Staff?                @relation("WorkOrderCreatedBy", fields: [createdById], references: [id])
-  updatedBy              Staff?                @relation("WorkOrderUpdatedBy", fields: [updatedById], references: [id])
-  het                    Het?                  @relation("WorkOrderHet", fields: [hetId], references: [id])
-  phase                  Phase?                @relation("WorkOrderCurrentPhase", fields: [phaseId], references: [id])
-  startSignBy            Staff?                @relation("WorkOrderStartSignBy", fields: [startSignById], references: [id])
-  endSignBy              Staff?                @relation("WorkOrderEndSignBy", fields: [endSignById], references: [id])
-  manufacturer           Manufacturer?         @relation(fields: [manuId], references: [id])
-  previousWo             WorkOrder?            @relation("WorkOrderPrevious", fields: [previousWoId], references: [id])
-  nextWorkOrders         WorkOrder[]           @relation("WorkOrderPrevious")
-  steralisationCurrent   Sterilise?            @relation("WorkOrderSterilisationCurrent", fields: [steralisationCurrentId], references: [id])
-  nextPhase              Phase?                @relation("WorkOrderNextPhase", fields: [nextPhaseId], references: [id])
-  workflow               Workflow?             @relation(fields: [workflowId], references: [id])
-  woSerials              WoSerial[]
-  sterilises             Sterilise[]
-  batchHets              WorkOrderHet[]
-  phaseEquips            WorkOrderPhaseEquip[]
-  usedHets               Het[]                 @relation("HetUsedBy")
-  finishedHets           Het[]                 @relation("HetFinishedBy")
+  createdBy             Staff?                          @relation("WorkOrderCreatedBy", fields: [createdById], references: [id])
+  updatedBy             Staff?                          @relation("WorkOrderUpdatedBy", fields: [updatedById], references: [id])
+  het                   Het?                            @relation("WorkOrderHet", fields: [hetId], references: [id])
+  phase                 Phase?                          @relation("WorkOrderCurrentPhase", fields: [phaseId], references: [id])
+  startSignBy           Staff?                          @relation("WorkOrderStartSignBy", fields: [startSignById], references: [id])
+  endSignBy             Staff?                          @relation("WorkOrderEndSignBy", fields: [endSignById], references: [id])
+  manufacturer          Manufacturer?                   @relation(fields: [manuId], references: [id])
+  previousWo            WorkOrder?                      @relation("WorkOrderPrevious", fields: [previousWoId], references: [id])
+  nextWorkOrders        WorkOrder[]                     @relation("WorkOrderPrevious")
+  steralisationCurrent  Sterilise?                      @relation("WorkOrderSterilisationCurrent", fields: [steralisationCurrentId], references: [id])
+  nextPhase             Phase?                          @relation("WorkOrderNextPhase", fields: [nextPhaseId], references: [id])
+  workflow              Workflow?                       @relation(fields: [workflowId], references: [id])
+  woSerials             WoSerial[]
+  sterilises            Sterilise[]
+  batchHets             WorkOrderHet[]
+  phaseEquips           WorkOrderPhaseEquip[]
+  usedHets              Het[]                           @relation("HetUsedBy")
+  finishedHets          Het[]                           @relation("HetFinishedBy")
+  inventoryLots         InventoryLot[]
+  inventoryConsumptions WorkOrderInventoryConsumption[]
 
   @@index([workflowId])
+  @@index([tenantId])
   @@map("workOrder")
 }
 
@@ -346,51 +391,55 @@ model WorkOrderPhaseEquip {
 }
 
 model WoSerial {
-  id          String     @id
-  createdOn   DateTime   @default(now())
-  createdById String?
-  updatedOn   DateTime   @updatedAt
-  updatedById String?
-  workOrderId String
-  bomRefId    String
+  id           String   @id
+  tenantId     String   @default("ventas")
+  createdOn    DateTime @default(now())
+  createdById  String?
+  updatedOn    DateTime @updatedAt
+  updatedById  String?
+  workOrderId  String
+  bomRefId     String
   serialNumber String?
-  keyText     String?
+  keyText      String?
 
-  createdBy   Staff?     @relation("WoSerialCreatedBy", fields: [createdById], references: [id])
-  updatedBy   Staff?     @relation("WoSerialUpdatedBy", fields: [updatedById], references: [id])
-  workOrder   WorkOrder  @relation(fields: [workOrderId], references: [id])
-  bomRef      BomLine    @relation(fields: [bomRefId], references: [id])
+  createdBy Staff?    @relation("WoSerialCreatedBy", fields: [createdById], references: [id])
+  updatedBy Staff?    @relation("WoSerialUpdatedBy", fields: [updatedById], references: [id])
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id])
+  bomRef    BomLine   @relation(fields: [bomRefId], references: [id])
 
+  @@index([tenantId])
   @@map("woSerial")
 }
 
 model Sterilise {
-  id          String         @id
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  createdById String?
-  workOrderId String
-  manuId      String?
-  direction   String?
-  result      Boolean?
-  betReading  Decimal?       @db.Decimal(18, 4)
-  quantity    Int?
-  comment     String?
-  imagePath   String?
-  signOn      DateTime?
-  signById    String?
+  id            String    @id
+  tenantId      String    @default("ventas")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  createdById   String?
+  workOrderId   String
+  manuId        String?
+  direction     String?
+  result        Boolean?
+  betReading    Decimal?  @db.Decimal(18, 4)
+  quantity      Int?
+  comment       String?
+  imagePath     String?
+  signOn        DateTime?
+  signById      String?
   signaturePath String?
-  keyText     String?
+  keyText       String?
 
-  createdBy   Staff?         @relation("SteriliseCreatedBy", fields: [createdById], references: [id])
-  updatedById String?
-  updatedBy   Staff?         @relation("SteriliseUpdatedBy", fields: [updatedById], references: [id])
-  workOrder   WorkOrder      @relation(fields: [workOrderId], references: [id])
-  manufacturer Manufacturer? @relation(fields: [manuId], references: [id])
-  signBy      Staff?         @relation("SteriliseSignBy", fields: [signById], references: [id])
-  batchHets   SteriliseHet[]
-  currentWorkOrder WorkOrder?  @relation("WorkOrderSterilisationCurrent")
+  createdBy        Staff?         @relation("SteriliseCreatedBy", fields: [createdById], references: [id])
+  updatedById      String?
+  updatedBy        Staff?         @relation("SteriliseUpdatedBy", fields: [updatedById], references: [id])
+  workOrder        WorkOrder      @relation(fields: [workOrderId], references: [id])
+  manufacturer     Manufacturer?  @relation(fields: [manuId], references: [id])
+  signBy           Staff?         @relation("SteriliseSignBy", fields: [signById], references: [id])
+  batchHets        SteriliseHet[]
+  currentWorkOrder WorkOrder?     @relation("WorkOrderSterilisationCurrent")
 
+  @@index([tenantId])
   @@map("sterilise")
 }
 
@@ -414,13 +463,464 @@ model ManufacturerHet {
   @@map("manufacturerHet")
 }
 
-model PrintLabel {
+model SupplyEntity {
+  id             String   @id
+  tenantId       String
+  name           String?
+  legalName      String?
+  externalCode   String?
+  sourceSystem   String?
+  legacyGroupKey String?
+  legacyClinicId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([legacyClinicId])
+  @@map("supplyEntity")
+}
+
+model CollectionPoint {
+  id             String   @id
+  tenantId       String
+  supplyEntityId String
+  legacyClinicId String?
+  hciCode        String?
+  displayName    String?
+  licenseName    String?
+  address        String?
+  postalCode     String?
+  telephone      String?
+  personInCharge String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([supplyEntityId])
+  @@index([legacyClinicId])
+  @@map("collectionPoint")
+}
+
+model CollectionUnit {
+  id                      String         @id
+  tenantId                String
+  supplyEntityId          String?
+  collectionPointId       String?
+  legacyHetId             String?
+  unitNumber              String?
+  parcelTrackingNumber    String?
+  status                  String
+  legacyDeliverId         String?
+  legacyCollectId         String?
+  legacyUsedByWorkOrderId String?
+  legacyNextHetId         String?
+  sourceSystem            String?
+  linkCompleteness        String?
+  semanticConfidence      String?
+  hiddenFromOperations    Boolean        @default(false)
+  deleted                 Boolean        @default(false)
+  legacyRaw               Json?
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+  hets                    Het[]
+  inventoryLots           InventoryLot[]
+
+  @@index([tenantId])
+  @@index([legacyHetId])
+  @@index([collectionPointId])
+  @@index([legacyUsedByWorkOrderId])
+  @@index([status])
+  @@map("collectionUnit")
+}
+
+model IssuanceOrder {
+  id                     String    @id
+  tenantId               String
+  supplyEntityId         String?
+  collectionPointId      String?
+  issuedAt               DateTime?
+  issuedBy               String?
+  legacyDeliverCollectId String?
+  legacyDirection        String?
+  semanticConfidence     String?
+  level                  String?
+  remarks                String?
+  legacyRaw              Json?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([collectionPointId])
+  @@index([legacyDeliverCollectId])
+  @@map("issuanceOrder")
+}
+
+model IssuanceOrderLine {
+  id                   String   @id @default(cuid())
+  tenantId             String
+  issuanceOrderId      String
+  collectionUnitId     String?
+  legacyHetId          String?
+  legacyHetNumber      String?
+  parcelTrackingNumber String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([issuanceOrderId, legacyHetId])
+  @@index([tenantId])
+  @@index([collectionUnitId])
+  @@map("issuanceOrderLine")
+}
+
+model CollectionUnitFulfilment {
+  id               String    @id @default(cuid())
+  tenantId         String
+  collectionUnitId String
+  fulfilledAt      DateTime?
+  fulfilledBy      String?
+  source           String?
+  evidencePath     String?
+  remarks          String?
+  inferred         Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([collectionUnitId, source])
+  @@index([tenantId])
+  @@map("collectionUnitFulfilment")
+}
+
+model CollectionOrder {
+  id                            String    @id
+  tenantId                      String
+  supplyEntityId                String?
+  collectionPointId             String?
+  requestedAt                   DateTime?
+  scheduledFor                  DateTime?
+  requestedBy                   String?
+  status                        String
+  legacyCollectDeliverCollectId String?
+  legacyDirection               String?
+  semanticConfidence            String?
+  legacyConflatedOrderReceipt   Boolean   @default(false)
+  level                         String?
+  remarks                       String?
+  legacyRaw                     Json?
+  createdAt                     DateTime  @default(now())
+  updatedAt                     DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([collectionPointId])
+  @@index([legacyCollectDeliverCollectId])
+  @@map("collectionOrder")
+}
+
+model CollectionReceipt {
+  id                            String    @id
+  tenantId                      String
+  collectionOrderId             String?
+  receivedAt                    DateTime?
+  receivedBy                    String?
+  signaturePath                 String?
+  remarks                       String?
+  legacyCollectDeliverCollectId String?
+  legacyConflatedOrderReceipt   Boolean   @default(false)
+  acceptanceState               String?
+  legacyRaw                     Json?
+  createdAt                     DateTime  @default(now())
+  updatedAt                     DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([collectionOrderId])
+  @@index([legacyCollectDeliverCollectId])
+  @@map("collectionReceipt")
+}
+
+model CollectionReceiptLine {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  collectionReceiptId String
+  collectionUnitId    String?
+  conditionStatus     String?
+  acceptanceStatus    String?
+  resultingHetId      String?
+  discrepancyReason   String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  hets                Het[]
+
+  @@unique([collectionReceiptId, collectionUnitId])
+  @@index([tenantId])
+  @@index([collectionUnitId])
+  @@index([resultingHetId])
+  @@map("collectionReceiptLine")
+}
+
+model InventoryReference {
+  id           String   @id
+  tenantId     String
+  refType      String
+  name         String
+  shortCode    String?
+  description  String?
+  sourceSystem String?
+  legacyRaw    Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([tenantId, refType, name])
+  @@index([tenantId])
+  @@index([refType])
+  @@map("inventoryReference")
+}
+
+model InventoryLocation {
+  id               String   @id
+  tenantId         String
+  locationType     String
+  name             String
+  parentLocationId String?
+  description      String?
+  imagePath        String?
+  sourceSystem     String?
+  legacyRaw        Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  parentLocation   InventoryLocation?     @relation("InventoryLocationTree", fields: [parentLocationId], references: [id])
+  childLocations   InventoryLocation[]    @relation("InventoryLocationTree")
+  balances         InventoryBalance[]
+  transactionsFrom InventoryTransaction[] @relation("InventoryTransactionFromLocation")
+  transactionsTo   InventoryTransaction[] @relation("InventoryTransactionToLocation")
+  lots             InventoryLot[]
+
+  @@index([tenantId])
+  @@index([locationType])
+  @@index([parentLocationId])
+  @@map("inventoryLocation")
+}
+
+model InventorySku {
+  id             String   @id
+  tenantId       String
+  sku            String?
+  description    String?
+  category       String?
+  brand          String?
+  size           String?
+  colour         String?
+  uom            String?
+  packQuantity   Decimal? @db.Decimal(18, 4)
+  threshold      Decimal? @db.Decimal(18, 4)
+  serialisedMode String?
+  qrImagePath    String?
+  mediaUrl       String?
+  qrPrintPath    String?
+  sourceSystem   String?
+  legacyRaw      Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  lots         InventoryLot[]
+  balances     InventoryBalance[]
+  transactions InventoryTransaction[]
+
+  @@index([tenantId])
+  @@index([sku])
+  @@index([category])
+  @@map("inventorySku")
+}
+
+model InventoryLot {
+  id                 String   @id
+  tenantId           String
+  inventorySkuId     String?
+  lotNumber          String?
+  inventoryType      String
+  status             String
+  quantityInitial    Decimal? @db.Decimal(18, 4)
+  quantityCurrent    Decimal? @db.Decimal(18, 4)
+  uom                String?
+  currentLocationId  String?
+  collectionUnitId   String?
+  hetId              String?  @unique
+  workOrderId        String?
+  sourceSystem       String?
+  legacyItemSerialId String?
+  legacyCheckInOutId String?
+  legacyHetId        String?
+  legacyRaw          Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  inventorySku    InventorySku?                   @relation(fields: [inventorySkuId], references: [id])
+  currentLocation InventoryLocation?              @relation(fields: [currentLocationId], references: [id])
+  collectionUnit  CollectionUnit?                 @relation(fields: [collectionUnitId], references: [id])
+  het             Het?                            @relation("HetInventoryLot", fields: [hetId], references: [id])
+  workOrder       WorkOrder?                      @relation(fields: [workOrderId], references: [id])
+  balances        InventoryBalance[]
+  transactions    InventoryTransaction[]
+  parentGenealogy InventoryGenealogy[]            @relation("InventoryGenealogyParent")
+  childGenealogy  InventoryGenealogy[]            @relation("InventoryGenealogyChild")
+  consumptions    WorkOrderInventoryConsumption[]
+
+  @@index([tenantId])
+  @@index([inventorySkuId])
+  @@index([collectionUnitId])
+  @@index([currentLocationId])
+  @@index([legacyItemSerialId])
+  @@index([legacyHetId])
+  @@index([inventoryType])
+  @@index([status])
+  @@map("inventoryLot")
+}
+
+model InventoryTransaction {
+  id                 String    @id
+  tenantId           String
+  inventorySkuId     String?
+  inventoryLotId     String?
+  transactionType    String
+  direction          String?
+  reason             String?
+  quantity           Decimal?  @db.Decimal(18, 4)
+  uom                String?
+  fromLocationId     String?
+  toLocationId       String?
+  workOrderId        String?
+  occurredAt         DateTime?
+  actor              String?
+  signaturePath      String?
+  remarks            String?
+  legacyRefNumber    String?
+  legacyRefNumberOut String?
+  sourceSystem       String?
+  legacyRaw          Json?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  inventorySku InventorySku?      @relation(fields: [inventorySkuId], references: [id])
+  inventoryLot InventoryLot?      @relation(fields: [inventoryLotId], references: [id])
+  fromLocation InventoryLocation? @relation("InventoryTransactionFromLocation", fields: [fromLocationId], references: [id])
+  toLocation   InventoryLocation? @relation("InventoryTransactionToLocation", fields: [toLocationId], references: [id])
+
+  @@index([tenantId])
+  @@index([inventorySkuId])
+  @@index([inventoryLotId])
+  @@index([transactionType])
+  @@index([occurredAt])
+  @@index([legacyRefNumber])
+  @@index([legacyRefNumberOut])
+  @@map("inventoryTransaction")
+}
+
+model InventoryBalance {
+  id                  String   @id
+  tenantId            String
+  inventorySkuId      String
+  inventoryLotId      String?
+  inventoryLocationId String?
+  quantity            Decimal? @db.Decimal(18, 4)
+  sourceSystem        String?
+  legacyRaw           Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  inventorySku      InventorySku       @relation(fields: [inventorySkuId], references: [id])
+  inventoryLot      InventoryLot?      @relation(fields: [inventoryLotId], references: [id])
+  inventoryLocation InventoryLocation? @relation(fields: [inventoryLocationId], references: [id])
+
+  @@unique([tenantId, inventorySkuId, inventoryLotId, inventoryLocationId])
+  @@index([tenantId])
+  @@index([inventorySkuId])
+  @@index([inventoryLotId])
+  @@index([inventoryLocationId])
+  @@map("inventoryBalance")
+}
+
+model InventoryGenealogy {
+  id                   String   @id @default(cuid())
+  tenantId             String
+  parentInventoryLotId String
+  childInventoryLotId  String
+  relationshipType     String
+  workOrderId          String?
+  phaseId              String?
+  sourceSystem         String?
+  legacyRaw            Json?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  parentInventoryLot InventoryLot @relation("InventoryGenealogyParent", fields: [parentInventoryLotId], references: [id])
+  childInventoryLot  InventoryLot @relation("InventoryGenealogyChild", fields: [childInventoryLotId], references: [id])
+
+  @@unique([parentInventoryLotId, childInventoryLotId, relationshipType])
+  @@index([tenantId])
+  @@index([parentInventoryLotId])
+  @@index([childInventoryLotId])
+  @@map("inventoryGenealogy")
+}
+
+model WorkOrderInventoryConsumption {
   id             String   @id @default(cuid())
+  tenantId       String
+  workOrderId    String
+  inventoryLotId String?
+  inventorySkuId String?
+  bomLineId      String?
+  quantity       Decimal? @db.Decimal(18, 4)
+  uom            String?
+  sourceSystem   String?
+  legacyRaw      Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workOrder    WorkOrder     @relation(fields: [workOrderId], references: [id])
+  inventoryLot InventoryLot? @relation(fields: [inventoryLotId], references: [id])
+
+  @@index([tenantId])
+  @@index([workOrderId])
+  @@index([inventoryLotId])
+  @@index([inventorySkuId])
+  @@index([bomLineId])
+  @@map("workOrderInventoryConsumption")
+}
+
+model InventoryImportReport {
+  id         String    @id @default(cuid())
+  tenantId   String
+  source     String
+  dryRun     Boolean   @default(false)
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  report     Json
+
+  @@index([tenantId])
+  @@map("inventoryImportReport")
+}
+
+model ProcurementImportReport {
+  id         String    @id @default(cuid())
+  tenantId   String
+  source     String
+  dryRun     Boolean   @default(false)
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  report     Json
+
+  @@index([tenantId])
+  @@map("procurementImportReport")
+}
+
+model PrintLabel {
+  id             String    @id @default(cuid())
+  tenantId       String    @default("ventas")
   path           String?
   fileUrl        String?
   createdTime    DateTime?
   lastModifiedBy String?
   mimeType       String?
 
+  @@index([tenantId])
   @@map("printLabel")
 }

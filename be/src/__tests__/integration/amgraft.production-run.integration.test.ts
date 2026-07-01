@@ -4,10 +4,13 @@ import {
   createWorkOrder,
   advanceWorkOrder,
   getWorkOrder,
+  startWorkOrderPhase,
+  finishWorkOrderPhase,
 } from '../../services/workOrderService.js';
 import { generateBatchRecord } from '../../services/manufacturingService.js';
 import { createSterilisation } from '../../services/sterilisationService.js';
 import { useHet, finishHet } from '../../services/hetService.js';
+import { DEFAULT_TENANT_ID } from '../../services/tenant.js';
 
 // Full AmGraft-style production run against the real DB: create -> batch record
 // -> advance through phases -> sterilisation/BET gate -> release -> HET lifecycle.
@@ -17,25 +20,26 @@ const phaseNames = ['Preparation', 'Production', 'Sterilisation', 'BET Verificat
 
 const ctx: {
   actorId: string;
+  tenantId: string;
   workflowId: string;
   phaseIds: string[];
   hetId: string;
   workOrderId?: string;
-} = { actorId: '', workflowId: '', phaseIds: [], hetId: '' };
+} = { actorId: '', tenantId: DEFAULT_TENANT_ID, workflowId: '', phaseIds: [], hetId: '' };
 
 beforeAll(async () => {
   // Actor (any staff row; create a throwaway one if none exist).
   let actor = await prisma.staff.findFirst({});
   if (!actor) {
     actor = await prisma.staff.create({
-      data: { id: `TEST-ACTOR-${Date.now().toString(36)}`, email: `test-${Date.now()}@example.test` },
+      data: { id: `TEST-ACTOR-${Date.now().toString(36)}`, tenantId: ctx.tenantId, email: `test-${Date.now()}@example.test` },
     });
   }
   ctx.actorId = actor.id;
 
   const code = `TESTPROD-${Date.now().toString(36)}`;
   const workflow = await prisma.workflow.create({
-    data: { name: 'Test Product', code, description: 'integration test workflow', active: true },
+    data: { tenantId: ctx.tenantId, name: 'Test Product', code, description: 'integration test workflow', active: true },
   });
   ctx.workflowId = workflow.id;
 
@@ -45,7 +49,7 @@ beforeAll(async () => {
     const phaseId = `${code}:${phaseNames[i]}`;
     ctx.phaseIds.push(phaseId);
     await prisma.phase.create({
-      data: { id: phaseId, phaseName: phaseNames[i], phaseOrder: i, phaseShort: phaseNames[i].slice(0, 4), keyText: phaseId },
+      data: { id: phaseId, tenantId: ctx.tenantId, phaseName: phaseNames[i], phaseOrder: i, phaseShort: phaseNames[i].slice(0, 4), keyText: phaseId },
     });
     await prisma.workflowPhase.create({
       data: { workflowId: workflow.id, phaseId, sortOrder: i },
@@ -53,7 +57,7 @@ beforeAll(async () => {
   }
 
   ctx.hetId = `${code}:HET`;
-  await prisma.het.create({ data: { id: ctx.hetId, hetNumber: `${code}-H1`, quantity: 1 } });
+  await prisma.het.create({ data: { id: ctx.hetId, tenantId: ctx.tenantId, hetNumber: `${code}-H1`, quantity: 1 } });
 });
 
 afterAll(async () => {
@@ -76,7 +80,7 @@ afterAll(async () => {
 describe('AmGraft production run (integration)', () => {
   it('runs a work order through every phase with the sterilisation gate and HET lifecycle', async () => {
     // 1. Create at the first phase (Preparation).
-    const wo = await createWorkOrder({ workflowId: ctx.workflowId }, ctx.actorId);
+    const wo = await createWorkOrder({ workflowId: ctx.workflowId, hetId: ctx.hetId }, ctx.actorId);
     ctx.workOrderId = wo.id;
     expect(wo.phaseOrder).toBe(0);
     expect(wo.phase?.phaseName).toBe('Preparation');
@@ -88,7 +92,9 @@ describe('AmGraft production run (integration)', () => {
     expect(withBatch?.manuId).toBe(batch.id);
     expect(withBatch?.manuNumber).toBe(batch.manuNumber);
 
-    // 3. Advance to Production.
+    // 3. Complete Preparation, then advance to Production.
+    await startWorkOrderPhase(wo.id, ctx.actorId);
+    await finishWorkOrderPhase(wo.id, ctx.actorId);
     let cur = await advanceWorkOrder(wo.id, ctx.actorId);
     expect(cur.phaseOrder).toBe(1);
     expect(cur.phase?.phaseName).toBe('Production');

@@ -1,4 +1,18 @@
 import { prisma } from '../src/db/prisma.js';
+import { DEFAULT_TENANT_ID, DEFAULT_TENANT_NAME, DEFAULT_TENANT_SLUG } from '../src/services/tenant.js';
+
+async function seedTenant() {
+  return prisma.tenant.upsert({
+    where: { slug: DEFAULT_TENANT_SLUG },
+    update: { name: DEFAULT_TENANT_NAME, active: true },
+    create: {
+      id: DEFAULT_TENANT_ID,
+      slug: DEFAULT_TENANT_SLUG,
+      name: DEFAULT_TENANT_NAME,
+      active: true,
+    },
+  });
+}
 
 async function seedRoles() {
   const roles = [
@@ -31,7 +45,7 @@ async function seedOwner(ownerRoleId: string) {
   if (existing) {
     await prisma.staff.update({
       where: { id: existing.id },
-      data: { roleId: ownerRoleId },
+      data: { roleId: ownerRoleId, tenantId: DEFAULT_TENANT_ID },
     });
     console.log('Owner user already exists; role ensured');
     return;
@@ -42,6 +56,7 @@ async function seedOwner(ownerRoleId: string) {
       email: ownerEmail,
       name: 'System Owner',
       passwordHash: bcrypt.hashSync(ownerPassword, 12),
+      tenantId: DEFAULT_TENANT_ID,
       roleId: ownerRoleId,
       active: true,
     },
@@ -62,9 +77,11 @@ async function seedAmGraftWorkflow() {
   ];
 
   const workflow = await prisma.workflow.upsert({
-    where: { code: 'AMG' },
-    update: {},
+    where: { tenantId_code: { tenantId: DEFAULT_TENANT_ID, code: 'AMG' } },
+    update: { tenantId: DEFAULT_TENANT_ID },
     create: {
+      id: 'workflow-amg',
+      tenantId: DEFAULT_TENANT_ID,
       name: 'AmGraft',
       code: 'AMG',
       description: 'AmGraft® tissue-engineered dental graft manufacturing workflow.',
@@ -80,6 +97,7 @@ async function seedAmGraftWorkflow() {
     await prisma.phase.upsert({
       where: { id: phaseId },
       update: {
+        tenantId: DEFAULT_TENANT_ID,
         phaseName: phase.phaseName,
         phaseShort: phase.phaseShort,
         phaseOrder: index,
@@ -87,6 +105,7 @@ async function seedAmGraftWorkflow() {
       },
       create: {
         id: phaseId,
+        tenantId: DEFAULT_TENANT_ID,
         phaseName: phase.phaseName,
         phaseShort: phase.phaseShort,
         phaseOrder: index,
@@ -116,6 +135,7 @@ async function seedAmGraftWorkflow() {
 }
 
 async function main() {
+  await seedTenant();
   const roles = await seedRoles();
   const ownerRole = roles.find((r) => r.key === 'owner');
   if (!ownerRole) {

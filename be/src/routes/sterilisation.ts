@@ -46,6 +46,10 @@ function actorIdOf(req: { user: unknown }): string {
   return (req.user as JwtPayload).id;
 }
 
+function tenantIdOf(req: { user: unknown }): string {
+  return (req.user as JwtPayload).tenantId;
+}
+
 export const sterilisationRoutes: FastifyPluginAsyncZod = async function (app) {
   app.post(
     '/',
@@ -67,6 +71,7 @@ export const sterilisationRoutes: FastifyPluginAsyncZod = async function (app) {
         const created = await sterilisationService.createSterilisation(
           req.body,
           actorIdOf(req),
+          tenantIdOf(req),
         );
         return reply.status(201).send(created);
       } catch (err) {
@@ -96,7 +101,7 @@ export const sterilisationRoutes: FastifyPluginAsyncZod = async function (app) {
       },
     },
     async (req) => {
-      return sterilisationService.listSterilisations(req.query.workOrderId);
+      return sterilisationService.listSterilisations(req.query.workOrderId, tenantIdOf(req));
     },
   );
 
@@ -121,6 +126,7 @@ export const sterilisationRoutes: FastifyPluginAsyncZod = async function (app) {
           req.params.id,
           req.body.result,
           actorIdOf(req),
+          tenantIdOf(req),
         );
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError) {

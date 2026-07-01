@@ -34,11 +34,21 @@ export interface WorkflowDetail {
   phases: WorkflowPhaseBinding[];
 }
 
+function asWorkflowList(data: unknown): WorkflowSummary[] {
+  if (Array.isArray(data)) return data as WorkflowSummary[];
+  if (data && typeof data === 'object') {
+    const envelope = data as { data?: unknown; items?: unknown };
+    if (Array.isArray(envelope.items)) return envelope.items as WorkflowSummary[];
+    if (Array.isArray(envelope.data)) return envelope.data as WorkflowSummary[];
+  }
+  return [];
+}
+
 export async function fetchWorkflows(activeOnly = false): Promise<WorkflowSummary[]> {
-  const { data } = await api.get<WorkflowSummary[]>('/api/workflows', {
+  const { data } = await api.get<unknown>('/api/workflows', {
     params: activeOnly ? { active: 'true' } : undefined,
   });
-  return data;
+  return asWorkflowList(data);
 }
 
 export async function fetchWorkflow(id: string): Promise<WorkflowDetail> {

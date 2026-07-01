@@ -120,6 +120,28 @@ const phaseEquipmentExample = {
   _count: { phases: 2, workOrders: 12 },
 };
 
+const phaseProcedureBindingExample = {
+  phaseId: 'phase-intake',
+  procedureId: 'proc-intake-checklist',
+  procedure: {
+    id: 'proc-intake-checklist',
+    procedureName: 'Intake checklist',
+    procedureShort: 'INTAKE-CHECK',
+    procedureDesc: 'Verify HET identity, packaging, and required receiving evidence.',
+  },
+};
+
+const phaseEquipmentBindingExample = {
+  phaseId: 'phase-intake',
+  phaseEquipId: 'equip-heat-sealer',
+  phaseEquip: {
+    id: 'equip-heat-sealer',
+    equipId: 'EQ-SEAL-01',
+    name: 'Heat sealer',
+    description: 'Validated pouch heat sealer',
+  },
+};
+
 const workOrderExample = {
   id: 'WO-1001',
   woNumber: 'WO-1001',
@@ -265,6 +287,12 @@ const successExamples: Record<string, unknown> = {
   getPhase: phaseExample,
   updatePhase: { ...phaseExample, description: 'Updated phase instructions.' },
   deletePhase: { success: true },
+  listPhaseProcedures: [phaseProcedureBindingExample],
+  addPhaseProcedure: phaseProcedureBindingExample,
+  deletePhaseProcedure: { success: true },
+  listPhaseEquipmentBindings: [phaseEquipmentBindingExample],
+  addPhaseEquipment: phaseEquipmentBindingExample,
+  deletePhaseEquipmentBinding: { success: true },
   listProcedures: [procedureExample],
   createProcedure: procedureExample,
   getProcedure: procedureExample,
@@ -395,6 +423,8 @@ const requestExamples: Record<string, unknown> = {
   updateWorkflow: { description: 'Updated workflow description', active: true, phases: [{ phaseId: 'phase-intake', sortOrder: 10 }] },
   createPhase: { phaseName: 'Intake', phaseShort: 'INT', phaseOrder: 10, description: 'Initial HET intake and preparation.', keyText: 'INTAKE' },
   updatePhase: { description: 'Updated phase instructions.' },
+  addPhaseProcedure: { procedureId: 'proc-intake-checklist' },
+  addPhaseEquipment: { phaseEquipId: 'equip-heat-sealer' },
   createProcedure: { procedureName: 'Intake checklist', procedureShort: 'INTAKE-CHECK', procedureDesc: 'Verify HET identity and packaging.', keyText: 'INTAKE_CHECKLIST' },
   updateProcedure: { procedureDesc: 'Updated controlled instruction.' },
   createBom: { bomName: 'AmGraft intake BOM', keyText: 'AMGRAFT_INTAKE' },
@@ -432,6 +462,8 @@ const parameterExamples: Record<string, unknown> = {
   workOrderId: 'WO-1001',
   bomId: 'bom-amgraft-intake',
   includeDeleted: 'false',
+  procedureId: 'proc-intake-checklist',
+  phaseEquipId: 'equip-heat-sealer',
 };
 
 const errorExamples: Record<string, { summary: string; value: { error: string } }> = {
@@ -607,6 +639,54 @@ const methodPolicies: Record<string, MethodPolicy> = {
     omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'Phase updates are PATCH-only and delete is guarded to unused phases so workflow/work-order history is protected.' }],
     destructiveDeletes: 'not-applicable',
     notes: 'Admin/owner delete path for unused phase master data; referenced phases return conflict.',
+  },
+  listPhaseProcedures: {
+    resource: 'Phase procedure binding',
+    completeness: 'complete-binding-crud',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'Bindings are managed as add/remove set membership; DELETE only removes the join row and never deletes master data.' }],
+    destructiveDeletes: 'not-applicable',
+    notes: 'Tenant-scoped procedure bindings for phase-level controlled instructions.',
+  },
+  addPhaseProcedure: {
+    resource: 'Phase procedure binding',
+    completeness: 'complete-binding-crud',
+    allowedMethods: ['POST'],
+    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'Bindings are managed as add/remove set membership; DELETE only removes the join row and never deletes master data.' }],
+    destructiveDeletes: 'not-applicable',
+    notes: 'Admin/owner idempotent add path for phase procedure bindings.',
+  },
+  deletePhaseProcedure: {
+    resource: 'Phase procedure binding',
+    completeness: 'complete-binding-crud',
+    allowedMethods: ['DELETE'],
+    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'Bindings are managed as add/remove set membership; DELETE only removes the join row and never deletes master data.' }],
+    destructiveDeletes: 'not-applicable',
+    notes: 'Admin/owner remove path for phase procedure bindings; procedure master data is not deleted.',
+  },
+  listPhaseEquipmentBindings: {
+    resource: 'Phase equipment binding',
+    completeness: 'complete-binding-crud',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'Bindings are managed as add/remove set membership; DELETE only removes the join row and never deletes master data.' }],
+    destructiveDeletes: 'not-applicable',
+    notes: 'Tenant-scoped allowed-equipment bindings for phase execution checks.',
+  },
+  addPhaseEquipment: {
+    resource: 'Phase equipment binding',
+    completeness: 'complete-binding-crud',
+    allowedMethods: ['POST'],
+    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'Bindings are managed as add/remove set membership; DELETE only removes the join row and never deletes master data.' }],
+    destructiveDeletes: 'not-applicable',
+    notes: 'Admin/owner idempotent add path for phase allowed-equipment bindings.',
+  },
+  deletePhaseEquipmentBinding: {
+    resource: 'Phase equipment binding',
+    completeness: 'complete-binding-crud',
+    allowedMethods: ['DELETE'],
+    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'Bindings are managed as add/remove set membership; DELETE only removes the join row and never deletes master data.' }],
+    destructiveDeletes: 'not-applicable',
+    notes: 'Admin/owner remove path for phase equipment bindings; equipment master data is not deleted.',
   },
   listBomLines: {
     resource: 'BOM line',

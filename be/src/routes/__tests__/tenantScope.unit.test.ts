@@ -13,6 +13,12 @@ const mocks = vi.hoisted(() => ({
     createPhase: vi.fn(),
     updatePhase: vi.fn(),
     deletePhase: vi.fn(),
+    listPhaseProcedures: vi.fn(),
+    addPhaseProcedure: vi.fn(),
+    deletePhaseProcedure: vi.fn(),
+    listPhaseEquipmentBindings: vi.fn(),
+    addPhaseEquipment: vi.fn(),
+    deletePhaseEquipment: vi.fn(),
   },
   masterDataService: {
     listProcedures: vi.fn(),
@@ -185,6 +191,28 @@ const phaseEquipmentDetail = {
   _count: { phases: 0, workOrders: 0 },
 };
 
+const phaseProcedureBinding = {
+  phaseId: 'phase-1',
+  procedureId: 'procedure-1',
+  procedure: {
+    id: 'procedure-1',
+    procedureName: 'Intake checklist',
+    procedureShort: 'INTAKE',
+    procedureDesc: null,
+  },
+};
+
+const phaseEquipmentBinding = {
+  phaseId: 'phase-1',
+  phaseEquipId: 'equip-1',
+  phaseEquip: {
+    id: 'equip-1',
+    equipId: 'EQ-1',
+    name: 'Heat sealer',
+    description: null,
+  },
+};
+
 const workOrderDetail = {
   id: 'wo-1',
   tenantId,
@@ -338,6 +366,12 @@ function resetServiceMocks() {
   mocks.phaseService.createPhase.mockResolvedValue(phaseDetail);
   mocks.phaseService.updatePhase.mockResolvedValue(phaseDetail);
   mocks.phaseService.deletePhase.mockResolvedValue({ success: true });
+  mocks.phaseService.listPhaseProcedures.mockResolvedValue([]);
+  mocks.phaseService.addPhaseProcedure.mockResolvedValue(phaseProcedureBinding);
+  mocks.phaseService.deletePhaseProcedure.mockResolvedValue({ success: true });
+  mocks.phaseService.listPhaseEquipmentBindings.mockResolvedValue([]);
+  mocks.phaseService.addPhaseEquipment.mockResolvedValue(phaseEquipmentBinding);
+  mocks.phaseService.deletePhaseEquipment.mockResolvedValue({ success: true });
   mocks.masterDataService.listProcedures.mockResolvedValue([]);
   mocks.masterDataService.getProcedure.mockResolvedValue(null);
   mocks.masterDataService.createProcedure.mockResolvedValue(procedureDetail);
@@ -462,6 +496,12 @@ describe('route tenant propagation', () => {
 
       await get('/api/phases/phase-1');
       expect(mocks.phaseService.getPhase).toHaveBeenCalledWith('phase-1', tenantId);
+
+      await get('/api/phases/phase-1/procedures');
+      expect(mocks.phaseService.listPhaseProcedures).toHaveBeenCalledWith('phase-1', tenantId);
+
+      await get('/api/phases/phase-1/equipment');
+      expect(mocks.phaseService.listPhaseEquipmentBindings).toHaveBeenCalledWith('phase-1', tenantId);
 
       await get('/api/master-data/procedures');
       expect(mocks.masterDataService.listProcedures).toHaveBeenCalledWith(tenantId);
@@ -660,6 +700,18 @@ describe('route tenant propagation', () => {
 
       await injectJson('DELETE', '/api/phases/phase-1');
       expect(mocks.phaseService.deletePhase).toHaveBeenCalledWith('phase-1', tenantId);
+
+      await injectJson('POST', '/api/phases/phase-1/procedures', { procedureId: 'procedure-1' });
+      expect(mocks.phaseService.addPhaseProcedure).toHaveBeenCalledWith('phase-1', 'procedure-1', tenantId);
+
+      await injectJson('DELETE', '/api/phases/phase-1/procedures/procedure-1');
+      expect(mocks.phaseService.deletePhaseProcedure).toHaveBeenCalledWith('phase-1', 'procedure-1', tenantId);
+
+      await injectJson('POST', '/api/phases/phase-1/equipment', { phaseEquipId: 'equip-1' });
+      expect(mocks.phaseService.addPhaseEquipment).toHaveBeenCalledWith('phase-1', 'equip-1', tenantId);
+
+      await injectJson('DELETE', '/api/phases/phase-1/equipment/equip-1');
+      expect(mocks.phaseService.deletePhaseEquipment).toHaveBeenCalledWith('phase-1', 'equip-1', tenantId);
 
       await injectJson('POST', '/api/master-data/procedures', {
         procedureName: 'Intake checklist',

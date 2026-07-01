@@ -72,6 +72,28 @@ export interface PhaseEquipmentCatalogItem {
   _count?: { phases?: number; workOrders?: number };
 }
 
+export interface PhaseProcedureBinding {
+  phaseId: string;
+  procedureId: string;
+  procedure: {
+    id: string;
+    procedureName: string | null;
+    procedureShort: string | null;
+    procedureDesc: string | null;
+  };
+}
+
+export interface PhaseEquipmentBinding {
+  phaseId: string;
+  phaseEquipId: string;
+  phaseEquip: {
+    id: string;
+    equipId: string | null;
+    name: string | null;
+    description: string | null;
+  };
+}
+
 export interface WorkflowPhaseBinding {
   workflowId: string;
   phaseId: string;
@@ -143,6 +165,36 @@ export async function updatePhase(id: string, payload: PhaseMutationPayload): Pr
 
 export async function deletePhase(id: string): Promise<{ success: true }> {
   const { data } = await api.delete<{ success: true }>(`/api/phases/${id}`);
+  return data;
+}
+
+export async function fetchPhaseProcedures(phaseId: string): Promise<PhaseProcedureBinding[]> {
+  const { data } = await api.get<PhaseProcedureBinding[]>(`/api/phases/${phaseId}/procedures`);
+  return data;
+}
+
+export async function addPhaseProcedure(phaseId: string, procedureId: string): Promise<PhaseProcedureBinding> {
+  const { data } = await api.post<PhaseProcedureBinding>(`/api/phases/${phaseId}/procedures`, { procedureId });
+  return data;
+}
+
+export async function deletePhaseProcedure(phaseId: string, procedureId: string): Promise<{ success: true }> {
+  const { data } = await api.delete<{ success: true }>(`/api/phases/${phaseId}/procedures/${procedureId}`);
+  return data;
+}
+
+export async function fetchPhaseEquipmentBindings(phaseId: string): Promise<PhaseEquipmentBinding[]> {
+  const { data } = await api.get<PhaseEquipmentBinding[]>(`/api/phases/${phaseId}/equipment`);
+  return data;
+}
+
+export async function addPhaseEquipment(phaseId: string, phaseEquipId: string): Promise<PhaseEquipmentBinding> {
+  const { data } = await api.post<PhaseEquipmentBinding>(`/api/phases/${phaseId}/equipment`, { phaseEquipId });
+  return data;
+}
+
+export async function deletePhaseEquipmentBinding(phaseId: string, phaseEquipId: string): Promise<{ success: true }> {
+  const { data } = await api.delete<{ success: true }>(`/api/phases/${phaseId}/equipment/${phaseEquipId}`);
   return data;
 }
 

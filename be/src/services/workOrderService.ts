@@ -363,7 +363,7 @@ async function getLegacyContextForWorkOrder(workOrder: OperationalWorkOrder) {
   return buildLegacyWorkOrderContext(peers);
 }
 
-export async function startWorkOrderPhase(id: string, actorId: string) {
+export async function startWorkOrderPhase(id: string, actorId: string, signatureDataUrl?: string) {
   const workOrder = await prisma.workOrder.findUnique({
     where: { id },
     select: { id: true, hetId: true, prodStart: true },
@@ -385,6 +385,7 @@ export async function startWorkOrderPhase(id: string, actorId: string) {
       where: { id },
       data: {
         prodStart: new Date(),
+        startSignPath: signatureDataUrl,
         startSignById: actorId,
         updatedById: actorId,
       },
@@ -394,7 +395,7 @@ export async function startWorkOrderPhase(id: string, actorId: string) {
   return getDecoratedWorkOrderOrThrow(id);
 }
 
-export async function finishWorkOrderPhase(id: string, actorId: string) {
+export async function finishWorkOrderPhase(id: string, actorId: string, signatureDataUrl?: string) {
   const workOrder = await prisma.workOrder.findUnique({
     where: { id },
     select: { id: true, prodStart: true, prodEnd: true },
@@ -416,6 +417,7 @@ export async function finishWorkOrderPhase(id: string, actorId: string) {
       where: { id },
       data: {
         prodEnd: new Date(),
+        endSignPath: signatureDataUrl,
         endSignById: actorId,
         updatedById: actorId,
       },

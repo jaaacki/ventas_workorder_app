@@ -51,6 +51,10 @@ const createBodySchema = z.object({
   hetId: z.string().optional(),
 });
 
+const phaseSignoffBodySchema = z.object({
+  signatureDataUrl: z.string().min(1).optional(),
+}).optional();
+
 function actorIdOf(req: { user: unknown }): string {
   return (req.user as JwtPayload).id;
 }
@@ -129,6 +133,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
       onRequest: [app.authenticate],
       schema: {
         params: z.object({ id: z.string() }),
+        body: phaseSignoffBodySchema,
         response: {
           200: workOrderDetailSchema,
           401: errorResponse,
@@ -139,7 +144,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req, reply) => {
       try {
-        return await workOrderService.startWorkOrderPhase(req.params.id, actorIdOf(req));
+        return await workOrderService.startWorkOrderPhase(req.params.id, actorIdOf(req), req.body?.signatureDataUrl);
       } catch (err) {
         if (err instanceof Error && err.message.startsWith('cannot start:')) {
           return reply.status(409).send({ error: err.message });
@@ -158,6 +163,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
       onRequest: [app.authenticate],
       schema: {
         params: z.object({ id: z.string() }),
+        body: phaseSignoffBodySchema,
         response: {
           200: workOrderDetailSchema,
           401: errorResponse,
@@ -168,7 +174,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req, reply) => {
       try {
-        return await workOrderService.finishWorkOrderPhase(req.params.id, actorIdOf(req));
+        return await workOrderService.finishWorkOrderPhase(req.params.id, actorIdOf(req), req.body?.signatureDataUrl);
       } catch (err) {
         if (err instanceof Error && err.message.startsWith('cannot finish:')) {
           return reply.status(409).send({ error: err.message });

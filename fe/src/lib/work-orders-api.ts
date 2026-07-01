@@ -143,13 +143,13 @@ export async function createWorkOrder(payload: {
   return data;
 }
 
-export async function startWorkOrderPhase(id: string): Promise<WorkOrderDetail> {
-  const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/start`);
+export async function startWorkOrderPhase(id: string, signatureDataUrl?: string): Promise<WorkOrderDetail> {
+  const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/start`, signatureDataUrl ? { signatureDataUrl } : {});
   return data;
 }
 
-export async function finishWorkOrderPhase(id: string): Promise<WorkOrderDetail> {
-  const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/finish`);
+export async function finishWorkOrderPhase(id: string, signatureDataUrl?: string): Promise<WorkOrderDetail> {
+  const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/finish`, signatureDataUrl ? { signatureDataUrl } : {});
   return data;
 }
 

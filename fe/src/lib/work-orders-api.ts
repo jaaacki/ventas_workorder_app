@@ -1,4 +1,5 @@
 import api from './api';
+import type { InventoryGenealogyEdge, InventoryLot, InventoryTransaction } from './inventory-api';
 
 export interface WorkOrderWorkflowRef {
   id: string;
@@ -115,6 +116,35 @@ export interface WorkOrderDetail extends WorkOrderSummary {
   phaseId: string | null;
 }
 
+export interface WorkOrderInventoryTrace {
+  subject: { type: 'workOrder'; id: string; label?: string | null };
+  lots: InventoryLot[];
+  transactions: InventoryTransaction[];
+  consumptions: Array<{
+    id: string;
+    workOrderId: string;
+    inventoryLotId: string | null;
+    inventorySkuId: string | null;
+    bomLineId: string | null;
+    quantity: string | number | null;
+    uom: string | null;
+  }>;
+  genealogy: InventoryGenealogyEdge[];
+  hets: Array<{
+    id: string;
+    hetNumber: string | null;
+    collectionUnitId: string | null;
+    usedById: string | null;
+    finishedById: string | null;
+  }>;
+  workOrders: Array<{
+    id: string;
+    woNumber: string | null;
+    hetId: string | null;
+    phaseOrder: number | null;
+  }>;
+}
+
 function asWorkOrderList(data: unknown): WorkOrderSummary[] {
   if (Array.isArray(data)) return data as WorkOrderSummary[];
   if (data && typeof data === 'object') {
@@ -132,6 +162,11 @@ export async function fetchWorkOrders(): Promise<WorkOrderSummary[]> {
 
 export async function fetchWorkOrder(id: string): Promise<WorkOrderDetail> {
   const { data } = await api.get<WorkOrderDetail>(`/api/work-orders/${id}`);
+  return data;
+}
+
+export async function fetchWorkOrderInventoryTrace(id: string): Promise<WorkOrderInventoryTrace> {
+  const { data } = await api.get<WorkOrderInventoryTrace>(`/api/work-orders/${id}/inventory-trace`);
   return data;
 }
 

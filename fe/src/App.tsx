@@ -10,6 +10,7 @@ import UsersPage from './pages/UsersPage';
 import RolesPage from './pages/RolesPage';
 import WorkflowsPage from './pages/WorkflowsPage';
 import WorkOrdersPage from './pages/WorkOrdersPage';
+import WorkOrderDetailPage from './pages/WorkOrderDetailPage';
 import ProcurementPage from './pages/ProcurementPage';
 import InventoryPage from './pages/InventoryPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -58,6 +59,16 @@ function App() {
               <ProtectedRoute roles={['owner', 'admin']}>
                 <DashboardLayout>
                   <WorkflowsPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/work-orders/:id"
+            element={
+              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+                <DashboardLayout>
+                  <WorkOrderDetailPage />
                 </DashboardLayout>
               </ProtectedRoute>
             }

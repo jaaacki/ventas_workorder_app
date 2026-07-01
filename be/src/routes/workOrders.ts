@@ -4,14 +4,29 @@ import { Prisma } from '@prisma/client';
 import type { JwtPayload } from '../plugins/auth.js';
 import * as workOrderService from '../services/workOrderService.js';
 import * as inventoryTraceService from '../services/inventoryTraceService.js';
+import { inventoryTraceSchema } from './inventoryTraceSchemas.js';
 
 const errorResponse = z.object({ error: z.string() });
+const decimalish = z.union([z.number(), z.string(), z.custom<Prisma.Decimal>()]);
 
 const workflowRefSchema = z.object({
   id: z.string(),
   name: z.string(),
   code: z.string(),
-}).passthrough();
+  phases: z
+    .array(
+      z.object({
+        sortOrder: z.number(),
+        phase: z.object({
+          id: z.string(),
+          phaseName: z.string().nullable(),
+          phaseShort: z.string().nullable(),
+          phaseOrder: z.number().nullable(),
+        }),
+      }),
+    )
+    .optional(),
+});
 
 const phaseRefSchema = z.object({
   id: z.string(),
@@ -20,32 +35,74 @@ const phaseRefSchema = z.object({
   phaseOrder: z.number().nullable(),
 });
 
-const workOrderSummarySchema = z
-  .object({
-    id: z.string(),
-    woNumber: z.string().nullable(),
-    workflowId: z.string().nullable(),
-    phaseOrder: z.number().nullable(),
-    prodStart: z.date().nullable(),
-    prodEnd: z.date().nullable(),
-    workflow: workflowRefSchema.nullable(),
-  })
-  .passthrough();
+const workOrderPhaseTimelineSchema = z.object({
+  id: z.string(),
+  phaseName: z.string().nullable(),
+  phaseShort: z.string().nullable(),
+  phaseOrder: z.number().nullable(),
+  sortOrder: z.number(),
+  state: z.string(),
+});
 
-const workOrderDetailSchema = z
-  .object({
-    id: z.string(),
-    woNumber: z.string().nullable(),
-    workflowId: z.string().nullable(),
-    hetId: z.string().nullable(),
-    phaseId: z.string().nullable(),
-    phaseOrder: z.number().nullable(),
-    prodStart: z.date().nullable(),
-    prodEnd: z.date().nullable(),
-    workflow: workflowRefSchema.nullable(),
-    phase: phaseRefSchema.nullable(),
-  })
-  .passthrough();
+const workOrderSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+  createdById: z.string().nullable(),
+  updatedById: z.string().nullable(),
+  hetId: z.string().nullable(),
+  phaseId: z.string().nullable(),
+  phaseOrder: z.number().nullable(),
+  phaseShort: z.string().nullable(),
+  prodStart: z.date().nullable(),
+  startSignPath: z.string().nullable(),
+  startSignById: z.string().nullable(),
+  prodEnd: z.date().nullable(),
+  endSignPath: z.string().nullable(),
+  endSignById: z.string().nullable(),
+  prodDuration: decimalish.nullable(),
+  manuId: z.string().nullable(),
+  manuNumber: z.string().nullable(),
+  woNumber: z.string().nullable(),
+  reportPdfPath: z.string().nullable(),
+  deleted: z.boolean(),
+  forceField: z.number().nullable(),
+  keyText: z.string().nullable(),
+  previousWoId: z.string().nullable(),
+  steralisationCurrentId: z.string().nullable(),
+  nextPhaseId: z.string().nullable(),
+  workflowId: z.string().nullable(),
+  workflow: workflowRefSchema.nullable(),
+  phase: phaseRefSchema.nullable(),
+  nextPhase: phaseRefSchema.nullable(),
+  het: z.object({ id: z.string(), hetNumber: z.string().nullable(), clinicName: z.string().nullable(), quantity: z.number().nullable() }).nullable(),
+  manufacturer: z.object({ id: z.string(), manuNumber: z.string().nullable(), manuName: z.string().nullable() }).nullable(),
+  steralisationCurrent: z.object({ id: z.string(), result: z.boolean().nullable(), createdAt: z.date() }).nullable(),
+  sterilises: z.array(z.object({ id: z.string(), direction: z.string().nullable(), result: z.boolean().nullable(), betReading: decimalish.nullable(), quantity: z.number().nullable(), createdAt: z.date() })),
+  woSerials: z.array(z.object({ id: z.string(), serialNumber: z.string().nullable(), bomRef: z.object({ id: z.string(), description: z.string().nullable(), quantity: decimalish.nullable(), uom: z.string().nullable(), hasSerial: z.boolean() }) })),
+  phaseEquips: z.array(z.object({ phaseEquip: z.object({ id: z.string(), equipId: z.string().nullable(), name: z.string().nullable() }) })),
+  batchHets: z.array(z.object({ hetId: z.string() })),
+  lifecycleState: z.string(),
+  operationalStatus: z.string(),
+  readinessBlockers: z.array(z.string()),
+  currentPhaseLabel: z.string(),
+  phaseOrderCurrent: z.number().nullable(),
+  legacyProductionState: z.string(),
+  legacyStateBucket: z.string(),
+  canAdvanceLegacy: z.boolean(),
+  advanceRequirements: z.array(z.object({ key: z.string(), label: z.string(), met: z.boolean(), parityGap: z.boolean().optional() })),
+  missingAdvanceRequirements: z.array(z.string()),
+  parityGaps: z.array(z.string()),
+  serialCheckDone: z.boolean(),
+  serialRequiredCount: z.number(),
+  combinedHetCheck: z.boolean(),
+  phaseTimeline: z.array(workOrderPhaseTimelineSchema),
+  counts: z.object({ serials: z.number(), equipment: z.number(), sterilisationRecords: z.number() }),
+});
+
+const workOrderSummarySchema = workOrderSchema;
+const workOrderDetailSchema = workOrderSchema;
 
 const createBodySchema = z.object({
   workflowId: z.string().min(1),
@@ -55,18 +112,6 @@ const createBodySchema = z.object({
 const phaseSignoffBodySchema = z.object({
   signatureDataUrl: z.string().min(1).optional(),
 }).optional();
-
-const inventoryTraceSchema = z
-  .object({
-    subject: z.object({ type: z.string(), id: z.string(), label: z.string().nullable().optional() }),
-    lots: z.array(z.object({ id: z.string() }).passthrough()),
-    transactions: z.array(z.object({ id: z.string() }).passthrough()),
-    consumptions: z.array(z.object({ id: z.string() }).passthrough()),
-    genealogy: z.array(z.object({ id: z.string() }).passthrough()),
-    hets: z.array(z.object({ id: z.string() }).passthrough()),
-    workOrders: z.array(z.object({ id: z.string() }).passthrough()),
-  })
-  .passthrough();
 
 function actorIdOf(req: { user: unknown }): string {
   return (req.user as JwtPayload).id;

@@ -8,30 +8,31 @@ import { tenantIdOrDefault } from '../services/tenant.js';
 
 const errorResponse = z.object({ error: z.string() });
 
-const roleSchema = z
-  .object({
-    id: z.string(),
-    key: z.string(),
-    name: z.string(),
-    description: z.string().nullable(),
-    builtIn: z.boolean(),
-    sortOrder: z.number(),
-    createdAt: z.date(),
-    updatedAt: z.date(),
-  })
-  .passthrough();
+const roleSchema = z.object({
+  id: z.string(),
+  key: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  builtIn: z.boolean(),
+  sortOrder: z.number(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+});
 
-const userSchema = z
-  .object({
-    id: z.string(),
-    email: z.string(),
-    name: z.string().nullable(),
-    active: z.boolean(),
-    role: roleSchema.nullable(),
-    createdAt: z.date(),
-    updatedAt: z.date(),
-  })
-  .passthrough();
+const userSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string().nullable(),
+  bitrixId: z.string().nullable(),
+  googleId: z.string().nullable(),
+  microsoftId: z.string().nullable(),
+  active: z.boolean(),
+  tenantId: z.string(),
+  roleId: z.string().nullable(),
+  role: roleSchema.nullable(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+});
 
 async function getUserRole(): Promise<{ id: string; key: string }> {
   const role = await prisma.role.findUniqueOrThrow({ where: { key: 'user' } });

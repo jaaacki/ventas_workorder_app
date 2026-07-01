@@ -5,6 +5,7 @@ import type { JwtPayload } from '../plugins/auth.js';
 import * as sterilisationService from '../services/sterilisationService.js';
 
 const errorResponse = z.object({ error: z.string() });
+const decimalish = z.union([z.number(), z.string(), z.custom<Prisma.Decimal>()]);
 
 const hetRefSchema = z.object({
   hetId: z.string(),
@@ -14,21 +15,27 @@ const hetRefSchema = z.object({
   }),
 });
 
-const steriliseDetailSchema = z
-  .object({
-    id: z.string(),
-    workOrderId: z.string(),
-    manuId: z.string().nullable(),
-    direction: z.string().nullable(),
-    result: z.boolean().nullable(),
-    signById: z.string().nullable(),
-    createdById: z.string().nullable(),
-    updatedById: z.string().nullable(),
-    createdAt: z.date(),
-    updatedAt: z.date(),
-    batchHets: z.array(hetRefSchema),
-  })
-  .passthrough();
+const steriliseDetailSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+  createdById: z.string().nullable(),
+  updatedById: z.string().nullable(),
+  workOrderId: z.string(),
+  manuId: z.string().nullable(),
+  direction: z.string().nullable(),
+  result: z.boolean().nullable(),
+  betReading: decimalish.nullable(),
+  quantity: z.number().nullable(),
+  comment: z.string().nullable(),
+  imagePath: z.string().nullable(),
+  signOn: z.date().nullable(),
+  signById: z.string().nullable(),
+  signaturePath: z.string().nullable(),
+  keyText: z.string().nullable(),
+  batchHets: z.array(hetRefSchema),
+});
 
 const createBodySchema = z.object({
   workOrderId: z.string().min(1),

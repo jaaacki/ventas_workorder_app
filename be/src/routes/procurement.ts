@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { JwtPayload } from '../plugins/auth.js';
 import * as procurementService from '../services/procurementService.js';
 import * as inventoryTraceService from '../services/inventoryTraceService.js';
+import { inventoryTraceSchema } from './inventoryTraceSchemas.js';
 
 const errorResponse = z.object({ error: z.string() });
 const dateish = z.union([z.date(), z.string()]);
@@ -19,144 +20,175 @@ const procurementOverviewSchema = z.object({
   linkedHets: z.number(),
 });
 
-const supplyEntitySchema = z
-  .object({
-    id: z.string(),
-    name: z.string().nullable(),
-    legalName: z.string().nullable(),
-    externalCode: z.string().nullable(),
-    sourceSystem: z.string().nullable(),
-    legacyClinicId: z.string().nullable(),
-    createdAt: dateish,
-    updatedAt: dateish,
-  })
-  .passthrough();
+const supplyEntitySchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  name: z.string().nullable(),
+  legalName: z.string().nullable(),
+  externalCode: z.string().nullable(),
+  sourceSystem: z.string().nullable(),
+  legacyGroupKey: z.string().nullable(),
+  legacyClinicId: z.string().nullable(),
+  createdAt: dateish,
+  updatedAt: dateish,
+});
 
-const collectionPointSchema = z
-  .object({
-    id: z.string(),
-    supplyEntityId: z.string(),
-    hciCode: z.string().nullable(),
-    displayName: z.string().nullable(),
-    licenseName: z.string().nullable(),
-    address: z.string().nullable(),
-    postalCode: z.string().nullable(),
-    telephone: z.string().nullable(),
-    personInCharge: z.string().nullable(),
-    createdAt: dateish,
-    updatedAt: dateish,
-  })
-  .passthrough();
+const collectionPointSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  supplyEntityId: z.string(),
+  legacyClinicId: z.string().nullable(),
+  hciCode: z.string().nullable(),
+  displayName: z.string().nullable(),
+  licenseName: z.string().nullable(),
+  address: z.string().nullable(),
+  postalCode: z.string().nullable(),
+  telephone: z.string().nullable(),
+  personInCharge: z.string().nullable(),
+  createdAt: dateish,
+  updatedAt: dateish,
+});
 
-const collectionUnitSchema = z
-  .object({
-    id: z.string(),
-    supplyEntityId: z.string().nullable(),
-    collectionPointId: z.string().nullable(),
-    legacyHetId: z.string().nullable(),
-    unitNumber: z.string().nullable(),
-    parcelTrackingNumber: z.string().nullable(),
-    status: z.string(),
-    legacyUsedByWorkOrderId: z.string().nullable(),
-    legacyNextHetId: z.string().nullable(),
-    sourceSystem: z.string().nullable(),
-    linkCompleteness: z.string().nullable(),
-    semanticConfidence: z.string().nullable(),
-    hiddenFromOperations: z.boolean(),
-    deleted: z.boolean(),
-    createdAt: dateish,
-    updatedAt: dateish,
-  })
-  .passthrough();
+const collectionUnitSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  supplyEntityId: z.string().nullable(),
+  collectionPointId: z.string().nullable(),
+  legacyHetId: z.string().nullable(),
+  unitNumber: z.string().nullable(),
+  parcelTrackingNumber: z.string().nullable(),
+  status: z.string(),
+  legacyDeliverId: z.string().nullable(),
+  legacyCollectId: z.string().nullable(),
+  legacyUsedByWorkOrderId: z.string().nullable(),
+  legacyNextHetId: z.string().nullable(),
+  sourceSystem: z.string().nullable(),
+  linkCompleteness: z.string().nullable(),
+  semanticConfidence: z.string().nullable(),
+  hiddenFromOperations: z.boolean(),
+  deleted: z.boolean(),
+  createdAt: dateish,
+  updatedAt: dateish,
+});
+
+const issuanceOrderLineSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  issuanceOrderId: z.string(),
+  collectionUnitId: z.string().nullable(),
+  legacyHetId: z.string().nullable(),
+  legacyHetNumber: z.string().nullable(),
+  parcelTrackingNumber: z.string().nullable(),
+  createdAt: dateish,
+  updatedAt: dateish,
+});
+
+const collectionUnitFulfilmentSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  collectionUnitId: z.string(),
+  fulfilledAt: dateish.nullable(),
+  fulfilledBy: z.string().nullable(),
+  source: z.string().nullable(),
+  evidencePath: z.string().nullable(),
+  remarks: z.string().nullable(),
+  inferred: z.boolean(),
+  createdAt: dateish,
+  updatedAt: dateish,
+});
+
+const collectionReceiptLineSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  collectionReceiptId: z.string(),
+  collectionUnitId: z.string().nullable(),
+  conditionStatus: z.string().nullable(),
+  acceptanceStatus: z.string().nullable(),
+  resultingHetId: z.string().nullable(),
+  discrepancyReason: z.string().nullable(),
+  createdAt: dateish,
+  updatedAt: dateish,
+});
 
 const collectionUnitDetailSchema = collectionUnitSchema
   .extend({
-    issuanceLines: z.array(z.object({ id: z.string() }).passthrough()),
-    fulfilments: z.array(z.object({ id: z.string() }).passthrough()),
-    receiptLines: z.array(z.object({ id: z.string() }).passthrough()),
+    legacyRaw: z.unknown().nullable(),
+    issuanceLines: z.array(issuanceOrderLineSchema),
+    fulfilments: z.array(collectionUnitFulfilmentSchema),
+    receiptLines: z.array(collectionReceiptLineSchema),
     hets: z.array(
-      z
-        .object({
-          id: z.string(),
-          hetNumber: z.string().nullable(),
-          clinicName: z.string().nullable(),
-          usedById: z.string().nullable(),
-          finishedById: z.string().nullable(),
-        })
-        .passthrough(),
+      z.object({
+        id: z.string(),
+        hetNumber: z.string().nullable(),
+        clinicName: z.string().nullable(),
+        usedById: z.string().nullable(),
+        finishedById: z.string().nullable(),
+      }),
     ),
-  })
-  .passthrough();
+  });
 
-const issuanceOrderSchema = z
-  .object({
-    id: z.string(),
-    supplyEntityId: z.string().nullable(),
-    collectionPointId: z.string().nullable(),
-    issuedAt: dateish.nullable(),
-    issuedBy: z.string().nullable(),
-    semanticConfidence: z.string().nullable(),
-    level: z.string().nullable(),
-    remarks: z.string().nullable(),
-    createdAt: dateish,
-    updatedAt: dateish,
-  })
-  .passthrough();
+const issuanceOrderSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  supplyEntityId: z.string().nullable(),
+  collectionPointId: z.string().nullable(),
+  issuedAt: dateish.nullable(),
+  issuedBy: z.string().nullable(),
+  legacyDeliverCollectId: z.string().nullable(),
+  legacyDirection: z.string().nullable(),
+  semanticConfidence: z.string().nullable(),
+  level: z.string().nullable(),
+  remarks: z.string().nullable(),
+  legacyRaw: z.unknown().nullable(),
+  createdAt: dateish,
+  updatedAt: dateish,
+});
 
-const collectionOrderSchema = z
-  .object({
-    id: z.string(),
-    supplyEntityId: z.string().nullable(),
-    collectionPointId: z.string().nullable(),
-    requestedAt: dateish.nullable(),
-    scheduledFor: dateish.nullable(),
-    requestedBy: z.string().nullable(),
-    status: z.string(),
-    semanticConfidence: z.string().nullable(),
-    legacyConflatedOrderReceipt: z.boolean(),
-    remarks: z.string().nullable(),
-    createdAt: dateish,
-    updatedAt: dateish,
-  })
-  .passthrough();
+const collectionOrderSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  supplyEntityId: z.string().nullable(),
+  collectionPointId: z.string().nullable(),
+  requestedAt: dateish.nullable(),
+  scheduledFor: dateish.nullable(),
+  requestedBy: z.string().nullable(),
+  status: z.string(),
+  legacyCollectDeliverCollectId: z.string().nullable(),
+  legacyDirection: z.string().nullable(),
+  semanticConfidence: z.string().nullable(),
+  legacyConflatedOrderReceipt: z.boolean(),
+  level: z.string().nullable(),
+  remarks: z.string().nullable(),
+  legacyRaw: z.unknown().nullable(),
+  createdAt: dateish,
+  updatedAt: dateish,
+});
 
-const collectionReceiptSchema = z
-  .object({
-    id: z.string(),
-    collectionOrderId: z.string().nullable(),
-    receivedAt: dateish.nullable(),
-    receivedBy: z.string().nullable(),
-    signaturePath: z.string().nullable(),
-    remarks: z.string().nullable(),
-    legacyConflatedOrderReceipt: z.boolean(),
-    acceptanceState: z.string().nullable(),
-    createdAt: dateish,
-    updatedAt: dateish,
-  })
-  .passthrough();
+const collectionReceiptSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  collectionOrderId: z.string().nullable(),
+  receivedAt: dateish.nullable(),
+  receivedBy: z.string().nullable(),
+  signaturePath: z.string().nullable(),
+  remarks: z.string().nullable(),
+  legacyCollectDeliverCollectId: z.string().nullable(),
+  legacyConflatedOrderReceipt: z.boolean(),
+  acceptanceState: z.string().nullable(),
+  legacyRaw: z.unknown().nullable(),
+  createdAt: dateish,
+  updatedAt: dateish,
+});
 
-const importReportSchema = z
-  .object({
-    id: z.string(),
-    source: z.string(),
-    dryRun: z.boolean(),
-    startedAt: dateish,
-    finishedAt: dateish.nullable(),
-    report: z.unknown(),
-  })
-  .passthrough();
-
-const inventoryTraceSchema = z
-  .object({
-    subject: z.object({ type: z.string(), id: z.string(), label: z.string().nullable().optional() }),
-    lots: z.array(z.object({ id: z.string() }).passthrough()),
-    transactions: z.array(z.object({ id: z.string() }).passthrough()),
-    consumptions: z.array(z.object({ id: z.string() }).passthrough()),
-    genealogy: z.array(z.object({ id: z.string() }).passthrough()),
-    hets: z.array(z.object({ id: z.string() }).passthrough()),
-    workOrders: z.array(z.object({ id: z.string() }).passthrough()),
-  })
-  .passthrough();
+const importReportSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  source: z.string(),
+  dryRun: z.boolean(),
+  startedAt: dateish,
+  finishedAt: dateish.nullable(),
+  report: z.unknown(),
+});
 
 function tenantIdOf(req: { user: unknown }): string {
   return (req.user as JwtPayload).tenantId;

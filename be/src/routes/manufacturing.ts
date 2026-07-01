@@ -6,15 +6,24 @@ import * as manufacturingService from '../services/manufacturingService.js';
 
 const errorResponse = z.object({ error: z.string() });
 
-const manufacturerSchema = z
-  .object({
-    id: z.string(),
-    manuNumber: z.string().nullable(),
-    manuName: z.string().nullable(),
-    createdAt: z.date(),
-    updatedAt: z.date(),
-  })
-  .passthrough();
+const manufacturerSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+  createdById: z.string().nullable(),
+  updatedById: z.string().nullable(),
+  manuName: z.string().nullable(),
+  manuNumber: z.string().nullable(),
+  keyText: z.string().nullable(),
+  workOrders: z.array(
+    z.object({
+      id: z.string(),
+      woNumber: z.string().nullable(),
+      phaseShort: z.string().nullable(),
+    }),
+  ),
+});
 
 const generateBodySchema = z.object({
   workOrderId: z.string().min(1),

@@ -4,19 +4,30 @@ const mocks = vi.hoisted(() => ({
   workflowService: {
     listWorkflows: vi.fn(),
     getWorkflow: vi.fn(),
+    createWorkflow: vi.fn(),
+    updateWorkflow: vi.fn(),
   },
   workOrderService: {
     listWorkOrders: vi.fn(),
     getWorkOrder: vi.fn(),
+    createWorkOrder: vi.fn(),
+    startWorkOrderPhase: vi.fn(),
+    finishWorkOrderPhase: vi.fn(),
+    advanceWorkOrder: vi.fn(),
   },
   sterilisationService: {
+    createSterilisation: vi.fn(),
     listSterilisations: vi.fn(),
+    setSterilisationResult: vi.fn(),
   },
   manufacturingService: {
+    generateBatchRecord: vi.fn(),
     getBatchRecord: vi.fn(),
   },
   hetService: {
     listHets: vi.fn(),
+    useHet: vi.fn(),
+    finishHet: vi.fn(),
   },
   procurementService: {
     getProcurementOverview: vi.fn(),
@@ -56,6 +67,151 @@ vi.mock('../../services/inventoryService.js', () => mocks.inventoryService);
 vi.mock('../../services/inventoryTraceService.js', () => mocks.inventoryTraceService);
 
 const tenantId = 'tenant-route-a';
+const adminActorId = 'staff-route-admin';
+const userActorId = 'staff-route-user';
+const now = new Date('2026-07-01T00:00:00.000Z');
+
+const workflowDetail = {
+  id: 'workflow-1',
+  tenantId,
+  name: 'AmGraft',
+  code: 'AMGRAFT',
+  description: null,
+  active: true,
+  createdById: adminActorId,
+  updatedById: adminActorId,
+  createdAt: now,
+  updatedAt: now,
+  createdBy: null,
+  updatedBy: null,
+  phases: [],
+};
+
+const workOrderDetail = {
+  id: 'wo-1',
+  tenantId,
+  createdAt: now,
+  updatedAt: now,
+  createdById: adminActorId,
+  updatedById: adminActorId,
+  hetId: null,
+  phaseId: null,
+  phaseOrder: null,
+  phaseShort: null,
+  prodStart: null,
+  startSignPath: null,
+  startSignById: null,
+  prodEnd: null,
+  endSignPath: null,
+  endSignById: null,
+  prodDuration: null,
+  manuId: null,
+  manuNumber: null,
+  woNumber: 'WO-1',
+  reportPdfPath: null,
+  deleted: false,
+  forceField: null,
+  keyText: null,
+  previousWoId: null,
+  steralisationCurrentId: null,
+  nextPhaseId: null,
+  workflowId: 'workflow-1',
+  workflow: null,
+  phase: null,
+  nextPhase: null,
+  het: null,
+  manufacturer: null,
+  steralisationCurrent: null,
+  sterilises: [],
+  woSerials: [],
+  phaseEquips: [],
+  batchHets: [],
+  lifecycleState: 'NotStarted',
+  operationalStatus: 'NotStarted',
+  readinessBlockers: [],
+  currentPhaseLabel: 'Unassigned',
+  phaseOrderCurrent: null,
+  legacyProductionState: 'unassigned',
+  legacyStateBucket: '1. In Progress',
+  canAdvanceLegacy: false,
+  advanceRequirements: [],
+  missingAdvanceRequirements: [],
+  parityGaps: [],
+  serialCheckDone: false,
+  serialRequiredCount: 0,
+  combinedHetCheck: false,
+  phaseTimeline: [],
+  counts: { serials: 0, equipment: 0, sterilisationRecords: 0 },
+};
+
+const sterilisationDetail = {
+  id: 'ster-1',
+  tenantId,
+  createdAt: now,
+  updatedAt: now,
+  createdById: adminActorId,
+  updatedById: adminActorId,
+  workOrderId: 'wo-1',
+  manuId: null,
+  direction: 'OUT',
+  result: true,
+  betReading: null,
+  quantity: null,
+  comment: null,
+  imagePath: null,
+  signOn: null,
+  signById: null,
+  signaturePath: null,
+  keyText: null,
+  batchHets: [],
+};
+
+const manufacturerDetail = {
+  id: 'manu-1',
+  tenantId,
+  createdAt: now,
+  updatedAt: now,
+  createdById: adminActorId,
+  updatedById: adminActorId,
+  manuName: 'Batch WO-1',
+  manuNumber: 'MANU-1',
+  keyText: null,
+  workOrders: [],
+};
+
+const hetDetail = {
+  id: 'het-1',
+  tenantId,
+  createdAt: now,
+  updatedAt: now,
+  createdById: adminActorId,
+  updatedById: adminActorId,
+  clinicId: null,
+  HCICode: null,
+  clinicName: null,
+  licenseName: null,
+  address: null,
+  hetNumber: 'HET-1',
+  parcelTrackingNumber: null,
+  deliverId: null,
+  collectId: null,
+  usedById: 'wo-1',
+  finishedById: null,
+  quantity: null,
+  deleted: false,
+  forceField: null,
+  keyText: null,
+  b11Weight: null,
+  collectionUnitId: null,
+  collectionReceiptLineId: null,
+  sourceSystem: null,
+  legacyClinicId: null,
+  legacyDeliverId: null,
+  legacyCollectId: null,
+  usedBy: null,
+  finishedBy: null,
+  workOrders: [],
+};
 
 function stubRequiredEnv() {
   vi.stubEnv('NODE_ENV', 'test');
@@ -69,11 +225,22 @@ function resetServiceMocks() {
 
   mocks.workflowService.listWorkflows.mockResolvedValue([]);
   mocks.workflowService.getWorkflow.mockResolvedValue(null);
+  mocks.workflowService.createWorkflow.mockResolvedValue(workflowDetail);
+  mocks.workflowService.updateWorkflow.mockResolvedValue(workflowDetail);
   mocks.workOrderService.listWorkOrders.mockResolvedValue([]);
   mocks.workOrderService.getWorkOrder.mockResolvedValue(null);
+  mocks.workOrderService.createWorkOrder.mockResolvedValue(workOrderDetail);
+  mocks.workOrderService.startWorkOrderPhase.mockResolvedValue(workOrderDetail);
+  mocks.workOrderService.finishWorkOrderPhase.mockResolvedValue(workOrderDetail);
+  mocks.workOrderService.advanceWorkOrder.mockResolvedValue(workOrderDetail);
+  mocks.sterilisationService.createSterilisation.mockResolvedValue(sterilisationDetail);
   mocks.sterilisationService.listSterilisations.mockResolvedValue([]);
+  mocks.sterilisationService.setSterilisationResult.mockResolvedValue(sterilisationDetail);
+  mocks.manufacturingService.generateBatchRecord.mockResolvedValue(manufacturerDetail);
   mocks.manufacturingService.getBatchRecord.mockResolvedValue(null);
   mocks.hetService.listHets.mockResolvedValue([]);
+  mocks.hetService.useHet.mockResolvedValue(hetDetail);
+  mocks.hetService.finishHet.mockResolvedValue(hetDetail);
   mocks.procurementService.getProcurementOverview.mockResolvedValue({
     supplyEntities: 0,
     collectionPoints: 0,
@@ -239,6 +406,141 @@ describe('route tenant propagation', () => {
 
       await get('/api/inventory/import-reports', adminToken);
       expect(mocks.inventoryService.listImportReports).toHaveBeenCalledWith(tenantId);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('passes the authenticated JWT actor and tenant into mutation and lifecycle services', async () => {
+    const { buildServer } = await import('../../server.js');
+    const app = await buildServer();
+    await app.ready();
+
+    try {
+      const adminToken = app.jwt.sign({
+        id: adminActorId,
+        email: 'route-admin@example.test',
+        role: 'admin',
+        tenantId,
+      });
+      const userToken = app.jwt.sign({
+        id: userActorId,
+        email: 'route-user@example.test',
+        role: 'user',
+        tenantId,
+      });
+
+      const injectJson = (
+        method: 'PATCH' | 'POST',
+        url: string,
+        payload?: unknown,
+        token = adminToken,
+      ) =>
+        app.inject({
+          method,
+          url,
+          headers: { authorization: `Bearer ${token}` },
+          payload,
+        });
+
+      await injectJson('POST', '/api/workflows', {
+        name: 'AmGraft',
+        code: 'AMGRAFT',
+        phases: [{ phaseId: 'phase-1', sortOrder: 10 }],
+      });
+      expect(mocks.workflowService.createWorkflow).toHaveBeenCalledWith(
+        { name: 'AmGraft', code: 'AMGRAFT', phases: [{ phaseId: 'phase-1', sortOrder: 10 }] },
+        adminActorId,
+        tenantId,
+      );
+
+      await injectJson('PATCH', '/api/workflows/workflow-1', {
+        active: false,
+        phases: [{ phaseId: 'phase-2', sortOrder: 20 }],
+      });
+      expect(mocks.workflowService.updateWorkflow).toHaveBeenCalledWith(
+        'workflow-1',
+        { active: false, phases: [{ phaseId: 'phase-2', sortOrder: 20 }] },
+        adminActorId,
+        tenantId,
+      );
+
+      await injectJson('POST', '/api/work-orders', { workflowId: 'workflow-1', hetId: 'het-1' });
+      expect(mocks.workOrderService.createWorkOrder).toHaveBeenCalledWith(
+        { workflowId: 'workflow-1', hetId: 'het-1' },
+        adminActorId,
+        tenantId,
+      );
+
+      await injectJson(
+        'POST',
+        '/api/work-orders/wo-1/start',
+        { signatureDataUrl: 'data:image/png;base64,abc' },
+        userToken,
+      );
+      expect(mocks.workOrderService.startWorkOrderPhase).toHaveBeenCalledWith(
+        'wo-1',
+        userActorId,
+        'data:image/png;base64,abc',
+        tenantId,
+      );
+
+      await injectJson(
+        'POST',
+        '/api/work-orders/wo-1/finish',
+        { signatureDataUrl: 'data:image/png;base64,def' },
+        userToken,
+      );
+      expect(mocks.workOrderService.finishWorkOrderPhase).toHaveBeenCalledWith(
+        'wo-1',
+        userActorId,
+        'data:image/png;base64,def',
+        tenantId,
+      );
+
+      await injectJson('POST', '/api/work-orders/wo-1/advance', undefined, userToken);
+      expect(mocks.workOrderService.advanceWorkOrder).toHaveBeenCalledWith('wo-1', userActorId, tenantId);
+
+      await injectJson('POST', '/api/sterilisation', {
+        workOrderId: 'wo-1',
+        direction: 'OUT',
+        result: true,
+        hetIds: ['het-1'],
+      });
+      expect(mocks.sterilisationService.createSterilisation).toHaveBeenCalledWith(
+        { workOrderId: 'wo-1', direction: 'OUT', result: true, hetIds: ['het-1'] },
+        adminActorId,
+        tenantId,
+      );
+
+      await injectJson('PATCH', '/api/sterilisation/ster-1', { result: false });
+      expect(mocks.sterilisationService.setSterilisationResult).toHaveBeenCalledWith(
+        'ster-1',
+        false,
+        adminActorId,
+        tenantId,
+      );
+
+      await injectJson('POST', '/api/manufacturing/generate', { workOrderId: 'wo-1' });
+      expect(mocks.manufacturingService.generateBatchRecord).toHaveBeenCalledWith(
+        'wo-1',
+        adminActorId,
+        tenantId,
+      );
+
+      await injectJson('POST', '/api/hets/het-1/use', { workOrderId: 'wo-1' });
+      expect(mocks.hetService.useHet).toHaveBeenCalledWith('het-1', {
+        workOrderId: 'wo-1',
+        actorId: adminActorId,
+        tenantId,
+      });
+
+      await injectJson('POST', '/api/hets/het-1/finish', { workOrderId: 'wo-1' });
+      expect(mocks.hetService.finishHet).toHaveBeenCalledWith('het-1', {
+        workOrderId: 'wo-1',
+        actorId: adminActorId,
+        tenantId,
+      });
     } finally {
       await app.close();
     }

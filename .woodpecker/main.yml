@@ -93,6 +93,10 @@ steps:
       - DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 docker compose -f compose.stg.yml build be fe be-migrate
       - docker compose -f compose.stg.yml up -d --remove-orphans
       - docker compose -f compose.stg.yml ps
+      - test -f data/legacy/HETDeliveryReturnRecords---clinicDb.csv
+      - test -f data/legacy/HETDeliveryReturnRecords---deliverCollect.csv
+      - test -f data/legacy/HETDeliveryReturnRecords---HETLot-TODEL.csv
+      - docker compose -f compose.stg.yml exec -T be node dist/scripts/importProcurementLegacy.js --source-dir=/app/data/legacy
       - for i in $(seq 1 30); do wget -qO- https://stg-workorder.ventas.bio/api/health && exit 0; sleep 2; done; exit 1
     depends_on:
       - main-be-checks

@@ -40,6 +40,8 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       be-migrate: { condition: service_completed_successfully }
+    volumes:
+      - ./data/legacy:/app/data/legacy:ro
 
   fe:
     build:

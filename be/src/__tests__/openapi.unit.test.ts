@@ -151,6 +151,12 @@ describe('OpenAPI contract', () => {
       expect(operation?.tags?.length).toBeGreaterThan(0);
       expect(operation?.['x-route-kind']).toBe(expected.routeKind);
       expect(operation?.['x-auth']).toBe(expected.auth);
+      expect(operation?.['x-method-policy'], `${expected.operationId} method policy`).toMatchObject({
+        resource: expect.any(String),
+        completeness: expect.any(String),
+        allowedMethods: expect.any(Array),
+        notes: expect.any(String),
+      });
 
       if (expected.auth === 'anonymous') {
         expect(operation?.security).toBeUndefined();
@@ -173,26 +179,53 @@ describe('OpenAPI contract', () => {
     expect(listWorkflows?.tags).toEqual(['Workflows']);
     expect(listWorkflows?.security).toEqual([{ bearerAuth: [] }]);
     expect(listWorkflows?.['x-route-kind']).toBe('resource-crud');
+    expect(listWorkflows?.['x-method-policy']).toMatchObject({
+      resource: 'Workflow',
+      completeness: 'controlled-crud-no-delete',
+      destructiveDeletes: 'not-exposed',
+    });
+    expect(JSON.stringify(listWorkflows?.['x-method-policy'])).toContain('active=false');
 
     const advanceWorkOrder = pathItem(doc, '/api/work-orders/{id}/advance')?.post;
     expect(advanceWorkOrder?.tags).toEqual(['Work Orders']);
     expect(advanceWorkOrder?.security).toEqual([{ bearerAuth: [] }]);
     expect(advanceWorkOrder?.['x-route-kind']).toBe('lifecycle-action');
+    expect(advanceWorkOrder?.['x-method-policy']).toMatchObject({
+      resource: 'Work order phase execution',
+      completeness: 'lifecycle-action',
+      destructiveDeletes: 'not-exposed',
+    });
+    expect(JSON.stringify(advanceWorkOrder?.['x-method-policy'])).toContain('guarded by lifecycle checks');
 
     const workOrderTrace = pathItem(doc, '/api/work-orders/{id}/inventory-trace')?.get;
     expect(workOrderTrace?.tags).toEqual(['Work Orders', 'Inventory']);
     expect(workOrderTrace?.operationId).toBe('getWorkOrderInventoryTrace');
     expect(workOrderTrace?.description).toContain('inventory lots');
+    expect(workOrderTrace?.['x-method-policy']).toMatchObject({
+      resource: 'Inventory trace',
+      completeness: 'read-only-trace',
+      destructiveDeletes: 'not-exposed',
+    });
 
     const listCollectionUnits = pathItem(doc, '/api/procurement/collection-units')?.get;
     expect(listCollectionUnits?.tags).toEqual(['Procurement']);
     expect(listCollectionUnits?.security).toEqual([{ bearerAuth: [] }]);
     expect(listCollectionUnits?.['x-route-kind']).toBe('read-model');
     expect(listCollectionUnits?.description).toContain('status=received');
+    expect(listCollectionUnits?.['x-method-policy']).toMatchObject({
+      resource: 'Procurement read model',
+      completeness: 'read-model-operational-mutations-deferred',
+      destructiveDeletes: 'not-exposed',
+    });
+    expect(JSON.stringify(listCollectionUnits?.['x-method-policy'])).toContain('mutation workflows are not implemented yet');
 
     const procurementReports = pathItem(doc, '/api/procurement/import-reports')?.get;
     expect(procurementReports?.tags).toEqual(['Procurement']);
     expect(procurementReports?.['x-route-kind']).toBe('import-admin');
+    expect(procurementReports?.['x-method-policy']).toMatchObject({
+      resource: 'Import report',
+      completeness: 'read-only-admin-audit',
+    });
 
     const collectionUnitTrace = pathItem(doc, '/api/procurement/collection-units/{id}/inventory-trace')?.get;
     expect(collectionUnitTrace?.tags).toEqual(['Procurement', 'Inventory']);
@@ -207,10 +240,20 @@ describe('OpenAPI contract', () => {
     expect(listInventoryLots?.security).toEqual([{ bearerAuth: [] }]);
     expect(listInventoryLots?.['x-route-kind']).toBe('read-model');
     expect(listInventoryLots?.description).toContain('inventoryType=HET');
+    expect(listInventoryLots?.['x-method-policy']).toMatchObject({
+      resource: 'Inventory read model',
+      completeness: 'read-model-operational-mutations-deferred',
+      destructiveDeletes: 'not-exposed',
+    });
+    expect(JSON.stringify(listInventoryLots?.['x-method-policy'])).toContain('controlled stock actions');
 
     const inventoryGenealogy = pathItem(doc, '/api/inventory/genealogy/{lotId}')?.get;
     expect(inventoryGenealogy?.operationId).toBe('getInventoryGenealogy');
     expect(inventoryGenealogy?.['x-route-kind']).toBe('read-model');
+    expect(inventoryGenealogy?.['x-method-policy']).toMatchObject({
+      resource: 'Inventory trace',
+      completeness: 'read-only-trace',
+    });
   });
 
   it('adds useful examples and standard JSON error examples to the generated contract', async () => {
@@ -257,6 +300,45 @@ describe('OpenAPI contract', () => {
       expect.arrayContaining([expect.objectContaining({ id: 'lot-1001', inventoryType: 'HET' })]),
     );
     expect(jsonMedia(listInventoryLots?.responses['401'])?.examples).toBeDefined();
+  });
+
+  it('documents method policy decisions for every generated operation', async () => {
+    stubRequiredEnv();
+    const { buildServer } = await import('../server.js');
+    const app = await buildServer();
+
+    await app.ready();
+    const response = await app.inject({ method: 'GET', url: '/api/openapi.json' });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    const doc = JSON.parse(response.body) as OpenAPIV3.Document;
+    expect(doc.info.description).toContain('x-method-policy');
+    expect(doc.info.description).toContain('avoids generic destructive deletes');
+
+    for (const { method, path, operation } of operationInventory(doc)) {
+      const policy = operation['x-method-policy'] as Record<string, unknown> | undefined;
+      expect(policy, `${method.toUpperCase()} ${path} x-method-policy`).toBeDefined();
+      expect(policy?.resource, `${method.toUpperCase()} ${path} resource`).toEqual(expect.any(String));
+      expect(policy?.completeness, `${method.toUpperCase()} ${path} completeness`).toEqual(expect.any(String));
+      expect(policy?.allowedMethods, `${method.toUpperCase()} ${path} allowedMethods`).toEqual(expect.any(Array));
+      expect(policy?.notes, `${method.toUpperCase()} ${path} notes`).toEqual(expect.any(String));
+
+      if (operation['x-route-kind'] !== 'auth' && operation['x-route-kind'] !== 'health') {
+        expect(JSON.stringify(policy), `${method.toUpperCase()} ${path} omitted/destructive policy`).toContain('DELETE');
+      }
+    }
+
+    const productionOperations = operationInventory(doc).filter(({ path }) =>
+      path.startsWith('/api/work-orders') ||
+      path.startsWith('/api/hets') ||
+      path.startsWith('/api/sterilisation') ||
+      path.startsWith('/api/manufacturing')
+    );
+    for (const { method, path, operation } of productionOperations) {
+      const policy = operation['x-method-policy'] as Record<string, unknown>;
+      expect(policy.destructiveDeletes, `${method.toUpperCase()} ${path}`).toBe('not-exposed');
+    }
   });
 
   it('serves a human-readable docs landing page that points to the JSON contract', async () => {

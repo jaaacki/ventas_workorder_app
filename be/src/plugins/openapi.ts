@@ -7,6 +7,19 @@ type OpenApiFastifyInstance = FastifyInstance & {
   swagger: () => unknown;
 };
 
+type MethodPolicy = {
+  resource: string;
+  completeness: string;
+  allowedMethods: string[];
+  omittedMethods?: Array<{ method: string; reason: string }>;
+  destructiveDeletes?: 'not-exposed' | 'not-applicable';
+  notes: string;
+};
+
+type OperationWithMethodPolicy = OpenAPIV3.OperationObject & {
+  'x-method-policy'?: MethodPolicy;
+};
+
 const hiddenSchema = { hide: true } as unknown as FastifySchema;
 
 const userExample = {
@@ -237,6 +250,291 @@ const errorExamples: Record<string, { summary: string; value: { error: string } 
   '502': { summary: 'Upstream error', value: { error: 'Upstream provider request failed' } },
 };
 
+const methodPolicies: Record<string, MethodPolicy> = {
+  getHealth: {
+    resource: 'Health',
+    completeness: 'complete',
+    allowedMethods: ['GET'],
+    destructiveDeletes: 'not-applicable',
+    notes: 'Liveness-only endpoint used by Docker, CI, and reverse proxies.',
+  },
+  login: {
+    resource: 'Auth session',
+    completeness: 'complete',
+    allowedMethods: ['POST'],
+    destructiveDeletes: 'not-applicable',
+    notes: 'JWT sessions are stateless; logout is a client-side acknowledgement endpoint.',
+  },
+  logout: {
+    resource: 'Auth session',
+    completeness: 'complete',
+    allowedMethods: ['POST'],
+    destructiveDeletes: 'not-applicable',
+    notes: 'JWT sessions are stateless; no server-side session delete is required.',
+  },
+  authorizeOAuthProvider: {
+    resource: 'OAuth flow',
+    completeness: 'complete',
+    allowedMethods: ['GET'],
+    destructiveDeletes: 'not-applicable',
+    notes: 'Redirect action, not a persisted CRUD resource.',
+  },
+  handleOAuthCallback: {
+    resource: 'OAuth flow',
+    completeness: 'complete',
+    allowedMethods: ['GET'],
+    destructiveDeletes: 'not-applicable',
+    notes: 'Callback action provisions or updates staff identity links through the auth flow.',
+  },
+  registerStaff: {
+    resource: 'Staff',
+    completeness: 'controlled-crud-partial',
+    allowedMethods: ['POST'],
+    omittedMethods: [{ method: 'DELETE', reason: 'Staff records are deactivated, not deleted, to preserve ownership and audit history.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Owner-only create path for local staff users.',
+  },
+  getCurrentUser: {
+    resource: 'Staff',
+    completeness: 'read-model',
+    allowedMethods: ['GET'],
+    destructiveDeletes: 'not-applicable',
+    notes: 'Self-profile read model for the authenticated user.',
+  },
+  listStaff: {
+    resource: 'Staff',
+    completeness: 'controlled-crud-partial',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'DELETE', reason: 'Use active-state changes instead of deleting staff rows.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Admin/owner staff read model; updates are split into role and active-state commands.',
+  },
+  updateStaffRole: {
+    resource: 'Staff',
+    completeness: 'controlled-crud-partial',
+    allowedMethods: ['PATCH'],
+    omittedMethods: [{ method: 'DELETE', reason: 'Staff lifecycle uses deactivation to keep historical references intact.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Owner-only role assignment command.',
+  },
+  updateStaffActive: {
+    resource: 'Staff',
+    completeness: 'controlled-crud-partial',
+    allowedMethods: ['PATCH'],
+    omittedMethods: [{ method: 'DELETE', reason: 'Deactivation/reactivation is the supported staff lifecycle path.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Admin/owner lifecycle command for active state.',
+  },
+  listRoles: {
+    resource: 'Role',
+    completeness: 'read-model',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'POST/DELETE', reason: 'Built-in role catalog is not currently user-created or deleted through the API.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Role catalog read model.',
+  },
+  updateRole: {
+    resource: 'Role',
+    completeness: 'controlled-crud-partial',
+    allowedMethods: ['PATCH'],
+    omittedMethods: [{ method: 'DELETE', reason: 'Role deletion is not exposed while staff may reference roles.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Owner-only role display metadata update.',
+  },
+  listWorkflows: {
+    resource: 'Workflow',
+    completeness: 'controlled-crud-no-delete',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'DELETE', reason: 'Workflows are retired with active=false rather than destructively deleted.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Workflow resource supports list/get/create/update; delete is intentionally omitted.',
+  },
+  getWorkflow: {
+    resource: 'Workflow',
+    completeness: 'controlled-crud-no-delete',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'DELETE', reason: 'Workflows may be referenced by work orders and are retired by active=false.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Workflow detail includes ordered phase bindings.',
+  },
+  createWorkflow: {
+    resource: 'Workflow',
+    completeness: 'controlled-crud-no-delete',
+    allowedMethods: ['POST'],
+    omittedMethods: [{ method: 'DELETE', reason: 'Use active=false instead of deleting workflow history.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Admin/owner creation path with optional initial phase bindings.',
+  },
+  updateWorkflow: {
+    resource: 'Workflow',
+    completeness: 'controlled-crud-no-delete',
+    allowedMethods: ['PATCH'],
+    omittedMethods: [{ method: 'DELETE', reason: 'Use active=false instead of deleting workflow history.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Admin/owner metadata and phase-binding update path.',
+  },
+  listWorkOrders: {
+    resource: 'Work order',
+    completeness: 'lifecycle-not-generic-crud',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'PUT/PATCH/DELETE', reason: 'Production runs change through explicit lifecycle actions to protect traceability.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Board read model for active work orders.',
+  },
+  getWorkOrder: {
+    resource: 'Work order',
+    completeness: 'lifecycle-not-generic-crud',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'PUT/PATCH/DELETE', reason: 'Generic mutation/delete would bypass phase and signature controls.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Work-order detail read model.',
+  },
+  createWorkOrder: {
+    resource: 'Work order',
+    completeness: 'lifecycle-not-generic-crud',
+    allowedMethods: ['POST'],
+    omittedMethods: [{ method: 'DELETE', reason: 'Work orders are controlled production records and should use soft-delete/admin correction policy if added later.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Creates a production run at the first configured workflow phase.',
+  },
+  startWorkOrderPhase: {
+    resource: 'Work order phase execution',
+    completeness: 'lifecycle-action',
+    allowedMethods: ['POST'],
+    omittedMethods: [{ method: 'PATCH/DELETE', reason: 'Phase execution is append-like state transition behavior, not generic resource editing.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Starts the current phase with optional signature evidence.',
+  },
+  finishWorkOrderPhase: {
+    resource: 'Work order phase execution',
+    completeness: 'lifecycle-action',
+    allowedMethods: ['POST'],
+    omittedMethods: [{ method: 'PATCH/DELETE', reason: 'Phase completion must remain a controlled transition.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Finishes the current phase with optional signature evidence.',
+  },
+  advanceWorkOrder: {
+    resource: 'Work order phase execution',
+    completeness: 'lifecycle-action',
+    allowedMethods: ['POST'],
+    omittedMethods: [{ method: 'PATCH/DELETE', reason: 'Advancement is guarded by lifecycle checks and should not be replaced by generic mutation.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Moves a work order to the next configured phase when gates pass.',
+  },
+  createSterilisation: {
+    resource: 'Sterilisation/BET record',
+    completeness: 'lifecycle-action',
+    allowedMethods: ['POST'],
+    omittedMethods: [{ method: 'DELETE', reason: 'Sterilisation records are controlled evidence and must not be destructively deleted.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Creates IN/OUT sterilisation or BET evidence linked to a work order.',
+  },
+  listSterilisations: {
+    resource: 'Sterilisation/BET record',
+    completeness: 'read-model-plus-controlled-update',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'DELETE', reason: 'Sterilisation records are retained as production evidence.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Work-order-scoped sterilisation/BET read model.',
+  },
+  setSterilisationResult: {
+    resource: 'Sterilisation/BET record',
+    completeness: 'controlled-update',
+    allowedMethods: ['PATCH'],
+    omittedMethods: [{ method: 'DELETE', reason: 'Changing pass/fail is controlled; destructive delete is not exposed.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Admin/owner result update command.',
+  },
+  generateBatchRecord: {
+    resource: 'Manufacturing batch record',
+    completeness: 'lifecycle-action',
+    allowedMethods: ['POST'],
+    omittedMethods: [{ method: 'DELETE', reason: 'Batch records are production documents and should remain auditable.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Generates and links the batch record for a work order.',
+  },
+  getBatchRecord: {
+    resource: 'Manufacturing batch record',
+    completeness: 'read-model',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'DELETE', reason: 'Batch records are retained as controlled production records.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Batch-record read model.',
+  },
+  listHets: {
+    resource: 'HET',
+    completeness: 'lifecycle-not-generic-crud',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'PUT/PATCH/DELETE', reason: 'HETs are linked through use/finish lifecycle actions; destructive delete is not exposed.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'HET register read model.',
+  },
+  useHet: {
+    resource: 'HET',
+    completeness: 'lifecycle-action',
+    allowedMethods: ['POST'],
+    omittedMethods: [{ method: 'PATCH/DELETE', reason: 'Use linkage is a controlled state transition.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Links a HET to the work order currently using it.',
+  },
+  finishHet: {
+    resource: 'HET',
+    completeness: 'lifecycle-action',
+    allowedMethods: ['POST'],
+    omittedMethods: [{ method: 'PATCH/DELETE', reason: 'Finish linkage is a controlled state transition.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Links a HET to the work order that finished it.',
+  },
+};
+
+const readOnlyTracePolicy = {
+  completeness: 'read-only-trace',
+  allowedMethods: ['GET'],
+  omittedMethods: [{ method: 'POST/PATCH/DELETE', reason: 'Trace and genealogy views are derived read models; mutations belong to controlled source workflows.' }],
+  destructiveDeletes: 'not-exposed' as const,
+};
+
+for (const operationId of ['getWorkOrderInventoryTrace', 'getHetInventoryTrace', 'getCollectionUnitInventoryTrace', 'getInventoryGenealogy']) {
+  methodPolicies[operationId] = {
+    resource: 'Inventory trace',
+    ...readOnlyTracePolicy,
+    notes: 'Derived traceability read model spanning lots, transactions, genealogy, HETs, and work orders.',
+  };
+}
+
+for (const operationId of ['getProcurementOverview', 'listSupplyEntities', 'listCollectionPoints', 'listCollectionUnits', 'getCollectionUnit', 'listIssuanceOrders', 'listCollectionOrders', 'listCollectionReceipts']) {
+  methodPolicies[operationId] = {
+    resource: 'Procurement read model',
+    completeness: 'read-model-operational-mutations-deferred',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'POST/PATCH/DELETE', reason: 'Procurement mutation workflows are not implemented yet; imported operational records are exposed read-only.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Read-only procurement surface over imported collection-unit, issuance, order, and receipt records.',
+  };
+}
+
+for (const operationId of ['getInventoryOverview', 'listInventorySkus', 'listInventoryLots', 'listInventoryTransactions', 'listInventoryLocations']) {
+  methodPolicies[operationId] = {
+    resource: 'Inventory read model',
+    completeness: 'read-model-operational-mutations-deferred',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'POST/PATCH/DELETE', reason: 'Inventory transactions and balances are traceability records; mutation workflows require controlled stock actions.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Read-only inventory surface over imported lots, SKUs, locations, and immutable transactions.',
+  };
+}
+
+for (const operationId of ['listProcurementImportReports', 'listInventoryImportReports']) {
+  methodPolicies[operationId] = {
+    resource: 'Import report',
+    completeness: 'read-only-admin-audit',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'POST/PATCH/DELETE', reason: 'Import reports are generated by import jobs and retained as audit evidence.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Admin/owner import audit read model.',
+  };
+}
+
 function jsonContent(response: OpenAPIV3.ResponseObject) {
   response.content ??= {};
   response.content['application/json'] ??= {};
@@ -281,19 +579,26 @@ function addParameterExamples(operation: OpenAPIV3.OperationObject) {
   }
 }
 
+function addMethodPolicy(operation: OpenAPIV3.OperationObject) {
+  if (!operation.operationId) return;
+  const policy = methodPolicies[operation.operationId];
+  if (policy) (operation as OperationWithMethodPolicy)['x-method-policy'] = policy;
+}
+
 export function enrichOpenApiDocument(document: OpenAPIV3.Document): OpenAPIV3.Document {
   for (const item of Object.values(document.paths)) {
     if (!item) continue;
     for (const method of ['delete', 'get', 'patch', 'post', 'put'] as const) {
       const operation = item[method];
       if (!operation) continue;
+      addMethodPolicy(operation);
       addParameterExamples(operation);
       addRequestExample(operation);
       addResponseExamples(operation);
     }
   }
 
-  document.info.description = `${document.info.description}\n\nError responses use a consistent JSON shape: \`{ "error": "message" }\`. List endpoints use explicit query parameters such as \`q\`, \`take\`, \`status\`, and domain filters where implemented; endpoints without those parameters are intentionally unpaginated read models today.`;
+  document.info.description = `${document.info.description}\n\nError responses use a consistent JSON shape: \`{ "error": "message" }\`. List endpoints use explicit query parameters such as \`q\`, \`take\`, \`status\`, and domain filters where implemented; endpoints without those parameters are intentionally unpaginated read models today.\n\nMethod policy is documented per operation in \`x-method-policy\`. The API intentionally avoids generic destructive deletes for production, procurement, inventory, HET, sterilisation, and import-audit records; those domains use lifecycle actions, read models, deactivation, or future controlled correction workflows instead of full generic CRUD.`;
   return document;
 }
 
@@ -350,7 +655,7 @@ export async function registerOpenApi(app: FastifyInstance) {
     <main>
       <h1>Ventas Work Order API</h1>
       <p>The machine-readable OpenAPI contract is available at <a href="/api/openapi.json">/api/openapi.json</a>.</p>
-      <p>Routes are classified with OpenAPI tags and <code>x-route-kind</code> metadata so follow-up work can distinguish resource CRUD, lifecycle actions, auth, and health endpoints.</p>
+      <p>Routes are classified with OpenAPI tags, <code>x-route-kind</code>, and <code>x-method-policy</code> metadata so follow-up work can distinguish controlled CRUD, lifecycle actions, read models, auth, omitted methods, and intentionally absent destructive deletes.</p>
     </main>
   </body>
 </html>`);

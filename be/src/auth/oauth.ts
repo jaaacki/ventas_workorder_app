@@ -48,7 +48,7 @@ export function isProviderConfigured(config: ProviderConfig): boolean {
   return Boolean(config.clientId && config.redirectUri && (hasSecretAuth || hasCertificateAuth));
 }
 
-function getProviderConfig(provider: z.infer<typeof providerParam>, env: Env): ProviderConfig {
+export function getProviderConfig(provider: z.infer<typeof providerParam>, env: Env): ProviderConfig {
   if (provider === 'google') {
     return {
       issuerUrl: 'https://accounts.google.com',
@@ -66,7 +66,7 @@ function getProviderConfig(provider: z.infer<typeof providerParam>, env: Env): P
   const tenant = env.MS_TENANT || 'common';
   return {
     issuerUrl: `https://login.microsoftonline.com/${tenant}/v2.0`,
-    scope: 'openid email profile',
+    scope: env.MS_SCOPE || 'openid email profile',
     clientId: env.MS_CLIENT_ID,
     clientSecret: env.MS_CLIENT_SECRET,
     privateKey: env.MS_PRIVATE_KEY,

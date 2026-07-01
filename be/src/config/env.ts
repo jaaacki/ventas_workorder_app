@@ -22,6 +22,7 @@ export const envSchema = z.object({
   MS_CERTIFICATE: z.string().optional(),
   MS_CERTIFICATE_FILE: z.string().optional(),
   MS_CERT_THUMBPRINT: z.string().optional(),
+  MS_SCOPE: z.string().optional(),
   MS_TENANT: z.string().optional().default('common'),
   MS_REDIRECT_URI: z.string().url().optional(),
   BITRIX_WEBHOOK_URL: z.string().optional(),

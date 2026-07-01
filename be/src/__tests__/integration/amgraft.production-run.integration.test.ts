@@ -4,6 +4,8 @@ import {
   createWorkOrder,
   advanceWorkOrder,
   getWorkOrder,
+  startWorkOrderPhase,
+  finishWorkOrderPhase,
 } from '../../services/workOrderService.js';
 import { generateBatchRecord } from '../../services/manufacturingService.js';
 import { createSterilisation } from '../../services/sterilisationService.js';
@@ -76,7 +78,7 @@ afterAll(async () => {
 describe('AmGraft production run (integration)', () => {
   it('runs a work order through every phase with the sterilisation gate and HET lifecycle', async () => {
     // 1. Create at the first phase (Preparation).
-    const wo = await createWorkOrder({ workflowId: ctx.workflowId }, ctx.actorId);
+    const wo = await createWorkOrder({ workflowId: ctx.workflowId, hetId: ctx.hetId }, ctx.actorId);
     ctx.workOrderId = wo.id;
     expect(wo.phaseOrder).toBe(0);
     expect(wo.phase?.phaseName).toBe('Preparation');
@@ -88,7 +90,9 @@ describe('AmGraft production run (integration)', () => {
     expect(withBatch?.manuId).toBe(batch.id);
     expect(withBatch?.manuNumber).toBe(batch.manuNumber);
 
-    // 3. Advance to Production.
+    // 3. Complete Preparation, then advance to Production.
+    await startWorkOrderPhase(wo.id, ctx.actorId);
+    await finishWorkOrderPhase(wo.id, ctx.actorId);
     let cur = await advanceWorkOrder(wo.id, ctx.actorId);
     expect(cur.phaseOrder).toBe(1);
     expect(cur.phase?.phaseName).toBe('Production');

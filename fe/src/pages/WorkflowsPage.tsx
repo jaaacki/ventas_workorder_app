@@ -4,11 +4,15 @@ import type { AxiosError } from 'axios';
 import {
   createBom,
   createBomLine,
+  addPhaseEquipment,
+  addPhaseProcedure,
   fetchPhases,
   fetchBoms,
   fetchBomLines,
   fetchPhaseEquipment,
   fetchProcedures,
+  fetchPhaseEquipmentBindings,
+  fetchPhaseProcedures,
   fetchWorkflow,
   fetchWorkflows,
   createPhase,
@@ -19,6 +23,8 @@ import {
   deleteBomLine,
   deletePhase,
   deletePhaseEquipment,
+  deletePhaseEquipmentBinding,
+  deletePhaseProcedure,
   deleteProcedure,
   updateBom,
   updateBomLine,
@@ -31,9 +37,11 @@ import {
   type BomLineMutationPayload,
   type BomMutationPayload,
   type PhaseCatalogItem,
+  type PhaseEquipmentBinding,
   type PhaseEquipmentCatalogItem,
   type PhaseEquipmentMutationPayload,
   type PhaseMutationPayload,
+  type PhaseProcedureBinding,
   type ProcedureCatalogItem,
   type ProcedureMutationPayload,
   type WorkflowDetail,
@@ -257,6 +265,242 @@ function PhaseBindingsPanel({
               </TableBody>
             </Table>
           )}
+        </div>
+      )}
+    </AdminPanel>
+  );
+}
+
+function procedureLabel(procedure?: ProcedureCatalogItem | PhaseProcedureBinding['procedure'] | null) {
+  if (!procedure) return 'Unknown procedure';
+  return procedure.procedureName || procedure.procedureShort || procedure.id;
+}
+
+function equipmentLabel(equipment?: PhaseEquipmentCatalogItem | PhaseEquipmentBinding['phaseEquip'] | null) {
+  if (!equipment) return 'Unknown equipment';
+  return equipment.name || equipment.equipId || equipment.id;
+}
+
+function PhaseRequirementsPanel({
+  phases,
+  procedures,
+  phaseEquipment,
+  isLoading,
+}: {
+  phases: PhaseCatalogItem[];
+  procedures: ProcedureCatalogItem[];
+  phaseEquipment: PhaseEquipmentCatalogItem[];
+  isLoading: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [selectedPhaseId, setSelectedPhaseId] = useState('');
+  const [procedureToAdd, setProcedureToAdd] = useState('');
+  const [equipmentToAdd, setEquipmentToAdd] = useState('');
+  const effectivePhaseId = selectedPhaseId || phases[0]?.id || '';
+
+  const procedureBindingsQuery = useQuery({
+    queryKey: ['phase-procedures', effectivePhaseId],
+    queryFn: () => fetchPhaseProcedures(effectivePhaseId),
+    enabled: Boolean(effectivePhaseId),
+  });
+
+  const equipmentBindingsQuery = useQuery({
+    queryKey: ['phase-equipment-bindings', effectivePhaseId],
+    queryFn: () => fetchPhaseEquipmentBindings(effectivePhaseId),
+    enabled: Boolean(effectivePhaseId),
+  });
+
+  const procedureBindings = procedureBindingsQuery.data ?? [];
+  const equipmentBindings = equipmentBindingsQuery.data ?? [];
+  const boundProcedureIds = new Set(procedureBindings.map((binding) => binding.procedureId));
+  const boundEquipmentIds = new Set(equipmentBindings.map((binding) => binding.phaseEquipId));
+  const availableProcedures = procedures.filter((procedure) => !boundProcedureIds.has(procedure.id));
+  const availableEquipment = phaseEquipment.filter((equipment) => !boundEquipmentIds.has(equipment.id));
+
+  const invalidateBindings = () => {
+    queryClient.invalidateQueries({ queryKey: ['phase-procedures', effectivePhaseId] });
+    queryClient.invalidateQueries({ queryKey: ['phase-equipment-bindings', effectivePhaseId] });
+  };
+
+  const addProcedureMutation = useMutation({
+    mutationFn: () => addPhaseProcedure(effectivePhaseId, procedureToAdd),
+    onSuccess: () => {
+      invalidateBindings();
+      setProcedureToAdd('');
+      toast.success('Procedure bound');
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to bind procedure')),
+  });
+
+  const deleteProcedureMutation = useMutation({
+    mutationFn: (procedureId: string) => deletePhaseProcedure(effectivePhaseId, procedureId),
+    onSuccess: () => {
+      invalidateBindings();
+      toast.success('Procedure unbound');
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to unbind procedure')),
+  });
+
+  const addEquipmentMutation = useMutation({
+    mutationFn: () => addPhaseEquipment(effectivePhaseId, equipmentToAdd),
+    onSuccess: () => {
+      invalidateBindings();
+      setEquipmentToAdd('');
+      toast.success('Equipment bound');
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to bind equipment')),
+  });
+
+  const deleteEquipmentMutation = useMutation({
+    mutationFn: (phaseEquipId: string) => deletePhaseEquipmentBinding(effectivePhaseId, phaseEquipId),
+    onSuccess: () => {
+      invalidateBindings();
+      toast.success('Equipment unbound');
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to unbind equipment')),
+  });
+
+  const busy =
+    addProcedureMutation.isPending ||
+    deleteProcedureMutation.isPending ||
+    addEquipmentMutation.isPending ||
+    deleteEquipmentMutation.isPending ||
+    procedureBindingsQuery.isLoading ||
+    equipmentBindingsQuery.isLoading;
+
+  return (
+    <AdminPanel title="Phase requirements" description="Bind controlled procedures and allowed equipment to each phase.">
+      {isLoading ? (
+        <div className="flex h-40 items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+        </div>
+      ) : !phases.length ? (
+        <EmptyState icon={<WorkflowIcon className="h-6 w-6" />} title="No phases available" description="Create phase catalog entries before binding requirements." />
+      ) : (
+        <div className="space-y-5">
+          <div className="grid gap-1.5 md:max-w-md">
+            <Label htmlFor="requirements-phase">Phase</Label>
+            <select
+              id="requirements-phase"
+              value={effectivePhaseId}
+              onChange={(event) => {
+                setSelectedPhaseId(event.target.value);
+                setProcedureToAdd('');
+                setEquipmentToAdd('');
+              }}
+              className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+            >
+              {phases.map((phase) => (
+                <option key={phase.id} value={phase.id}>
+                  {phaseLabel(phase)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-2">
+            <div className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="procedure-bind">Procedure</Label>
+                  <select
+                    id="procedure-bind"
+                    value={procedureToAdd}
+                    onChange={(event) => setProcedureToAdd(event.target.value)}
+                    className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                  >
+                    <option value="">Select procedure</option>
+                    {availableProcedures.map((procedure) => (
+                      <option key={procedure.id} value={procedure.id}>
+                        {procedureLabel(procedure)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <Button type="button" disabled={busy || !procedureToAdd} onClick={() => addProcedureMutation.mutate()}>
+                  <Plus className="h-4 w-4" />
+                  Bind
+                </Button>
+              </div>
+
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Bound procedures</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {procedureBindings.map((binding) => (
+                    <TableRow key={binding.procedureId}>
+                      <TableCell>
+                        <div className="font-medium text-gray-800 dark:text-white/90">{procedureLabel(binding.procedure)}</div>
+                        <div className="text-xs text-gray-500">{binding.procedure.procedureShort || binding.procedureId}</div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end">
+                          <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => deleteProcedureMutation.mutate(binding.procedureId)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="equipment-bind">Equipment</Label>
+                  <select
+                    id="equipment-bind"
+                    value={equipmentToAdd}
+                    onChange={(event) => setEquipmentToAdd(event.target.value)}
+                    className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                  >
+                    <option value="">Select equipment</option>
+                    {availableEquipment.map((equipment) => (
+                      <option key={equipment.id} value={equipment.id}>
+                        {equipmentLabel(equipment)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <Button type="button" disabled={busy || !equipmentToAdd} onClick={() => addEquipmentMutation.mutate()}>
+                  <Plus className="h-4 w-4" />
+                  Bind
+                </Button>
+              </div>
+
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Allowed equipment</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {equipmentBindings.map((binding) => (
+                    <TableRow key={binding.phaseEquipId}>
+                      <TableCell>
+                        <div className="font-medium text-gray-800 dark:text-white/90">{equipmentLabel(binding.phaseEquip)}</div>
+                        <div className="text-xs text-gray-500">{binding.phaseEquip.equipId || binding.phaseEquipId}</div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end">
+                          <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => deleteEquipmentMutation.mutate(binding.phaseEquipId)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
         </div>
       )}
     </AdminPanel>
@@ -1126,6 +1370,13 @@ export default function WorkflowsPage() {
       </AdminPanel>
 
       <PhaseCatalogPanel phases={phasesQuery.data ?? []} isLoading={phasesQuery.isLoading} />
+
+      <PhaseRequirementsPanel
+        phases={phasesQuery.data ?? []}
+        procedures={proceduresQuery.data ?? []}
+        phaseEquipment={phaseEquipmentQuery.data ?? []}
+        isLoading={phasesQuery.isLoading || proceduresQuery.isLoading || phaseEquipmentQuery.isLoading}
+      />
 
       <WorkflowMasterDataPanel
         procedures={proceduresQuery.data ?? []}

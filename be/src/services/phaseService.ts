@@ -34,6 +34,44 @@ const phaseSelect = {
   updatedAt: true,
 } as const;
 
+const phaseProcedureSelect = {
+  phaseId: true,
+  procedureId: true,
+  procedure: {
+    select: {
+      id: true,
+      procedureName: true,
+      procedureShort: true,
+      procedureDesc: true,
+    },
+  },
+} as const;
+
+const phaseEquipmentSelect = {
+  phaseId: true,
+  phaseEquipId: true,
+  phaseEquip: {
+    select: {
+      id: true,
+      equipId: true,
+      name: true,
+      description: true,
+    },
+  },
+} as const;
+
+function notFound(message: string) {
+  return new Prisma.PrismaClientKnownRequestError(message, {
+    code: 'P2025',
+    clientVersion: 'unknown',
+  });
+}
+
+async function assertTenantPhase(id: string, tenantId: string) {
+  const phase = await prisma.phase.findFirst({ where: { id, tenantId }, select: { id: true } });
+  if (!phase) throw notFound('Phase not found');
+}
+
 export async function listPhases(tenantId?: string | null) {
   return prisma.phase.findMany({
     where: { tenantId: tenantIdOrDefault(tenantId) },
@@ -78,10 +116,7 @@ export async function updatePhase(id: string, input: UpdatePhaseInput, actorId: 
     select: { id: true },
   });
   if (!phase) {
-    throw new Prisma.PrismaClientKnownRequestError('Phase not found', {
-      code: 'P2025',
-      clientVersion: 'unknown',
-    });
+    throw notFound('Phase not found');
   }
 
   return prisma.phase.update({
@@ -106,12 +141,91 @@ export async function deletePhase(id: string, tenantId?: string | null) {
     select: { id: true },
   });
   if (!phase) {
-    throw new Prisma.PrismaClientKnownRequestError('Phase not found', {
-      code: 'P2025',
-      clientVersion: 'unknown',
-    });
+    throw notFound('Phase not found');
   }
 
   await prisma.phase.delete({ where: { id } });
+  return { success: true as const };
+}
+
+export async function listPhaseProcedures(phaseId: string, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  await assertTenantPhase(phaseId, scopedTenantId);
+
+  return prisma.phaseProcedure.findMany({
+    where: { phaseId },
+    select: phaseProcedureSelect,
+    orderBy: [{ procedure: { procedureName: 'asc' } }, { procedureId: 'asc' }],
+  });
+}
+
+export async function addPhaseProcedure(phaseId: string, procedureId: string, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  await assertTenantPhase(phaseId, scopedTenantId);
+  const procedure = await prisma.procedure.findFirst({
+    where: { id: procedureId, tenantId: scopedTenantId },
+    select: { id: true },
+  });
+  if (!procedure) throw notFound('Procedure not found');
+
+  return prisma.phaseProcedure.upsert({
+    where: { phaseId_procedureId: { phaseId, procedureId } },
+    create: { phaseId, procedureId },
+    update: {},
+    select: phaseProcedureSelect,
+  });
+}
+
+export async function deletePhaseProcedure(phaseId: string, procedureId: string, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  await assertTenantPhase(phaseId, scopedTenantId);
+  const binding = await prisma.phaseProcedure.findUnique({
+    where: { phaseId_procedureId: { phaseId, procedureId } },
+    select: { phaseId: true },
+  });
+  if (!binding) throw notFound('Phase procedure binding not found');
+
+  await prisma.phaseProcedure.delete({ where: { phaseId_procedureId: { phaseId, procedureId } } });
+  return { success: true as const };
+}
+
+export async function listPhaseEquipmentBindings(phaseId: string, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  await assertTenantPhase(phaseId, scopedTenantId);
+
+  return prisma.phasePhaseEquip.findMany({
+    where: { phaseId },
+    select: phaseEquipmentSelect,
+    orderBy: [{ phaseEquip: { name: 'asc' } }, { phaseEquipId: 'asc' }],
+  });
+}
+
+export async function addPhaseEquipment(phaseId: string, phaseEquipId: string, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  await assertTenantPhase(phaseId, scopedTenantId);
+  const phaseEquip = await prisma.phaseEquip.findFirst({
+    where: { id: phaseEquipId, tenantId: scopedTenantId },
+    select: { id: true },
+  });
+  if (!phaseEquip) throw notFound('Phase equipment not found');
+
+  return prisma.phasePhaseEquip.upsert({
+    where: { phaseId_phaseEquipId: { phaseId, phaseEquipId } },
+    create: { phaseId, phaseEquipId },
+    update: {},
+    select: phaseEquipmentSelect,
+  });
+}
+
+export async function deletePhaseEquipment(phaseId: string, phaseEquipId: string, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  await assertTenantPhase(phaseId, scopedTenantId);
+  const binding = await prisma.phasePhaseEquip.findUnique({
+    where: { phaseId_phaseEquipId: { phaseId, phaseEquipId } },
+    select: { phaseId: true },
+  });
+  if (!binding) throw notFound('Phase equipment binding not found');
+
+  await prisma.phasePhaseEquip.delete({ where: { phaseId_phaseEquipId: { phaseId, phaseEquipId } } });
   return { success: true as const };
 }

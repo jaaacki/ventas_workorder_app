@@ -64,6 +64,10 @@ const workOrderSchema = z.object({
   prodDuration: decimalish.nullable(),
   outputQuantity: decimalish.nullable(),
   imagePath: z.string().nullable(),
+  releaseStatus: z.string().nullable(),
+  releaseDecisionAt: z.date().nullable(),
+  releaseDecisionById: z.string().nullable(),
+  releaseRemarks: z.string().nullable(),
   manuId: z.string().nullable(),
   manuNumber: z.string().nullable(),
   woNumber: z.string().nullable(),
@@ -141,6 +145,8 @@ const auditStateSchema = z.object({
   prodEnd: z.string().nullable(),
   prodDurationMinutes: z.string().nullable(),
   outputQuantity: z.string().nullable(),
+  releaseStatus: z.string().nullable(),
+  releaseDecisionAt: z.string().nullable(),
   imageCaptured: z.boolean().nullable().optional(),
   equipmentCount: z.number().nullable().optional(),
   serialCount: z.number().nullable().optional(),
@@ -182,6 +188,11 @@ const equipmentBodySchema = z.object({
 
 const photoEvidenceBodySchema = z.object({
   imageDataUrl: z.string().trim().min(1),
+});
+
+const releaseBodySchema = z.object({
+  releaseStatus: z.enum(['released', 'quarantined', 'rejected']),
+  remarks: z.string().trim().max(2000).optional(),
 });
 
 function actorIdOf(req: { user: unknown }): string {
@@ -437,6 +448,49 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         }
         if (err instanceof Error && err.name === 'Error' && err.message.includes('Invalid argument')) {
           return reply.status(400).send({ error: 'Invalid output quantity' });
+        }
+        throw err;
+      }
+    },
+  );
+
+  app.post(
+    '/:id/release',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        tags: ['Work Orders'],
+        summary: 'Record work order release disposition',
+        description: 'Record final QA release disposition for a final-phase work order that has finished production.',
+        operationId: 'recordWorkOrderRelease',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
+        'x-auth': 'authenticated',
+        params: z.object({ id: z.string() }),
+        body: releaseBodySchema,
+        response: {
+          200: workOrderDetailSchema,
+          400: errorResponse,
+          401: errorResponse,
+          404: errorResponse,
+          409: errorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      try {
+        return await workOrderService.recordWorkOrderRelease(
+          req.params.id,
+          { releaseStatus: req.body.releaseStatus, remarks: req.body.remarks },
+          actorIdOf(req),
+          tenantIdOf(req),
+        );
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith('cannot release:')) {
+          return reply.status(409).send({ error: err.message });
+        }
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+          return reply.status(404).send({ error: 'Work order not found' });
         }
         throw err;
       }

@@ -12,6 +12,7 @@ type WorkOrderAuditAction =
   | 'work_order.equipment_recorded'
   | 'work_order.photo_evidence_recorded'
   | 'work_order.output_quantity_recorded'
+  | 'work_order.release_recorded'
   | 'work_order.serial_recorded'
   | 'work_order.phase_started'
   | 'work_order.phase_finished'
@@ -28,6 +29,8 @@ interface WorkOrderAuditState extends Prisma.InputJsonObject {
   prodEnd: string | null;
   prodDurationMinutes: string | null;
   outputQuantity: string | null;
+  releaseStatus: string | null;
+  releaseDecisionAt: string | null;
   imageCaptured?: boolean | null;
   equipmentCount?: number | null;
   serialCount?: number | null;
@@ -120,8 +123,23 @@ const workOrderAuditSelect = {
 function auditState(
   workOrder: Pick<
     WorkOrder,
-    'id' | 'tenantId' | 'workflowId' | 'phaseId' | 'phaseOrder' | 'hetId' | 'prodStart' | 'prodEnd' | 'prodDuration' | 'outputQuantity'
-  > & { imagePath?: string | null; phaseEquips?: unknown[]; woSerials?: unknown[] },
+    | 'id'
+    | 'tenantId'
+    | 'workflowId'
+    | 'phaseId'
+    | 'phaseOrder'
+    | 'hetId'
+    | 'prodStart'
+    | 'prodEnd'
+    | 'prodDuration'
+    | 'outputQuantity'
+  > & {
+    releaseStatus?: string | null;
+    releaseDecisionAt?: Date | null;
+    imagePath?: string | null;
+    phaseEquips?: unknown[];
+    woSerials?: unknown[];
+  },
 ): WorkOrderAuditState {
   return {
     id: workOrder.id,
@@ -134,6 +152,8 @@ function auditState(
     prodEnd: workOrder.prodEnd?.toISOString() ?? null,
     prodDurationMinutes: workOrder.prodDuration?.toString() ?? null,
     outputQuantity: workOrder.outputQuantity?.toString() ?? null,
+    releaseStatus: workOrder.releaseStatus ?? null,
+    releaseDecisionAt: workOrder.releaseDecisionAt?.toISOString() ?? null,
     ...('imagePath' in workOrder ? { imageCaptured: Boolean(workOrder.imagePath) } : {}),
     ...(workOrder.phaseEquips ? { equipmentCount: workOrder.phaseEquips.length } : {}),
     ...(workOrder.woSerials ? { serialCount: workOrder.woSerials.length } : {}),
@@ -244,6 +264,7 @@ function isGatePhase(phaseName?: string | null) {
 function getLifecycleState(workOrder: OperationalWorkOrder, atFinalPhase: boolean) {
   if (!workOrder.prodStart) return 'NotStarted';
   if (!workOrder.prodEnd) return 'InProgress';
+  if (workOrder.releaseStatus === 'released') return 'Released';
   if (atFinalPhase) return 'ReleasePending';
   return 'ReadyToAdvance';
 }
@@ -427,8 +448,12 @@ function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder, context: 
 
   return {
     ...workOrder,
+    releaseStatus: workOrder.releaseStatus ?? null,
+    releaseDecisionAt: workOrder.releaseDecisionAt ?? null,
+    releaseDecisionById: workOrder.releaseDecisionById ?? null,
+    releaseRemarks: workOrder.releaseRemarks ?? null,
     lifecycleState: getLifecycleState(workOrder, atFinalPhase),
-    operationalStatus: blockers.length ? 'Blocked' : atFinalPhase ? 'ReleasePending' : getLifecycleState(workOrder, atFinalPhase),
+    operationalStatus: blockers.length ? 'Blocked' : workOrder.releaseStatus ?? (atFinalPhase ? 'ReleasePending' : getLifecycleState(workOrder, atFinalPhase)),
     readinessBlockers: blockers,
     currentPhaseLabel: workOrder.phase?.phaseName ?? workOrder.phaseShort ?? `Phase ${workOrder.phaseOrder ?? '-'}`,
     ...legacyState,
@@ -703,6 +728,58 @@ export async function recordWorkOrderPhotoEvidence(
     action: 'work_order.photo_evidence_recorded',
     actorId,
     source: 'workOrderService.recordWorkOrderPhotoEvidence',
+    previousState: auditState(workOrder),
+    newState: auditState(updated),
+  });
+
+  return getDecoratedWorkOrderOrThrow(id, scopedTenantId);
+}
+
+export async function recordWorkOrderRelease(
+  id: string,
+  input: { releaseStatus: 'released' | 'quarantined' | 'rejected'; remarks?: string | null },
+  actorId: string,
+  tenantId?: string | null,
+) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const workOrder = await prisma.workOrder.findFirst({
+    where: { id, tenantId: scopedTenantId },
+    include: workOrderOperationalInclude,
+  });
+
+  if (!workOrder) {
+    throw new Prisma.PrismaClientKnownRequestError('Work order not found', {
+      code: 'P2025',
+      clientVersion: 'unknown',
+    });
+  }
+
+  const context = await getLegacyContextForWorkOrder(workOrder, scopedTenantId);
+  const decorated = decorateOperationalWorkOrder(workOrder, context);
+  if (decorated.releaseStatus) {
+    throw new Error('cannot release: work order already has a release disposition');
+  }
+  if (decorated.lifecycleState !== 'ReleasePending') {
+    throw new Error('cannot release: work order is not ready for final release');
+  }
+
+  const updated = await prisma.workOrder.update({
+    where: { id },
+    data: {
+      releaseStatus: input.releaseStatus,
+      releaseDecisionAt: new Date(),
+      releaseDecisionById: actorId,
+      releaseRemarks: input.remarks?.trim() || null,
+      updatedById: actorId,
+    },
+  });
+
+  await recordWorkOrderAuditEvent({
+    tenantId: scopedTenantId,
+    workOrderId: id,
+    action: 'work_order.release_recorded',
+    actorId,
+    source: 'workOrderService.recordWorkOrderRelease',
     previousState: auditState(workOrder),
     newState: auditState(updated),
   });

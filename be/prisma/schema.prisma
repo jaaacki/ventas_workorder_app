@@ -53,6 +53,7 @@ model Staff {
   updatedPhaseEquips   PhaseEquip[]   @relation("PhaseEquipUpdatedBy")
   startedWorkOrders    WorkOrder[]    @relation("WorkOrderStartSignBy")
   endedWorkOrders      WorkOrder[]    @relation("WorkOrderEndSignBy")
+  releasedWorkOrders   WorkOrder[]    @relation("WorkOrderReleaseDecisionBy")
   signedSterilises     Sterilise[]    @relation("SteriliseSignBy")
   createdManufacturers Manufacturer[] @relation("ManufacturerCreatedBy")
   updatedManufacturers Manufacturer[] @relation("ManufacturerUpdatedBy")
@@ -334,6 +335,10 @@ model WorkOrder {
   prodDuration           Decimal?  @db.Decimal(18, 4)
   outputQuantity         Decimal?  @db.Decimal(18, 4)
   imagePath              String?
+  releaseStatus          String?
+  releaseDecisionAt      DateTime?
+  releaseDecisionById    String?
+  releaseRemarks         String?
   manuId                 String?
   manuNumber             String?
   woNumber               String?
@@ -352,6 +357,7 @@ model WorkOrder {
   phase                 Phase?                          @relation("WorkOrderCurrentPhase", fields: [phaseId], references: [id])
   startSignBy           Staff?                          @relation("WorkOrderStartSignBy", fields: [startSignById], references: [id])
   endSignBy             Staff?                          @relation("WorkOrderEndSignBy", fields: [endSignById], references: [id])
+  releaseDecisionBy     Staff?                          @relation("WorkOrderReleaseDecisionBy", fields: [releaseDecisionById], references: [id])
   manufacturer          Manufacturer?                   @relation(fields: [manuId], references: [id])
   previousWo            WorkOrder?                      @relation("WorkOrderPrevious", fields: [previousWoId], references: [id])
   nextWorkOrders        WorkOrder[]                     @relation("WorkOrderPrevious")

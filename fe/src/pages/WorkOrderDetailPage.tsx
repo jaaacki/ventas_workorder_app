@@ -14,6 +14,7 @@ import {
   ImageUp,
   PackageSearch,
   Route,
+  ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +30,7 @@ import {
   recordWorkOrderEquipment,
   recordWorkOrderOutputQuantity,
   recordWorkOrderPhotoEvidence,
+  recordWorkOrderRelease,
   recordWorkOrderSerial,
   startWorkOrderPhase,
   type WorkOrderAuditEvent,
@@ -100,6 +102,9 @@ function stateSummary(event: WorkOrderAuditEvent) {
     previous.outputQuantity !== next.outputQuantity
       ? `Output ${formatQuantity(previous.outputQuantity)} -> ${formatQuantity(next.outputQuantity)}`
       : null,
+    previous.releaseStatus !== next.releaseStatus
+      ? `Release ${previous.releaseStatus || '-'} -> ${next.releaseStatus || '-'}`
+      : null,
     previous.imageCaptured !== next.imageCaptured
       ? `Photo ${previous.imageCaptured ? 'captured' : 'missing'} -> ${next.imageCaptured ? 'captured' : 'missing'}`
       : null,
@@ -116,6 +121,91 @@ function stateSummary(event: WorkOrderAuditEvent) {
 
 function equipmentLabel(equipment: WorkOrderAllowedEquipment) {
   return equipment.name || equipment.equipId || equipment.phaseEquipId;
+}
+
+function ReleaseDispositionPanel({
+  workOrder,
+  onSaved,
+}: {
+  workOrder: WorkOrderDetail;
+  onSaved: (updated: WorkOrderDetail) => void;
+}) {
+  const [releaseStatus, setReleaseStatus] = useState<'released' | 'quarantined' | 'rejected'>('released');
+  const [remarks, setRemarks] = useState('');
+  const canRecord = workOrder.lifecycleState === 'ReleasePending';
+
+  const releaseMutation = useMutation({
+    mutationFn: () => recordWorkOrderRelease(workOrder.id, { releaseStatus, remarks: remarks.trim() || undefined }),
+    onSuccess: (updated) => {
+      onSaved(updated);
+      setRemarks('');
+      toast.success('Release disposition recorded');
+    },
+    onError: (e: AxiosError<{ error?: string }>) =>
+      toast.error(e.response?.data?.error || 'Failed to record release disposition'),
+  });
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!canRecord) return;
+    releaseMutation.mutate();
+  };
+
+  return (
+    <AdminPanel title="Release disposition" description="Final QA disposition for release-ready work orders.">
+      <div className="grid gap-4 xl:grid-cols-[280px_1fr] xl:items-start">
+        <MetricCard
+          icon={<ShieldCheck className="h-5 w-5" />}
+          label="Release status"
+          value={workOrder.releaseStatus || 'Pending'}
+          detail={workOrder.releaseDecisionAt ? formatDate(workOrder.releaseDecisionAt) : workOrder.lifecycleState}
+        />
+        {workOrder.releaseStatus ? (
+          <div className="rounded-lg border border-gray-200 p-4 text-sm dark:border-gray-800">
+            <div className="font-medium text-gray-800 dark:text-white/90">
+              {workOrder.releaseStatus}
+            </div>
+            <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              By {workOrder.releaseDecisionById || '-'} at {formatDate(workOrder.releaseDecisionAt)}
+            </div>
+            <div className="mt-3 text-gray-600 dark:text-gray-300">{workOrder.releaseRemarks || 'No remarks recorded.'}</div>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="release-status">Disposition</Label>
+              <select
+                id="release-status"
+                value={releaseStatus}
+                onChange={(event) => setReleaseStatus(event.target.value as 'released' | 'quarantined' | 'rejected')}
+                disabled={!canRecord}
+                className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              >
+                <option value="released">Release</option>
+                <option value="quarantined">Quarantine</option>
+                <option value="rejected">Reject</option>
+              </select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="release-remarks">Remarks</Label>
+              <textarea
+                id="release-remarks"
+                value={remarks}
+                onChange={(event) => setRemarks(event.target.value)}
+                disabled={!canRecord}
+                rows={4}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                placeholder={canRecord ? 'Release notes or quarantine/rejection reason' : 'Work order must be in final release readiness before disposition.'}
+              />
+            </div>
+            <Button type="submit" disabled={!canRecord || releaseMutation.isPending}>
+              Record disposition
+            </Button>
+          </form>
+        )}
+      </div>
+    </AdminPanel>
+  );
 }
 
 function PhotoEvidencePanel({
@@ -512,6 +602,10 @@ export default function WorkOrderDetailPage() {
     updateCachedWorkOrder(updated);
   };
 
+  const recordReleaseSaved = (updated: WorkOrderDetail) => {
+    updateCachedWorkOrder(updated);
+  };
+
   const advanceMutation = useMutation({
     mutationFn: () => advanceWorkOrder(id!),
     onSuccess: (updated) => {
@@ -595,6 +689,8 @@ export default function WorkOrderDetailPage() {
       <OutputEvidencePanel key={workOrder.id} workOrder={workOrder} onSaved={recordOutputSaved} />
 
       <PhotoEvidencePanel workOrder={workOrder} onSaved={recordPhotoSaved} />
+
+      <ReleaseDispositionPanel workOrder={workOrder} onSaved={recordReleaseSaved} />
 
       <EquipmentEvidencePanel workOrder={workOrder} onSaved={recordEquipmentSaved} />
 

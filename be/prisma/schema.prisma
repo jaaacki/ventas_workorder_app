@@ -370,6 +370,22 @@ model WorkOrder {
   @@map("workOrder")
 }
 
+model WorkOrderAuditEvent {
+  id            String   @id @default(cuid())
+  tenantId      String
+  workOrderId   String
+  action        String
+  actorId       String?
+  source        String
+  previousState Json?
+  newState      Json?
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, workOrderId, createdAt])
+  @@index([action])
+  @@map("workOrderAuditEvent")
+}
+
 model WorkOrderHet {
   workOrderId String
   hetId       String

@@ -11,6 +11,10 @@ const mocks = vi.hoisted(() => ({
     create: vi.fn(),
     update: vi.fn(),
   },
+  workOrderAuditEvent: {
+    create: vi.fn(),
+    findMany: vi.fn(),
+  },
   sterilise: {
     findFirst: vi.fn(),
   },
@@ -20,6 +24,7 @@ vi.mock('../../db/prisma.js', () => ({
   prisma: {
     workflow: mocks.workflow,
     workOrder: mocks.workOrder,
+    workOrderAuditEvent: mocks.workOrderAuditEvent,
     sterilise: mocks.sterilise,
   },
 }));
@@ -27,6 +32,7 @@ vi.mock('../../db/prisma.js', () => ({
 import {
   createWorkOrder,
   listWorkOrders,
+  listWorkOrderAuditEvents,
   getWorkOrder,
   startWorkOrderPhase,
   finishWorkOrderPhase,
@@ -101,6 +107,48 @@ describe('workOrderService', () => {
     );
   });
 
+  it('listWorkOrderAuditEvents verifies tenant ownership before reading audit rows', async () => {
+    const createdAt = new Date('2026-07-01T09:00:00Z');
+    mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo-1' });
+    mocks.workOrderAuditEvent.findMany.mockResolvedValue([
+      {
+        id: 'audit-1',
+        tenantId: 'tenant-a',
+        workOrderId: 'wo-1',
+        action: 'work_order.phase_started',
+        actorId: 'actor1',
+        source: 'workOrderService.startWorkOrderPhase',
+        previousState: null,
+        newState: { id: 'wo-1' },
+        createdAt,
+      },
+    ]);
+
+    const result = await listWorkOrderAuditEvents('wo-1', 'tenant-a');
+
+    expect(mocks.workOrder.findFirst).toHaveBeenCalledWith({
+      where: { id: 'wo-1', tenantId: 'tenant-a', deleted: false },
+      select: { id: true },
+    });
+    expect(mocks.workOrderAuditEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { workOrderId: 'wo-1', tenantId: 'tenant-a' },
+        orderBy: { createdAt: 'asc' },
+      }),
+    );
+    expect(result).toEqual([
+      expect.objectContaining({ id: 'audit-1', action: 'work_order.phase_started' }),
+    ]);
+  });
+
+  it('listWorkOrderAuditEvents returns null without reading audit rows when work order is outside the tenant', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue(null);
+
+    await expect(listWorkOrderAuditEvents('wo-1', 'tenant-a')).resolves.toBeNull();
+
+    expect(mocks.workOrderAuditEvent.findMany).not.toHaveBeenCalled();
+  });
+
   it('createWorkOrder sets the first phase and generates a woNumber starting with WO-', async () => {
     mocks.workflow.findFirst.mockResolvedValue({
       id: 'w1',
@@ -111,9 +159,14 @@ describe('workOrderService', () => {
     });
     const created = {
       id: 'wo-created',
+      tenantId: 'ventas',
       woNumber: 'WO-CREATED',
+      workflowId: 'w1',
+      hetId: 'h1',
       phaseId: 'p1',
       phaseOrder: 0,
+      prodStart: null,
+      prodEnd: null,
     };
     mocks.workOrder.create.mockResolvedValue(created);
     mocks.workOrder.findFirstOrThrow.mockResolvedValue({
@@ -148,6 +201,18 @@ describe('workOrderService', () => {
       lifecycleState: 'NotStarted',
       operationalStatus: 'NotStarted',
     });
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tenantId: 'ventas',
+          workOrderId: 'wo-created',
+          action: 'work_order.created',
+          actorId: 'actor1',
+          source: 'workOrderService.createWorkOrder',
+          newState: expect.objectContaining({ phaseId: 'p1', phaseOrder: 0 }),
+        }),
+      }),
+    );
   });
 
   it('createWorkOrder scopes workflow lookup, creation, and decorated reload to the caller tenant', async () => {
@@ -155,7 +220,16 @@ describe('workOrderService', () => {
       id: 'w1',
       phases: [{ phaseId: 'p1', sortOrder: 0, phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 0 } }],
     });
-    mocks.workOrder.create.mockResolvedValue({ id: 'wo-created' });
+    mocks.workOrder.create.mockResolvedValue({
+      id: 'wo-created',
+      tenantId: 'tenant-a',
+      workflowId: 'w1',
+      phaseId: 'p1',
+      phaseOrder: 0,
+      hetId: null,
+      prodStart: null,
+      prodEnd: null,
+    });
     mocks.workOrder.findFirstOrThrow.mockResolvedValue({
       id: 'wo-created',
       hetId: null,
@@ -179,6 +253,11 @@ describe('workOrderService', () => {
     expect(mocks.workOrder.findFirstOrThrow).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'wo-created', tenantId: 'tenant-a' } }),
     );
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ tenantId: 'tenant-a', workOrderId: 'wo-created' }),
+      }),
+    );
   });
 
   it('createWorkOrder throws "workflow has no phases configured" when the workflow has none', async () => {
@@ -192,10 +271,24 @@ describe('workOrderService', () => {
   it('startWorkOrderPhase records start timestamp and signer', async () => {
     mocks.workOrder.findFirst.mockResolvedValueOnce({
       id: 'wo-1',
+      tenantId: 'ventas',
+      workflowId: 'w1',
+      phaseId: 'p1',
+      phaseOrder: 0,
       hetId: 'h1',
       prodStart: null,
+      prodEnd: null,
     });
-    mocks.workOrder.update.mockResolvedValue({ id: 'wo-1' });
+    mocks.workOrder.update.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'ventas',
+      workflowId: 'w1',
+      phaseId: 'p1',
+      phaseOrder: 0,
+      hetId: 'h1',
+      prodStart: new Date('2026-06-30T08:00:00Z'),
+      prodEnd: null,
+    });
     mocks.workOrder.findFirstOrThrow.mockResolvedValue({
       id: 'wo-1',
       hetId: 'h1',
@@ -217,16 +310,40 @@ describe('workOrderService', () => {
     expect(updateCall.data.prodStart).toBeInstanceOf(Date);
     expect(updateCall.data.startSignById).toBe('actor1');
     expect(updateCall.data.updatedById).toBe('actor1');
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'work_order.phase_started',
+          actorId: 'actor1',
+          previousState: expect.objectContaining({ prodStart: null }),
+          newState: expect.objectContaining({ prodStart: '2026-06-30T08:00:00.000Z' }),
+        }),
+      }),
+    );
     expect(result).toMatchObject({ lifecycleState: 'InProgress' });
   });
 
   it('startWorkOrderPhase scopes the preflight lookup and decorated reload to the caller tenant', async () => {
     mocks.workOrder.findFirst.mockResolvedValueOnce({
       id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'w1',
+      phaseId: 'p1',
+      phaseOrder: 0,
       hetId: 'h1',
       prodStart: null,
+      prodEnd: null,
     });
-    mocks.workOrder.update.mockResolvedValue({ id: 'wo-1' });
+    mocks.workOrder.update.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'w1',
+      phaseId: 'p1',
+      phaseOrder: 0,
+      hetId: 'h1',
+      prodStart: new Date('2026-06-30T08:00:00Z'),
+      prodEnd: null,
+    });
     mocks.workOrder.findFirstOrThrow.mockResolvedValue({
       id: 'wo-1',
       hetId: 'h1',
@@ -243,7 +360,16 @@ describe('workOrderService', () => {
 
     expect(mocks.workOrder.findFirst).toHaveBeenCalledWith({
       where: { id: 'wo-1', tenantId: 'tenant-a' },
-      select: { id: true, hetId: true, prodStart: true },
+      select: {
+        id: true,
+        tenantId: true,
+        workflowId: true,
+        phaseId: true,
+        phaseOrder: true,
+        hetId: true,
+        prodStart: true,
+        prodEnd: true,
+      },
     });
     expect(mocks.workOrder.findFirstOrThrow).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'wo-1', tenantId: 'tenant-a' } }),
@@ -256,8 +382,13 @@ describe('workOrderService', () => {
   it('startWorkOrderPhase blocks work without HET', async () => {
     mocks.workOrder.findFirst.mockResolvedValueOnce({
       id: 'wo-1',
+      tenantId: 'ventas',
+      workflowId: 'w1',
+      phaseId: 'p1',
+      phaseOrder: 0,
       hetId: null,
       prodStart: null,
+      prodEnd: null,
     });
 
     await expect(startWorkOrderPhase('wo-1', 'actor1')).rejects.toThrow(
@@ -269,10 +400,24 @@ describe('workOrderService', () => {
   it('finishWorkOrderPhase records finish timestamp and signer', async () => {
     mocks.workOrder.findFirst.mockResolvedValueOnce({
       id: 'wo-1',
+      tenantId: 'ventas',
+      workflowId: 'w1',
+      phaseId: 'p1',
+      phaseOrder: 0,
+      hetId: 'h1',
       prodStart: new Date('2026-06-30T08:00:00Z'),
       prodEnd: null,
     });
-    mocks.workOrder.update.mockResolvedValue({ id: 'wo-1' });
+    mocks.workOrder.update.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'ventas',
+      workflowId: 'w1',
+      phaseId: 'p1',
+      phaseOrder: 0,
+      hetId: 'h1',
+      prodStart: new Date('2026-06-30T08:00:00Z'),
+      prodEnd: new Date('2026-06-30T09:00:00Z'),
+    });
     mocks.workOrder.findFirstOrThrow.mockResolvedValue({
       id: 'wo-1',
       hetId: 'h1',
@@ -294,12 +439,26 @@ describe('workOrderService', () => {
     expect(updateCall.data.prodEnd).toBeInstanceOf(Date);
     expect(updateCall.data.endSignById).toBe('actor1');
     expect(updateCall.data.updatedById).toBe('actor1');
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'work_order.phase_finished',
+          previousState: expect.objectContaining({ prodEnd: null }),
+          newState: expect.objectContaining({ prodEnd: '2026-06-30T09:00:00.000Z' }),
+        }),
+      }),
+    );
     expect(result).toMatchObject({ lifecycleState: 'ReadyToAdvance' });
   });
 
   it('finishWorkOrderPhase blocks phases that have not started', async () => {
     mocks.workOrder.findFirst.mockResolvedValueOnce({
       id: 'wo-1',
+      tenantId: 'ventas',
+      workflowId: 'w1',
+      phaseId: 'p1',
+      phaseOrder: 0,
+      hetId: 'h1',
       prodStart: null,
       prodEnd: null,
     });
@@ -315,7 +474,10 @@ describe('workOrderService', () => {
       // first call: load WO with its workflow's ordered phases
       .mockResolvedValueOnce({
         id: 'wo-1',
+        tenantId: 'ventas',
+        workflowId: 'w1',
         phaseId: 'p1',
+        phaseOrder: 0,
         hetId: 'h1',
         prodStart: new Date('2026-06-30T08:00:00Z'),
         prodEnd: new Date('2026-06-30T09:00:00Z'),
@@ -327,7 +489,16 @@ describe('workOrderService', () => {
         },
       });
 
-    mocks.workOrder.update.mockResolvedValue({ id: 'wo-1' });
+    mocks.workOrder.update.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'ventas',
+      workflowId: 'w1',
+      phaseId: 'p2',
+      phaseOrder: 1,
+      hetId: 'h1',
+      prodStart: new Date('2026-06-30T08:00:00Z'),
+      prodEnd: new Date('2026-06-30T09:00:00Z'),
+    });
     mocks.workOrder.findFirstOrThrow.mockResolvedValue({
       id: 'wo-1',
       phaseId: 'p2',
@@ -357,6 +528,15 @@ describe('workOrderService', () => {
     expect(updateCall.data.phaseId).toBe('p2');
     expect(updateCall.data.phaseOrder).toBe(1);
     expect(updateCall.data.updatedById).toBe('actor1');
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'work_order.phase_advanced',
+          previousState: expect.objectContaining({ phaseId: 'p1', phaseOrder: 0 }),
+          newState: expect.objectContaining({ phaseId: 'p2', phaseOrder: 1 }),
+        }),
+      }),
+    );
     expect(result).toMatchObject({ id: 'wo-1', phaseId: 'p2', phaseOrder: 1 });
   });
 

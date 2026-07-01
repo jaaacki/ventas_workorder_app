@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   workOrderService: {
     listWorkOrders: vi.fn(),
     getWorkOrder: vi.fn(),
+    listWorkOrderAuditEvents: vi.fn(),
     createWorkOrder: vi.fn(),
     startWorkOrderPhase: vi.fn(),
     finishWorkOrderPhase: vi.fn(),
@@ -229,6 +230,7 @@ function resetServiceMocks() {
   mocks.workflowService.updateWorkflow.mockResolvedValue(workflowDetail);
   mocks.workOrderService.listWorkOrders.mockResolvedValue([]);
   mocks.workOrderService.getWorkOrder.mockResolvedValue(null);
+  mocks.workOrderService.listWorkOrderAuditEvents.mockResolvedValue([]);
   mocks.workOrderService.createWorkOrder.mockResolvedValue(workOrderDetail);
   mocks.workOrderService.startWorkOrderPhase.mockResolvedValue(workOrderDetail);
   mocks.workOrderService.finishWorkOrderPhase.mockResolvedValue(workOrderDetail);
@@ -325,6 +327,9 @@ describe('route tenant propagation', () => {
 
       await get('/api/work-orders/wo-1');
       expect(mocks.workOrderService.getWorkOrder).toHaveBeenCalledWith('wo-1', tenantId);
+
+      await get('/api/work-orders/wo-1/audit-events');
+      expect(mocks.workOrderService.listWorkOrderAuditEvents).toHaveBeenCalledWith('wo-1', tenantId);
 
       await get('/api/work-orders/wo-1/inventory-trace');
       expect(mocks.inventoryTraceService.getWorkOrderInventoryTrace).toHaveBeenCalledWith('wo-1', tenantId);

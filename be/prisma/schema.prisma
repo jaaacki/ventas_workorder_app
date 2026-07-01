@@ -332,6 +332,7 @@ model WorkOrder {
   endSignPath            String?
   endSignById            String?
   prodDuration           Decimal?  @db.Decimal(18, 4)
+  outputQuantity         Decimal?  @db.Decimal(18, 4)
   manuId                 String?
   manuNumber             String?
   woNumber               String?

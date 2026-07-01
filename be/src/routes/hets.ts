@@ -4,37 +4,50 @@ import { Prisma } from '@prisma/client';
 import type { JwtPayload } from '../plugins/auth.js';
 import * as hetService from '../services/hetService.js';
 import * as inventoryTraceService from '../services/inventoryTraceService.js';
+import { inventoryTraceSchema } from './inventoryTraceSchemas.js';
 
 const errorResponse = z.object({ error: z.string() });
+const decimalish = z.union([z.number(), z.string(), z.custom<Prisma.Decimal>()]);
 
-const hetSchema = z
-  .object({
-    id: z.string(),
-    createdAt: z.date(),
-    updatedAt: z.date(),
-    createdById: z.string().nullable(),
-    updatedById: z.string().nullable(),
-    usedById: z.string().nullable(),
-    finishedById: z.string().nullable(),
-    deleted: z.boolean(),
-  })
-  .passthrough();
+const workOrderRefSchema = z.object({ id: z.string(), woNumber: z.string().nullable() });
+
+const hetSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+  createdById: z.string().nullable(),
+  updatedById: z.string().nullable(),
+  clinicId: z.string().nullable(),
+  HCICode: z.string().nullable(),
+  clinicName: z.string().nullable(),
+  licenseName: z.string().nullable(),
+  address: z.string().nullable(),
+  hetNumber: z.string().nullable(),
+  parcelTrackingNumber: z.string().nullable(),
+  deliverId: z.string().nullable(),
+  collectId: z.string().nullable(),
+  usedById: z.string().nullable(),
+  finishedById: z.string().nullable(),
+  quantity: z.number().nullable(),
+  deleted: z.boolean(),
+  forceField: z.number().nullable(),
+  keyText: z.string().nullable(),
+  b11Weight: decimalish.nullable(),
+  collectionUnitId: z.string().nullable(),
+  collectionReceiptLineId: z.string().nullable(),
+  sourceSystem: z.string().nullable(),
+  legacyClinicId: z.string().nullable(),
+  legacyDeliverId: z.string().nullable(),
+  legacyCollectId: z.string().nullable(),
+  usedBy: workOrderRefSchema.nullable(),
+  finishedBy: workOrderRefSchema.nullable(),
+  workOrders: z.array(workOrderRefSchema),
+});
 
 const hetLinkBodySchema = z.object({
   workOrderId: z.string().min(1),
 });
-
-const inventoryTraceSchema = z
-  .object({
-    subject: z.object({ type: z.string(), id: z.string(), label: z.string().nullable().optional() }),
-    lots: z.array(z.object({ id: z.string() }).passthrough()),
-    transactions: z.array(z.object({ id: z.string() }).passthrough()),
-    consumptions: z.array(z.object({ id: z.string() }).passthrough()),
-    genealogy: z.array(z.object({ id: z.string() }).passthrough()),
-    hets: z.array(z.object({ id: z.string() }).passthrough()),
-    workOrders: z.array(z.object({ id: z.string() }).passthrough()),
-  })
-  .passthrough();
 
 function actorIdOf(req: { user: unknown }): string {
   return (req.user as JwtPayload).id;

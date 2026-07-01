@@ -23,31 +23,34 @@ const phaseDetailSchema = z.object({
   }),
 });
 
-const workflowSummarySchema = z
-  .object({
-    id: z.string(),
-    name: z.string(),
-    code: z.string(),
-    description: z.string().nullable(),
-    active: z.boolean(),
-    createdAt: z.date(),
-    updatedAt: z.date(),
-    _count: z.object({ phases: z.number(), workOrders: z.number() }),
-  })
-  .passthrough();
+const staffRefSchema = z.object({
+  id: z.string(),
+  name: z.string().nullable(),
+  email: z.string(),
+});
 
-const workflowDetailSchema = z
-  .object({
-    id: z.string(),
-    name: z.string(),
-    code: z.string(),
-    description: z.string().nullable(),
-    active: z.boolean(),
-    createdAt: z.date(),
-    updatedAt: z.date(),
-    phases: z.array(phaseDetailSchema),
-  })
-  .passthrough();
+const workflowBaseSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  name: z.string(),
+  code: z.string(),
+  description: z.string().nullable(),
+  active: z.boolean(),
+  createdById: z.string().nullable(),
+  updatedById: z.string().nullable(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+});
+
+const workflowSummarySchema = workflowBaseSchema.extend({
+  _count: z.object({ phases: z.number(), workOrders: z.number() }),
+});
+
+const workflowDetailSchema = workflowBaseSchema.extend({
+  createdBy: staffRefSchema.nullable(),
+  updatedBy: staffRefSchema.nullable(),
+  phases: z.array(phaseDetailSchema),
+});
 
 const createBodySchema = z.object({
   name: z.string().min(1),

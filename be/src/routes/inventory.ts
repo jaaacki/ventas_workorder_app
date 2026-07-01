@@ -1,10 +1,12 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import type { JwtPayload } from '../plugins/auth.js';
 import * as inventoryService from '../services/inventoryService.js';
 
 const errorResponse = z.object({ error: z.string() });
 const dateish = z.union([z.date(), z.string()]);
+const decimalish = z.union([z.number(), z.string(), z.custom<Prisma.Decimal>()]);
 
 const inventoryOverviewSchema = z.object({
   skus: z.number(),
@@ -17,106 +19,126 @@ const inventoryOverviewSchema = z.object({
   finishedGoodLots: z.number(),
 });
 
-const inventorySkuSchema = z
-  .object({
-    id: z.string(),
-    sku: z.string().nullable(),
-    description: z.string().nullable(),
-    category: z.string().nullable(),
-    brand: z.string().nullable(),
-    size: z.string().nullable(),
-    colour: z.string().nullable(),
-    uom: z.string().nullable(),
-    serialisedMode: z.string().nullable(),
-    sourceSystem: z.string().nullable(),
-    createdAt: dateish,
-    updatedAt: dateish,
-  })
-  .passthrough();
+const inventorySkuSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  sku: z.string().nullable(),
+  description: z.string().nullable(),
+  category: z.string().nullable(),
+  brand: z.string().nullable(),
+  size: z.string().nullable(),
+  colour: z.string().nullable(),
+  uom: z.string().nullable(),
+  packQuantity: decimalish.nullable(),
+  threshold: decimalish.nullable(),
+  serialisedMode: z.string().nullable(),
+  qrImagePath: z.string().nullable(),
+  mediaUrl: z.string().nullable(),
+  qrPrintPath: z.string().nullable(),
+  sourceSystem: z.string().nullable(),
+  legacyRaw: z.unknown().nullable(),
+  createdAt: dateish,
+  updatedAt: dateish,
+});
 
-const inventoryLocationSchema = z
-  .object({
-    id: z.string(),
-    locationType: z.string(),
-    name: z.string(),
-    parentLocationId: z.string().nullable(),
-    description: z.string().nullable(),
-    imagePath: z.string().nullable(),
-    sourceSystem: z.string().nullable(),
-    createdAt: dateish,
-    updatedAt: dateish,
-  })
-  .passthrough();
+const inventoryLocationSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  locationType: z.string(),
+  name: z.string(),
+  parentLocationId: z.string().nullable(),
+  description: z.string().nullable(),
+  imagePath: z.string().nullable(),
+  sourceSystem: z.string().nullable(),
+  legacyRaw: z.unknown().nullable(),
+  createdAt: dateish,
+  updatedAt: dateish,
+});
 
-const inventoryLotSchema = z
-  .object({
-    id: z.string(),
-    inventorySkuId: z.string().nullable(),
-    lotNumber: z.string().nullable(),
-    inventoryType: z.string(),
-    status: z.string(),
-    uom: z.string().nullable(),
-    currentLocationId: z.string().nullable(),
-    collectionUnitId: z.string().nullable(),
-    hetId: z.string().nullable(),
-    workOrderId: z.string().nullable(),
-    sourceSystem: z.string().nullable(),
-    legacyItemSerialId: z.string().nullable(),
-    legacyHetId: z.string().nullable(),
-    createdAt: dateish,
-    updatedAt: dateish,
-    inventorySku: inventorySkuSchema.nullable().optional(),
-    currentLocation: inventoryLocationSchema.nullable().optional(),
-  })
-  .passthrough();
+const inventoryLotSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  inventorySkuId: z.string().nullable(),
+  lotNumber: z.string().nullable(),
+  inventoryType: z.string(),
+  status: z.string(),
+  quantityInitial: decimalish.nullable(),
+  quantityCurrent: decimalish.nullable(),
+  uom: z.string().nullable(),
+  currentLocationId: z.string().nullable(),
+  collectionUnitId: z.string().nullable(),
+  hetId: z.string().nullable(),
+  workOrderId: z.string().nullable(),
+  sourceSystem: z.string().nullable(),
+  legacyItemSerialId: z.string().nullable(),
+  legacyCheckInOutId: z.string().nullable(),
+  legacyHetId: z.string().nullable(),
+  legacyRaw: z.unknown().nullable(),
+  createdAt: dateish,
+  updatedAt: dateish,
+  inventorySku: inventorySkuSchema.nullable().optional(),
+  currentLocation: inventoryLocationSchema.nullable().optional(),
+});
 
-const inventoryTransactionSchema = z
-  .object({
-    id: z.string(),
-    inventorySkuId: z.string().nullable(),
-    inventoryLotId: z.string().nullable(),
-    transactionType: z.string(),
-    direction: z.string().nullable(),
-    reason: z.string().nullable(),
-    uom: z.string().nullable(),
-    fromLocationId: z.string().nullable(),
-    toLocationId: z.string().nullable(),
-    workOrderId: z.string().nullable(),
-    occurredAt: dateish.nullable(),
-    actor: z.string().nullable(),
-    signaturePath: z.string().nullable(),
-    remarks: z.string().nullable(),
-    legacyRefNumber: z.string().nullable(),
-    legacyRefNumberOut: z.string().nullable(),
-    sourceSystem: z.string().nullable(),
-    createdAt: dateish,
-    updatedAt: dateish,
-    inventorySku: inventorySkuSchema.nullable().optional(),
-    inventoryLot: inventoryLotSchema.nullable().optional(),
-    fromLocation: inventoryLocationSchema.nullable().optional(),
-    toLocation: inventoryLocationSchema.nullable().optional(),
-  })
-  .passthrough();
+const inventoryTransactionSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  inventorySkuId: z.string().nullable(),
+  inventoryLotId: z.string().nullable(),
+  transactionType: z.string(),
+  direction: z.string().nullable(),
+  reason: z.string().nullable(),
+  quantity: decimalish.nullable(),
+  uom: z.string().nullable(),
+  fromLocationId: z.string().nullable(),
+  toLocationId: z.string().nullable(),
+  workOrderId: z.string().nullable(),
+  occurredAt: dateish.nullable(),
+  actor: z.string().nullable(),
+  signaturePath: z.string().nullable(),
+  remarks: z.string().nullable(),
+  legacyRefNumber: z.string().nullable(),
+  legacyRefNumberOut: z.string().nullable(),
+  sourceSystem: z.string().nullable(),
+  legacyRaw: z.unknown().nullable(),
+  createdAt: dateish,
+  updatedAt: dateish,
+  inventorySku: inventorySkuSchema.nullable().optional(),
+  inventoryLot: inventoryLotSchema.nullable().optional(),
+  fromLocation: inventoryLocationSchema.nullable().optional(),
+  toLocation: inventoryLocationSchema.nullable().optional(),
+});
 
-const inventoryGenealogySchema = z
-  .object({
-    id: z.string(),
-    lot: inventoryLotSchema,
-    parents: z.array(z.object({ id: z.string(), parentInventoryLot: inventoryLotSchema }).passthrough()),
-    children: z.array(z.object({ id: z.string(), childInventoryLot: inventoryLotSchema }).passthrough()),
-  })
-  .passthrough();
+const inventoryGenealogyLinkSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  parentInventoryLotId: z.string(),
+  childInventoryLotId: z.string(),
+  relationshipType: z.string(),
+  workOrderId: z.string().nullable(),
+  phaseId: z.string().nullable(),
+  sourceSystem: z.string().nullable(),
+  legacyRaw: z.unknown().nullable(),
+  createdAt: dateish,
+  updatedAt: dateish,
+});
 
-const importReportSchema = z
-  .object({
-    id: z.string(),
-    source: z.string(),
-    dryRun: z.boolean(),
-    startedAt: dateish,
-    finishedAt: dateish.nullable(),
-    report: z.unknown(),
-  })
-  .passthrough();
+const inventoryGenealogySchema = z.object({
+  id: z.string(),
+  lot: inventoryLotSchema,
+  parents: z.array(inventoryGenealogyLinkSchema.extend({ parentInventoryLot: inventoryLotSchema })),
+  children: z.array(inventoryGenealogyLinkSchema.extend({ childInventoryLot: inventoryLotSchema })),
+});
+
+const importReportSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  source: z.string(),
+  dryRun: z.boolean(),
+  startedAt: dateish,
+  finishedAt: dateish.nullable(),
+  report: z.unknown(),
+});
 
 function tenantIdOf(req: { user: unknown }): string {
   return (req.user as JwtPayload).tenantId;

@@ -104,6 +104,7 @@ steps:
       - docker compose -f compose.stg.yml exec -T be test -f /app/data/inventory/ventasInventory---checkInOut.csv
       - docker compose -f compose.stg.yml exec -T be test -f /app/data/inventory/ventasInventory---itemRack.csv
       - docker compose -f compose.stg.yml exec -T be node dist/scripts/importInventoryLegacy.js --source-dir=/app/data/inventory
+      - docker compose -f compose.stg.yml exec -T be node dist/scripts/syncHetInventory.js
       - for i in $(seq 1 30); do wget -qO- https://stg-workorder.ventas.bio/api/health && exit 0; sleep 2; done; exit 1
     depends_on:
       - main-be-checks

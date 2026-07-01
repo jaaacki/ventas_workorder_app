@@ -22,6 +22,7 @@
     "db:import": "tsx src/scripts/importCsv.ts",
     "db:import:procurement": "tsx src/scripts/importProcurementLegacy.ts",
     "db:import:inventory": "tsx src/scripts/importInventoryLegacy.ts",
+    "db:sync:het-inventory": "tsx src/scripts/syncHetInventory.ts",
     "audit:work-orders": "tsx src/scripts/auditWorkOrderParity.ts",
     "db:reset": "prisma migrate reset --force --skip-seed"
   },

@@ -59,6 +59,10 @@ function actorIdOf(req: { user: unknown }): string {
   return (req.user as JwtPayload).id;
 }
 
+function tenantIdOf(req: { user: unknown }): string {
+  return (req.user as JwtPayload).tenantId;
+}
+
 export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
   app.get(
     '/',
@@ -68,8 +72,8 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         response: { 200: z.array(workOrderSummarySchema), 401: errorResponse },
       },
     },
-    async () => {
-      return workOrderService.listWorkOrders();
+    async (req) => {
+      return workOrderService.listWorkOrders(tenantIdOf(req));
     },
   );
 
@@ -83,7 +87,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
       },
     },
     async (req, reply) => {
-      const workOrder = await workOrderService.getWorkOrder(req.params.id);
+      const workOrder = await workOrderService.getWorkOrder(req.params.id, tenantIdOf(req));
       if (!workOrder) {
         return reply.status(404).send({ error: 'Work order not found' });
       }
@@ -108,7 +112,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req, reply) => {
       try {
-        const created = await workOrderService.createWorkOrder(req.body, actorIdOf(req));
+        const created = await workOrderService.createWorkOrder(req.body, actorIdOf(req), tenantIdOf(req));
         return reply.status(201).send(created);
       } catch (err) {
         if (err instanceof Error && err.message === 'workflow has no phases configured') {
@@ -144,7 +148,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req, reply) => {
       try {
-        return await workOrderService.startWorkOrderPhase(req.params.id, actorIdOf(req), req.body?.signatureDataUrl);
+        return await workOrderService.startWorkOrderPhase(req.params.id, actorIdOf(req), req.body?.signatureDataUrl, tenantIdOf(req));
       } catch (err) {
         if (err instanceof Error && err.message.startsWith('cannot start:')) {
           return reply.status(409).send({ error: err.message });
@@ -174,7 +178,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req, reply) => {
       try {
-        return await workOrderService.finishWorkOrderPhase(req.params.id, actorIdOf(req), req.body?.signatureDataUrl);
+        return await workOrderService.finishWorkOrderPhase(req.params.id, actorIdOf(req), req.body?.signatureDataUrl, tenantIdOf(req));
       } catch (err) {
         if (err instanceof Error && err.message.startsWith('cannot finish:')) {
           return reply.status(409).send({ error: err.message });
@@ -203,7 +207,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req, reply) => {
       try {
-        return await workOrderService.advanceWorkOrder(req.params.id, actorIdOf(req));
+        return await workOrderService.advanceWorkOrder(req.params.id, actorIdOf(req), tenantIdOf(req));
       } catch (err) {
         if (err instanceof Error && err.message === 'work order is at its final phase') {
           return reply.status(409).send({ error: 'work order is at its final phase' });

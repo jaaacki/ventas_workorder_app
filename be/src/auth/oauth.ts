@@ -16,6 +16,7 @@ import {
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { Env } from '../config/env.js';
 import { prisma } from '../db/prisma.js';
+import { DEFAULT_TENANT_ID, tenantIdOrDefault } from '../services/tenant.js';
 
 const errorResponse = z.object({ error: z.string() });
 
@@ -249,6 +250,7 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
           data: {
             email,
             name,
+            tenantId: DEFAULT_TENANT_ID,
             roleId: role.id,
             [idField]: providerId,
             active: true,
@@ -270,6 +272,7 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
         id: staff.id,
         role: staff.role?.key || 'user',
         email: staff.email,
+        tenantId: tenantIdOrDefault(staff.tenantId),
         name: staff.name,
       });
 

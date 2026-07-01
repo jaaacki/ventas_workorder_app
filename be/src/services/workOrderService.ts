@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
+import { tenantIdOrDefault } from './tenant.js';
 
 export interface CreateWorkOrderInput {
   workflowId: string;
@@ -77,9 +78,10 @@ const workOrderWithWorkflowPhasesInclude = {
   },
 } satisfies Prisma.WorkOrderInclude;
 
-export async function createWorkOrder(input: CreateWorkOrderInput, actorId: string) {
-  const workflow = await prisma.workflow.findUnique({
-    where: { id: input.workflowId },
+export async function createWorkOrder(input: CreateWorkOrderInput, actorId: string, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const workflow = await prisma.workflow.findFirst({
+    where: { id: input.workflowId, tenantId: scopedTenantId },
     include: {
       phases: {
         include: {
@@ -112,6 +114,7 @@ export async function createWorkOrder(input: CreateWorkOrderInput, actorId: stri
   const created = await prisma.workOrder.create({
     data: {
       id: woNumber,
+      tenantId: scopedTenantId,
       woNumber,
       workflowId: input.workflowId,
       hetId: input.hetId,
@@ -121,7 +124,7 @@ export async function createWorkOrder(input: CreateWorkOrderInput, actorId: stri
       updatedById: actorId,
     },
   });
-  return getDecoratedWorkOrderOrThrow(created.id);
+  return getDecoratedWorkOrderOrThrow(created.id, scopedTenantId);
 }
 
 type OperationalWorkOrder = Prisma.WorkOrderGetPayload<{ include: typeof workOrderOperationalInclude }>;
@@ -315,18 +318,19 @@ function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder, context: 
   };
 }
 
-async function getDecoratedWorkOrderOrThrow(id: string) {
-  const workOrder = await prisma.workOrder.findUniqueOrThrow({
-    where: { id },
+async function getDecoratedWorkOrderOrThrow(id: string, tenantId?: string | null) {
+  const workOrder = await prisma.workOrder.findFirstOrThrow({
+    where: { id, tenantId: tenantIdOrDefault(tenantId) },
     include: workOrderOperationalInclude,
   });
-  const context = await getLegacyContextForWorkOrder(workOrder);
+  const context = await getLegacyContextForWorkOrder(workOrder, tenantIdOrDefault(tenantId));
   return decorateOperationalWorkOrder(workOrder, context);
 }
 
-export async function listWorkOrders() {
+export async function listWorkOrders(tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
   const workOrders = await prisma.workOrder.findMany({
-    where: { deleted: false },
+    where: { deleted: false, tenantId: scopedTenantId },
     include: workOrderOperationalInclude,
     orderBy: { createdAt: 'desc' },
   });
@@ -334,23 +338,25 @@ export async function listWorkOrders() {
   return workOrders.map((workOrder) => decorateOperationalWorkOrder(workOrder, context));
 }
 
-export async function getWorkOrder(id: string) {
-  const workOrder = await prisma.workOrder.findUnique({
-    where: { id },
+export async function getWorkOrder(id: string, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const workOrder = await prisma.workOrder.findFirst({
+    where: { id, tenantId: scopedTenantId },
     include: workOrderOperationalInclude,
   });
   if (!workOrder) return null;
-  const context = await getLegacyContextForWorkOrder(workOrder);
+  const context = await getLegacyContextForWorkOrder(workOrder, scopedTenantId);
   return decorateOperationalWorkOrder(workOrder, context);
 }
 
-async function getLegacyContextForWorkOrder(workOrder: OperationalWorkOrder) {
+async function getLegacyContextForWorkOrder(workOrder: OperationalWorkOrder, tenantId: string) {
   const hetIds = legacyHetKeys(workOrder);
   if (!hetIds.length) return buildLegacyWorkOrderContext([workOrder]);
 
   const peers = await prisma.workOrder.findMany({
     where: {
       deleted: false,
+      tenantId,
       OR: [
         { hetId: { in: hetIds } },
         { batchHets: { some: { hetId: { in: hetIds } } } },
@@ -363,9 +369,10 @@ async function getLegacyContextForWorkOrder(workOrder: OperationalWorkOrder) {
   return buildLegacyWorkOrderContext(peers);
 }
 
-export async function startWorkOrderPhase(id: string, actorId: string, signatureDataUrl?: string) {
-  const workOrder = await prisma.workOrder.findUnique({
-    where: { id },
+export async function startWorkOrderPhase(id: string, actorId: string, signatureDataUrl?: string, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const workOrder = await prisma.workOrder.findFirst({
+    where: { id, tenantId: scopedTenantId },
     select: { id: true, hetId: true, prodStart: true },
   });
 
@@ -392,12 +399,13 @@ export async function startWorkOrderPhase(id: string, actorId: string, signature
     });
   }
 
-  return getDecoratedWorkOrderOrThrow(id);
+  return getDecoratedWorkOrderOrThrow(id, scopedTenantId);
 }
 
-export async function finishWorkOrderPhase(id: string, actorId: string, signatureDataUrl?: string) {
-  const workOrder = await prisma.workOrder.findUnique({
-    where: { id },
+export async function finishWorkOrderPhase(id: string, actorId: string, signatureDataUrl?: string, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const workOrder = await prisma.workOrder.findFirst({
+    where: { id, tenantId: scopedTenantId },
     select: { id: true, prodStart: true, prodEnd: true },
   });
 
@@ -424,12 +432,13 @@ export async function finishWorkOrderPhase(id: string, actorId: string, signatur
     });
   }
 
-  return getDecoratedWorkOrderOrThrow(id);
+  return getDecoratedWorkOrderOrThrow(id, scopedTenantId);
 }
 
-export async function advanceWorkOrder(id: string, actorId: string) {
-  const workOrder = await prisma.workOrder.findUnique({
-    where: { id },
+export async function advanceWorkOrder(id: string, actorId: string, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const workOrder = await prisma.workOrder.findFirst({
+    where: { id, tenantId: scopedTenantId },
     include: workOrderWithWorkflowPhasesInclude,
   });
 
@@ -464,7 +473,7 @@ export async function advanceWorkOrder(id: string, actorId: string) {
   const currentPhaseName = orderedPhases[currentIndex].phase?.phaseName;
   if (currentPhaseName && /steril|bet/i.test(currentPhaseName)) {
     const passing = await prisma.sterilise.findFirst({
-      where: { workOrderId: id, result: true },
+      where: { workOrderId: id, tenantId: scopedTenantId, result: true },
     });
     if (!passing) {
       throw new Error(
@@ -484,5 +493,5 @@ export async function advanceWorkOrder(id: string, actorId: string) {
     },
   });
 
-  return getDecoratedWorkOrderOrThrow(id);
+  return getDecoratedWorkOrderOrThrow(id, scopedTenantId);
 }

@@ -4,14 +4,17 @@ import { Prisma } from '@prisma/client';
 const mocks = vi.hoisted(() => ({
   het: {
     findMany: vi.fn(),
+    findFirst: vi.fn(),
     update: vi.fn(),
   },
+  workOrder: { findFirst: vi.fn() },
   workOrderHet: { upsert: vi.fn() },
 }));
 
 vi.mock('../../db/prisma.js', () => ({
   prisma: {
     het: mocks.het,
+    workOrder: mocks.workOrder,
     workOrderHet: mocks.workOrderHet,
   },
 }));
@@ -28,13 +31,15 @@ describe('hetService', () => {
     await hetService.listHets();
     expect(mocks.het.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { deleted: false },
+        where: expect.objectContaining({ deleted: false, tenantId: 'ventas' }),
         orderBy: { createdAt: 'desc' },
       }),
     );
   });
 
   it('useHet sets usedById to the work order and creates the WorkOrderHet link', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo1' });
+    mocks.het.findFirst.mockResolvedValue({ id: 'h1' });
     mocks.het.update.mockResolvedValue({ id: 'h1', usedById: 'wo1' });
     mocks.workOrderHet.upsert.mockResolvedValue({});
 
@@ -55,6 +60,8 @@ describe('hetService', () => {
   });
 
   it('finishHet sets finishedById to the work order', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo1' });
+    mocks.het.findFirst.mockResolvedValue({ id: 'h1' });
     mocks.het.update.mockResolvedValue({ id: 'h1', finishedById: 'wo1' });
 
     const result = await hetService.finishHet('h1', { workOrderId: 'wo1', actorId: 'actor1' });
@@ -73,11 +80,12 @@ describe('hetService', () => {
       code: 'P2025',
       clientVersion: 'test',
     });
-    mocks.het.update.mockRejectedValue(p2025);
+    mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo1' });
+    mocks.het.findFirst.mockResolvedValue(null);
 
     await expect(
       hetService.useHet('missing', { workOrderId: 'wo1', actorId: 'actor1' }),
-    ).rejects.toBe(p2025);
+    ).rejects.toMatchObject({ code: p2025.code });
     expect(mocks.workOrderHet.upsert).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,17 @@ datasource db {
   provider = "postgresql"
 }
 
+model Tenant {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("tenant")
+}
+
 model Staff {
   id            String   @id @default(cuid())
   email         String   @unique
@@ -16,6 +27,7 @@ model Staff {
   googleId      String?  @unique
   microsoftId   String?  @unique
   active        Boolean  @default(true)
+  tenantId      String   @default("ventas")
   roleId        String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -47,6 +59,7 @@ model Staff {
   createdWorkflows     Workflow[]   @relation("WorkflowCreatedBy")
   updatedWorkflows     Workflow[]   @relation("WorkflowUpdatedBy")
 
+  @@index([tenantId])
   @@map("staff")
 }
 
@@ -67,6 +80,7 @@ model Role {
 
 model Manufacturer {
   id            String    @id @default(cuid())
+  tenantId      String    @default("ventas")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   createdById   String?
@@ -81,11 +95,13 @@ model Manufacturer {
   sterilises    Sterilise[]
   batchHets     ManufacturerHet[]
 
+  @@index([tenantId])
   @@map("manufacturer")
 }
 
 model Procedure {
   id             String      @id
+  tenantId       String      @default("ventas")
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   createdById    String?
@@ -99,11 +115,13 @@ model Procedure {
   updatedBy      Staff?           @relation("ProcedureUpdatedBy", fields: [updatedById], references: [id])
   phases         PhaseProcedure[]
 
+  @@index([tenantId])
   @@map("procedure")
 }
 
 model Bom {
   id          String    @id
+  tenantId    String    @default("ventas")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   createdById String?
@@ -116,11 +134,13 @@ model Bom {
   lines       BomLine[]
   phases      Phase[]
 
+  @@index([tenantId])
   @@map("bom")
 }
 
 model BomLine {
   id          String     @id
+  tenantId    String     @default("ventas")
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   createdById String?
@@ -139,11 +159,13 @@ model BomLine {
   bom         Bom         @relation(fields: [bomId], references: [id])
   woSerials   WoSerial[]
 
+  @@index([tenantId])
   @@map("bomLine")
 }
 
 model Het {
   id                 String            @id
+  tenantId           String            @default("ventas")
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   createdById        String?
@@ -164,6 +186,12 @@ model Het {
   forceField         Int?
   keyText            String?
   b11Weight          Decimal?          @db.Decimal(18, 4)
+  collectionUnitId   String?
+  collectionReceiptLineId String?
+  sourceSystem       String?
+  legacyClinicId     String?
+  legacyDeliverId    String?
+  legacyCollectId    String?
 
   createdBy          Staff?            @relation("HetCreatedBy", fields: [createdById], references: [id])
   updatedBy          Staff?            @relation("HetUpdatedBy", fields: [updatedById], references: [id])
@@ -174,13 +202,17 @@ model Het {
   steriliseHets      SteriliseHet[]
   manufacturerHets   ManufacturerHet[]
 
+  @@index([tenantId])
+  @@index([collectionUnitId])
+  @@index([collectionReceiptLineId])
   @@map("het")
 }
 
 model Workflow {
   id          String   @id @default(cuid())
+  tenantId    String   @default("ventas")
   name        String
-  code        String   @unique
+  code        String
   description String?
   active      Boolean  @default(true)
   createdById String?
@@ -193,6 +225,8 @@ model Workflow {
   phases      WorkflowPhase[]
   workOrders  WorkOrder[]
 
+  @@index([tenantId])
+  @@unique([tenantId, code])
   @@map("workflow")
 }
 
@@ -211,6 +245,7 @@ model WorkflowPhase {
 
 model Phase {
   id             String             @id
+  tenantId       String             @default("ventas")
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
   createdById    String?
@@ -231,6 +266,7 @@ model Phase {
   currentWorkOrders WorkOrder[]      @relation("WorkOrderCurrentPhase")
   nextWorkOrders WorkOrder[]         @relation("WorkOrderNextPhase")
 
+  @@index([tenantId])
   @@map("phase")
 }
 
@@ -246,6 +282,7 @@ model PhaseProcedure {
 
 model PhaseEquip {
   id          String            @id
+  tenantId    String            @default("ventas")
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
   createdById String?
@@ -260,6 +297,7 @@ model PhaseEquip {
   phases      PhasePhaseEquip[]
   workOrders  WorkOrderPhaseEquip[]
 
+  @@index([tenantId])
   @@map("phaseEquip")
 }
 
@@ -275,6 +313,7 @@ model PhasePhaseEquip {
 
 model WorkOrder {
   id                     String                @id
+  tenantId               String                @default("ventas")
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
   createdById            String?
@@ -322,6 +361,7 @@ model WorkOrder {
   finishedHets           Het[]                 @relation("HetFinishedBy")
 
   @@index([workflowId])
+  @@index([tenantId])
   @@map("workOrder")
 }
 
@@ -347,6 +387,7 @@ model WorkOrderPhaseEquip {
 
 model WoSerial {
   id          String     @id
+  tenantId    String     @default("ventas")
   createdOn   DateTime   @default(now())
   createdById String?
   updatedOn   DateTime   @updatedAt
@@ -361,11 +402,13 @@ model WoSerial {
   workOrder   WorkOrder  @relation(fields: [workOrderId], references: [id])
   bomRef      BomLine    @relation(fields: [bomRefId], references: [id])
 
+  @@index([tenantId])
   @@map("woSerial")
 }
 
 model Sterilise {
   id          String         @id
+  tenantId    String         @default("ventas")
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   createdById String?
@@ -391,6 +434,7 @@ model Sterilise {
   batchHets   SteriliseHet[]
   currentWorkOrder WorkOrder?  @relation("WorkOrderSterilisationCurrent")
 
+  @@index([tenantId])
   @@map("sterilise")
 }
 
@@ -414,13 +458,218 @@ model ManufacturerHet {
   @@map("manufacturerHet")
 }
 
+model SupplyEntity {
+  id             String   @id
+  tenantId       String
+  name           String?
+  legalName      String?
+  externalCode   String?
+  sourceSystem   String?
+  legacyGroupKey String?
+  legacyClinicId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([legacyClinicId])
+  @@map("supplyEntity")
+}
+
+model CollectionPoint {
+  id             String   @id
+  tenantId       String
+  supplyEntityId String
+  legacyClinicId String?
+  hciCode        String?
+  displayName    String?
+  licenseName    String?
+  address        String?
+  postalCode     String?
+  telephone      String?
+  personInCharge String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([supplyEntityId])
+  @@index([legacyClinicId])
+  @@map("collectionPoint")
+}
+
+model CollectionUnit {
+  id                      String   @id
+  tenantId                String
+  supplyEntityId          String?
+  collectionPointId       String?
+  legacyHetId             String?
+  unitNumber              String?
+  parcelTrackingNumber    String?
+  status                  String
+  legacyDeliverId         String?
+  legacyCollectId         String?
+  legacyUsedByWorkOrderId String?
+  legacyNextHetId         String?
+  sourceSystem            String?
+  linkCompleteness        String?
+  semanticConfidence      String?
+  hiddenFromOperations    Boolean  @default(false)
+  deleted                 Boolean  @default(false)
+  legacyRaw               Json?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([legacyHetId])
+  @@index([collectionPointId])
+  @@index([legacyUsedByWorkOrderId])
+  @@index([status])
+  @@map("collectionUnit")
+}
+
+model IssuanceOrder {
+  id                     String   @id
+  tenantId               String
+  supplyEntityId         String?
+  collectionPointId      String?
+  issuedAt               DateTime?
+  issuedBy               String?
+  legacyDeliverCollectId String?
+  legacyDirection        String?
+  semanticConfidence     String?
+  level                  String?
+  remarks                String?
+  legacyRaw              Json?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([collectionPointId])
+  @@index([legacyDeliverCollectId])
+  @@map("issuanceOrder")
+}
+
+model IssuanceOrderLine {
+  id                   String   @id @default(cuid())
+  tenantId             String
+  issuanceOrderId      String
+  collectionUnitId     String?
+  legacyHetId          String?
+  legacyHetNumber      String?
+  parcelTrackingNumber String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([issuanceOrderId, legacyHetId])
+  @@index([tenantId])
+  @@index([collectionUnitId])
+  @@map("issuanceOrderLine")
+}
+
+model CollectionUnitFulfilment {
+  id               String   @id @default(cuid())
+  tenantId         String
+  collectionUnitId String
+  fulfilledAt      DateTime?
+  fulfilledBy      String?
+  source           String?
+  evidencePath     String?
+  remarks          String?
+  inferred         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([collectionUnitId, source])
+  @@index([tenantId])
+  @@map("collectionUnitFulfilment")
+}
+
+model CollectionOrder {
+  id                            String   @id
+  tenantId                      String
+  supplyEntityId                String?
+  collectionPointId             String?
+  requestedAt                   DateTime?
+  scheduledFor                  DateTime?
+  requestedBy                   String?
+  status                        String
+  legacyCollectDeliverCollectId String?
+  legacyDirection               String?
+  semanticConfidence            String?
+  legacyConflatedOrderReceipt   Boolean  @default(false)
+  level                         String?
+  remarks                       String?
+  legacyRaw                     Json?
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([collectionPointId])
+  @@index([legacyCollectDeliverCollectId])
+  @@map("collectionOrder")
+}
+
+model CollectionReceipt {
+  id                            String   @id
+  tenantId                      String
+  collectionOrderId             String?
+  receivedAt                    DateTime?
+  receivedBy                    String?
+  signaturePath                 String?
+  remarks                       String?
+  legacyCollectDeliverCollectId String?
+  legacyConflatedOrderReceipt   Boolean  @default(false)
+  acceptanceState               String?
+  legacyRaw                     Json?
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([collectionOrderId])
+  @@index([legacyCollectDeliverCollectId])
+  @@map("collectionReceipt")
+}
+
+model CollectionReceiptLine {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  collectionReceiptId String
+  collectionUnitId    String?
+  conditionStatus     String?
+  acceptanceStatus    String?
+  resultingHetId      String?
+  discrepancyReason   String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([collectionReceiptId, collectionUnitId])
+  @@index([tenantId])
+  @@index([collectionUnitId])
+  @@index([resultingHetId])
+  @@map("collectionReceiptLine")
+}
+
+model ProcurementImportReport {
+  id         String   @id @default(cuid())
+  tenantId   String
+  source     String
+  dryRun     Boolean  @default(false)
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+  report     Json
+
+  @@index([tenantId])
+  @@map("procurementImportReport")
+}
+
 model PrintLabel {
   id             String   @id @default(cuid())
+  tenantId       String   @default("ventas")
   path           String?
   fileUrl        String?
   createdTime    DateTime?
   lastModifiedBy String?
   mimeType       String?
 
+  @@index([tenantId])
   @@map("printLabel")
 }

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../db/prisma.js';
 import type { JwtPayload } from '../plugins/auth.js';
+import { tenantIdOrDefault } from '../services/tenant.js';
 
 const errorResponse = z.object({ error: z.string() });
 
@@ -77,6 +78,7 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
         id: staff.id,
         role: staff.role.key,
         email: staff.email,
+        tenantId: tenantIdOrDefault(staff.tenantId),
         name: staff.name,
       });
       return { token, user: sanitizeUser(staff) };
@@ -114,6 +116,7 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
           email,
           name,
           passwordHash: bcrypt.hashSync(password, 12),
+          tenantId: tenantIdOrDefault((req.user as JwtPayload).tenantId),
           roleId: assignedRoleId,
         },
         include: { role: true },
@@ -135,8 +138,8 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
       },
     },
     async (req) => {
-      const staff = await prisma.staff.findUniqueOrThrow({
-        where: { id: (req.user as JwtPayload).id },
+      const staff = await prisma.staff.findFirstOrThrow({
+        where: { id: (req.user as JwtPayload).id, tenantId: tenantIdOrDefault((req.user as JwtPayload).tenantId) },
         include: { role: true },
       });
       return sanitizeUser(staff);
@@ -217,8 +220,9 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
         },
       },
     },
-    async () => {
+    async (req) => {
       const staffList = await prisma.staff.findMany({
+        where: { tenantId: tenantIdOrDefault((req.user as JwtPayload).tenantId) },
         include: { role: true },
         orderBy: { createdAt: 'desc' },
       });
@@ -243,7 +247,7 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
       },
     },
     async (req, reply) => {
-      const target = await prisma.staff.findUnique({ where: { id: req.params.id } });
+      const target = await prisma.staff.findFirst({ where: { id: req.params.id, tenantId: tenantIdOrDefault((req.user as JwtPayload).tenantId) } });
       if (!target) {
         return reply.status(404).send({ error: 'User not found' });
       }
@@ -275,7 +279,7 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
       },
     },
     async (req, reply) => {
-      const target = await prisma.staff.findUnique({ where: { id: req.params.id } });
+      const target = await prisma.staff.findFirst({ where: { id: req.params.id, tenantId: tenantIdOrDefault((req.user as JwtPayload).tenantId) } });
       if (!target) {
         return reply.status(404).send({ error: 'User not found' });
       }

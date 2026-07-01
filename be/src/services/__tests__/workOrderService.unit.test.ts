@@ -2,12 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   workflow: {
-    findUnique: vi.fn(),
+    findFirst: vi.fn(),
   },
   workOrder: {
     findMany: vi.fn(),
-    findUnique: vi.fn(),
-    findUniqueOrThrow: vi.fn(),
+    findFirst: vi.fn(),
+    findFirstOrThrow: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
   },
@@ -54,7 +54,7 @@ describe('workOrderService', () => {
   });
 
   it('getWorkOrder queries by id with workflow + phase includes', async () => {
-    mocks.workOrder.findUnique.mockResolvedValue({ id: 'wo-1' });
+    mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo-1' });
     const result = await getWorkOrder('wo-1');
     expect(result).toMatchObject({
       id: 'wo-1',
@@ -62,12 +62,12 @@ describe('workOrderService', () => {
       lifecycleState: 'NotStarted',
       currentPhaseLabel: 'Phase -',
     });
-    const call = mocks.workOrder.findUnique.mock.calls[0][0] as { where: { id: string } };
-    expect(call.where).toEqual({ id: 'wo-1' });
+    const call = mocks.workOrder.findFirst.mock.calls[0][0] as { where: { id: string; tenantId: string } };
+    expect(call.where).toEqual({ id: 'wo-1', tenantId: 'ventas' });
   });
 
   it('createWorkOrder sets the first phase and generates a woNumber starting with WO-', async () => {
-    mocks.workflow.findUnique.mockResolvedValue({
+    mocks.workflow.findFirst.mockResolvedValue({
       id: 'w1',
       phases: [
         { phaseId: 'p1', sortOrder: 0, phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 0 } },
@@ -81,7 +81,7 @@ describe('workOrderService', () => {
       phaseOrder: 0,
     };
     mocks.workOrder.create.mockResolvedValue(created);
-    mocks.workOrder.findUniqueOrThrow.mockResolvedValue({
+    mocks.workOrder.findFirstOrThrow.mockResolvedValue({
       ...created,
       hetId: 'h1',
       workflow: {
@@ -116,7 +116,7 @@ describe('workOrderService', () => {
   });
 
   it('createWorkOrder throws "workflow has no phases configured" when the workflow has none', async () => {
-    mocks.workflow.findUnique.mockResolvedValue({ id: 'w1', phases: [] });
+    mocks.workflow.findFirst.mockResolvedValue({ id: 'w1', phases: [] });
     await expect(createWorkOrder({ workflowId: 'w1' }, 'actor1')).rejects.toThrow(
       'workflow has no phases configured',
     );
@@ -124,13 +124,13 @@ describe('workOrderService', () => {
   });
 
   it('startWorkOrderPhase records start timestamp and signer', async () => {
-    mocks.workOrder.findUnique.mockResolvedValueOnce({
+    mocks.workOrder.findFirst.mockResolvedValueOnce({
       id: 'wo-1',
       hetId: 'h1',
       prodStart: null,
     });
     mocks.workOrder.update.mockResolvedValue({ id: 'wo-1' });
-    mocks.workOrder.findUniqueOrThrow.mockResolvedValue({
+    mocks.workOrder.findFirstOrThrow.mockResolvedValue({
       id: 'wo-1',
       hetId: 'h1',
       prodStart: new Date('2026-06-30T08:00:00Z'),
@@ -155,7 +155,7 @@ describe('workOrderService', () => {
   });
 
   it('startWorkOrderPhase blocks work without HET', async () => {
-    mocks.workOrder.findUnique.mockResolvedValueOnce({
+    mocks.workOrder.findFirst.mockResolvedValueOnce({
       id: 'wo-1',
       hetId: null,
       prodStart: null,
@@ -168,13 +168,13 @@ describe('workOrderService', () => {
   });
 
   it('finishWorkOrderPhase records finish timestamp and signer', async () => {
-    mocks.workOrder.findUnique.mockResolvedValueOnce({
+    mocks.workOrder.findFirst.mockResolvedValueOnce({
       id: 'wo-1',
       prodStart: new Date('2026-06-30T08:00:00Z'),
       prodEnd: null,
     });
     mocks.workOrder.update.mockResolvedValue({ id: 'wo-1' });
-    mocks.workOrder.findUniqueOrThrow.mockResolvedValue({
+    mocks.workOrder.findFirstOrThrow.mockResolvedValue({
       id: 'wo-1',
       hetId: 'h1',
       prodStart: new Date('2026-06-30T08:00:00Z'),
@@ -199,7 +199,7 @@ describe('workOrderService', () => {
   });
 
   it('finishWorkOrderPhase blocks phases that have not started', async () => {
-    mocks.workOrder.findUnique.mockResolvedValueOnce({
+    mocks.workOrder.findFirst.mockResolvedValueOnce({
       id: 'wo-1',
       prodStart: null,
       prodEnd: null,
@@ -212,7 +212,7 @@ describe('workOrderService', () => {
   });
 
   it('advanceWorkOrder moves the work order to the next phase', async () => {
-    mocks.workOrder.findUnique
+    mocks.workOrder.findFirst
       // first call: load WO with its workflow's ordered phases
       .mockResolvedValueOnce({
         id: 'wo-1',
@@ -229,7 +229,7 @@ describe('workOrderService', () => {
       });
 
     mocks.workOrder.update.mockResolvedValue({ id: 'wo-1' });
-    mocks.workOrder.findUniqueOrThrow.mockResolvedValue({
+    mocks.workOrder.findFirstOrThrow.mockResolvedValue({
       id: 'wo-1',
       phaseId: 'p2',
       phaseOrder: 1,
@@ -262,7 +262,7 @@ describe('workOrderService', () => {
   });
 
   it('advanceWorkOrder blocks missing HET before changing phase', async () => {
-    mocks.workOrder.findUnique.mockResolvedValueOnce({
+    mocks.workOrder.findFirst.mockResolvedValueOnce({
       id: 'wo-1',
       phaseId: 'p1',
       hetId: null,
@@ -283,7 +283,7 @@ describe('workOrderService', () => {
   });
 
   it('advanceWorkOrder blocks unfinished phases before changing phase', async () => {
-    mocks.workOrder.findUnique.mockResolvedValueOnce({
+    mocks.workOrder.findFirst.mockResolvedValueOnce({
       id: 'wo-1',
       phaseId: 'p1',
       hetId: 'h1',
@@ -355,7 +355,7 @@ describe('workOrderService', () => {
   });
 
   it('advanceWorkOrder throws "work order is at its final phase" at the last phase', async () => {
-    mocks.workOrder.findUnique.mockResolvedValueOnce({
+    mocks.workOrder.findFirst.mockResolvedValueOnce({
       id: 'wo-1',
       phaseId: 'p2',
       workflow: {

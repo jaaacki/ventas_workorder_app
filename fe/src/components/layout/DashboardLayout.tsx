@@ -2,11 +2,12 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useAuthStore } from '@/store/authStore';
-import { LayoutDashboard, Users, Shield, Menu, LogOut, Settings2, Factory, Search } from 'lucide-react';
+import { LayoutDashboard, Users, Shield, Menu, LogOut, Settings2, Factory, Search, Boxes } from 'lucide-react';
 
 const navItems = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['owner', 'admin', 'user'] },
   { label: 'Production', href: '/dashboard/work-orders', icon: Factory, roles: ['owner', 'admin', 'user'] },
+  { label: 'Procurement', href: '/dashboard/procurement', icon: Boxes, roles: ['owner', 'admin', 'user'] },
   { label: 'Configuration', href: '/dashboard/workflows', icon: Settings2, roles: ['owner', 'admin'] },
   { label: 'Users', href: '/dashboard/users', icon: Users, roles: ['owner', 'admin'] },
   { label: 'Roles', href: '/dashboard/roles', icon: Shield, roles: ['owner'] },

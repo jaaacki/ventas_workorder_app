@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
+import { tenantIdOrDefault } from './tenant.js';
 
 /**
  * Detail include for the Het view: the in-use / finished work-order links plus
@@ -14,19 +15,21 @@ const hetDetailInclude = {
 export interface UseHetInput {
   workOrderId: string;
   actorId: string;
+  tenantId?: string | null;
 }
 
 export interface FinishHetInput {
   workOrderId: string;
   actorId: string;
+  tenantId?: string | null;
 }
 
 /**
  * List all HETs that have not been soft-deleted, newest first.
  */
-export async function listHets() {
+export async function listHets(tenantId?: string | null) {
   return prisma.het.findMany({
-    where: { deleted: false },
+    where: { deleted: false, tenantId: tenantIdOrDefault(tenantId) },
     orderBy: { createdAt: 'desc' },
     include: hetDetailInclude,
   });
@@ -43,6 +46,27 @@ export async function listHets() {
  * P2025/P2003).
  */
 export async function useHet(hetId: string, input: UseHetInput) {
+  const scopedTenantId = tenantIdOrDefault(input.tenantId);
+  const workOrder = await prisma.workOrder.findFirst({
+    where: { id: input.workOrderId, tenantId: scopedTenantId, deleted: false },
+    select: { id: true },
+  });
+  if (!workOrder) {
+    throw new Prisma.PrismaClientKnownRequestError('Work order not found', {
+      code: 'P2025',
+      clientVersion: 'unknown',
+    });
+  }
+  const het = await prisma.het.findFirst({
+    where: { id: hetId, tenantId: scopedTenantId, deleted: false },
+    select: { id: true },
+  });
+  if (!het) {
+    throw new Prisma.PrismaClientKnownRequestError('HET not found', {
+      code: 'P2025',
+      clientVersion: 'unknown',
+    });
+  }
   const updated = await prisma.het.update({
     where: { id: hetId },
     data: { usedById: input.workOrderId },
@@ -64,6 +88,27 @@ export async function useHet(hetId: string, input: UseHetInput) {
  * not exist.
  */
 export async function finishHet(hetId: string, input: FinishHetInput) {
+  const scopedTenantId = tenantIdOrDefault(input.tenantId);
+  const workOrder = await prisma.workOrder.findFirst({
+    where: { id: input.workOrderId, tenantId: scopedTenantId, deleted: false },
+    select: { id: true },
+  });
+  if (!workOrder) {
+    throw new Prisma.PrismaClientKnownRequestError('Work order not found', {
+      code: 'P2025',
+      clientVersion: 'unknown',
+    });
+  }
+  const het = await prisma.het.findFirst({
+    where: { id: hetId, tenantId: scopedTenantId, deleted: false },
+    select: { id: true },
+  });
+  if (!het) {
+    throw new Prisma.PrismaClientKnownRequestError('HET not found', {
+      code: 'P2025',
+      clientVersion: 'unknown',
+    });
+  }
   return prisma.het.update({
     where: { id: hetId },
     data: { finishedById: input.workOrderId },

@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
     createWorkflow: vi.fn(),
     updateWorkflow: vi.fn(),
   },
+  phaseService: {
+    listPhases: vi.fn(),
+  },
   workOrderService: {
     listWorkOrders: vi.fn(),
     getWorkOrder: vi.fn(),
@@ -59,6 +62,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../services/workflowService.js', () => mocks.workflowService);
+vi.mock('../../services/phaseService.js', () => mocks.phaseService);
 vi.mock('../../services/workOrderService.js', () => mocks.workOrderService);
 vi.mock('../../services/sterilisationService.js', () => mocks.sterilisationService);
 vi.mock('../../services/manufacturingService.js', () => mocks.manufacturingService);
@@ -228,6 +232,7 @@ function resetServiceMocks() {
   mocks.workflowService.getWorkflow.mockResolvedValue(null);
   mocks.workflowService.createWorkflow.mockResolvedValue(workflowDetail);
   mocks.workflowService.updateWorkflow.mockResolvedValue(workflowDetail);
+  mocks.phaseService.listPhases.mockResolvedValue([]);
   mocks.workOrderService.listWorkOrders.mockResolvedValue([]);
   mocks.workOrderService.getWorkOrder.mockResolvedValue(null);
   mocks.workOrderService.listWorkOrderAuditEvents.mockResolvedValue([]);
@@ -321,6 +326,9 @@ describe('route tenant propagation', () => {
 
       await get('/api/workflows/workflow-1');
       expect(mocks.workflowService.getWorkflow).toHaveBeenCalledWith('workflow-1', tenantId);
+
+      await get('/api/phases');
+      expect(mocks.phaseService.listPhases).toHaveBeenCalledWith(tenantId);
 
       await get('/api/work-orders');
       expect(mocks.workOrderService.listWorkOrders).toHaveBeenCalledWith(tenantId);

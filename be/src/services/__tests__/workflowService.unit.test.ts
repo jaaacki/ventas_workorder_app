@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
     create: vi.fn(),
     update: vi.fn(),
   },
+  phase: {
+    findMany: vi.fn(),
+  },
   workflowPhase: { deleteMany: vi.fn() },
   $transaction: vi.fn(),
 }));
@@ -14,10 +17,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../db/prisma.js', () => ({
   prisma: {
     workflow: mocks.workflow,
+    phase: mocks.phase,
     workflowPhase: mocks.workflowPhase,
     $transaction: mocks.$transaction.mockImplementation(
       async (fn: (tx: unknown) => Promise<unknown>) =>
-        fn({ workflow: mocks.workflow, workflowPhase: mocks.workflowPhase }),
+        fn({ workflow: mocks.workflow, phase: mocks.phase, workflowPhase: mocks.workflowPhase }),
     ),
   },
 }));
@@ -26,6 +30,9 @@ import * as workflowService from '../workflowService.js';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.phase.findMany.mockImplementation(async (args: { where?: { id?: { in?: string[] } } }) => {
+    return (args.where?.id?.in ?? []).map((id) => ({ id }));
+  });
 });
 
 describe('workflowService', () => {
@@ -59,6 +66,10 @@ describe('workflowService', () => {
       { name: 'AmGraft', code: 'AMG', phases: [{ phaseId: 'p1', sortOrder: 0 }] },
       'actor1',
     );
+    expect(mocks.phase.findMany).toHaveBeenCalledWith({
+      where: { tenantId: 'ventas', id: { in: ['p1'] } },
+      select: { id: true },
+    });
     expect(mocks.workflow.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -91,6 +102,24 @@ describe('workflowService', () => {
     expect(call.data.phases).toBeUndefined();
   });
 
+  it('createWorkflow rejects phase bindings outside the caller tenant', async () => {
+    mocks.phase.findMany.mockResolvedValue([]);
+
+    await expect(
+      workflowService.createWorkflow(
+        { name: 'AmGraft', code: 'AMG', phases: [{ phaseId: 'external-phase', sortOrder: 0 }] },
+        'actor1',
+        'tenant-a',
+      ),
+    ).rejects.toMatchObject({ code: 'P2003' });
+
+    expect(mocks.phase.findMany).toHaveBeenCalledWith({
+      where: { tenantId: 'tenant-a', id: { in: ['external-phase'] } },
+      select: { id: true },
+    });
+    expect(mocks.workflow.create).not.toHaveBeenCalled();
+  });
+
   it('updateWorkflow replaces phase bindings atomically', async () => {
     mocks.workflow.findFirst.mockResolvedValue({ id: 'w1' });
     mocks.workflowPhase.deleteMany.mockResolvedValue({ count: 2 });
@@ -101,6 +130,10 @@ describe('workflowService', () => {
       'actor1',
     );
     expect(mocks.$transaction).toHaveBeenCalledTimes(1);
+    expect(mocks.phase.findMany).toHaveBeenCalledWith({
+      where: { tenantId: 'ventas', id: { in: ['p2'] } },
+      select: { id: true },
+    });
     expect(mocks.workflowPhase.deleteMany).toHaveBeenCalledWith({ where: { workflowId: 'w1' } });
     expect(mocks.workflow.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -131,5 +164,26 @@ describe('workflowService', () => {
       where: { id: 'w1', tenantId: 'tenant-a' },
       select: { id: true },
     });
+  });
+
+  it('updateWorkflow rejects replacement bindings outside the caller tenant before deleting current bindings', async () => {
+    mocks.workflow.findFirst.mockResolvedValue({ id: 'w1' });
+    mocks.phase.findMany.mockResolvedValue([]);
+
+    await expect(
+      workflowService.updateWorkflow(
+        'w1',
+        { phases: [{ phaseId: 'external-phase', sortOrder: 0 }] },
+        'actor1',
+        'tenant-a',
+      ),
+    ).rejects.toMatchObject({ code: 'P2003' });
+
+    expect(mocks.phase.findMany).toHaveBeenCalledWith({
+      where: { tenantId: 'tenant-a', id: { in: ['external-phase'] } },
+      select: { id: true },
+    });
+    expect(mocks.workflowPhase.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.workflow.update).not.toHaveBeenCalled();
   });
 });

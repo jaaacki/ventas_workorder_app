@@ -58,6 +58,7 @@ describe('inventoryService tenant scoping', () => {
 
     await inventoryService.listSkus({ tenantId, q: 'graft', take: 25 });
     await inventoryService.listLots({ tenantId, q: 'lot', inventoryType: 'HET', status: 'available', take: 50 });
+    await inventoryService.getLot('lot-1', tenantId);
     await inventoryService.listTransactions({ tenantId, q: 'WO-1', take: 75 });
     await inventoryService.listLocations(tenantId);
     await inventoryService.listImportReports(tenantId);
@@ -70,6 +71,9 @@ describe('inventoryService tenant scoping', () => {
         where: expect.objectContaining({ tenantId, inventoryType: 'HET', status: 'available' }),
         take: 50,
       }),
+    );
+    expect(mocks.inventoryLot.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'lot-1', tenantId } }),
     );
     expect(mocks.inventoryTransaction.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ tenantId }), take: 75 }),

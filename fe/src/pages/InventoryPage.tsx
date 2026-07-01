@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchInventoryGenealogy,
@@ -25,6 +26,7 @@ import {
   AlertTriangle,
   Boxes,
   Database,
+  ExternalLink,
   FileClock,
   GitBranch,
   MapPin,
@@ -114,7 +116,13 @@ function LotsTable({ lots }: { lots: InventoryLot[] }) {
         {lots.map((lot) => (
           <TableRow key={lot.id}>
             <TableCell>
-              <div className="font-medium text-gray-800 dark:text-white/90">{lotLabel(lot)}</div>
+              <Link
+                to={`/dashboard/inventory/lots/${encodeURIComponent(lot.id)}`}
+                className="inline-flex items-center gap-1 font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
+              >
+                {lotLabel(lot)}
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Link>
               <div className="text-xs text-gray-500">{lot.id}</div>
             </TableCell>
             <TableCell>

@@ -59,6 +59,7 @@ const expectedOperations: ExpectedOperation[] = [
   { method: 'get', path: '/api/inventory/overview', operationId: 'getInventoryOverview', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/inventory/skus', operationId: 'listInventorySkus', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/inventory/lots', operationId: 'listInventoryLots', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/inventory/lots/{id}', operationId: 'getInventoryLot', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/inventory/transactions', operationId: 'listInventoryTransactions', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/inventory/locations', operationId: 'listInventoryLocations', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/inventory/genealogy/{lotId}', operationId: 'getInventoryGenealogy', routeKind: 'read-model', auth: 'authenticated' },
@@ -247,6 +248,15 @@ describe('OpenAPI contract', () => {
     });
     expect(JSON.stringify(listInventoryLots?.['x-method-policy'])).toContain('controlled stock actions');
 
+    const getInventoryLot = pathItem(doc, '/api/inventory/lots/{id}')?.get;
+    expect(getInventoryLot?.operationId).toBe('getInventoryLot');
+    expect(getInventoryLot?.description).toContain('lot-1001');
+    expect(getInventoryLot?.['x-route-kind']).toBe('read-model');
+    expect(getInventoryLot?.['x-method-policy']).toMatchObject({
+      resource: 'Inventory read model',
+      completeness: 'read-model-operational-mutations-deferred',
+    });
+
     const inventoryGenealogy = pathItem(doc, '/api/inventory/genealogy/{lotId}')?.get;
     expect(inventoryGenealogy?.operationId).toBe('getInventoryGenealogy');
     expect(inventoryGenealogy?.['x-route-kind']).toBe('read-model');
@@ -300,6 +310,12 @@ describe('OpenAPI contract', () => {
       expect.arrayContaining([expect.objectContaining({ id: 'lot-1001', inventoryType: 'HET' })]),
     );
     expect(jsonMedia(listInventoryLots?.responses['401'])?.examples).toBeDefined();
+
+    const getInventoryLot = pathItem(doc, '/api/inventory/lots/{id}')?.get;
+    expect(jsonMedia(getInventoryLot?.responses['200'])?.example).toEqual(
+      expect.objectContaining({ id: 'lot-1001', inventoryType: 'HET' }),
+    );
+    expect(jsonMedia(getInventoryLot?.responses['404'])?.examples).toBeDefined();
   });
 
   it('documents method policy decisions for every generated operation', async () => {

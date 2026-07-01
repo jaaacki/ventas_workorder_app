@@ -217,6 +217,29 @@ export const inventoryRoutes: FastifyPluginAsyncZod = async function (app) {
   );
 
   app.get(
+    '/lots/:id',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        tags: ['Inventory'],
+        summary: 'Get inventory lot',
+        description: 'Read one inventory lot with SKU and current-location context. Example: GET /api/inventory/lots/lot-1001.',
+        operationId: 'getInventoryLot',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
+        params: z.object({ id: z.string() }),
+        response: { 200: inventoryLotSchema, 401: errorResponse, 404: errorResponse },
+      },
+    },
+    async (req, reply) => {
+      const lot = await inventoryService.getLot(req.params.id, tenantIdOf(req));
+      if (!lot) return reply.status(404).send({ error: 'Inventory lot not found' });
+      return lot;
+    },
+  );
+
+  app.get(
     '/transactions',
     {
       onRequest: [app.authenticate],

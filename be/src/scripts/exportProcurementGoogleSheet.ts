@@ -8,7 +8,7 @@ const SHEET_ID_ENV = 'PROCUREMENT_SHEET_ID';
 const worksheets = [
   { worksheet: 'clinicDb', fileName: 'HETDeliveryReturnRecords---clinicDb.csv' },
   { worksheet: 'deliverCollect', fileName: 'HETDeliveryReturnRecords---deliverCollect.csv' },
-  { worksheet: 'HETLot-TODEL', fileName: 'HETDeliveryReturnRecords---HETLot-TODEL.csv' },
+  { worksheet: 'HETLot_TODEL', fileName: 'HETDeliveryReturnRecords---HETLot-TODEL.csv' },
 ];
 
 function arg(name: string, fallback?: string) {

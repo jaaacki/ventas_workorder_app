@@ -35,19 +35,6 @@ done
 dc exec -T be node -e "fetch('http://127.0.0.1:3001/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 dc up -d --force-recreate --no-deps fe
 
-dc exec -T be node dist/scripts/exportProcurementGoogleSheet.js --output-dir=/app/data/legacy
-dc exec -T be test -f /app/data/legacy/HETDeliveryReturnRecords---clinicDb.csv
-dc exec -T be test -f /app/data/legacy/HETDeliveryReturnRecords---deliverCollect.csv
-dc exec -T be test -f /app/data/legacy/HETDeliveryReturnRecords---HETLot-TODEL.csv
-dc exec -T be node dist/scripts/importProcurementLegacy.js --source-dir=/app/data/legacy
-
-dc exec -T be node dist/scripts/exportInventoryGoogleSheet.js --output-dir=/app/data/inventory
-dc exec -T be test -f /app/data/inventory/ventasInventory---item.csv
-dc exec -T be test -f /app/data/inventory/ventasInventory---checkInOut.csv
-dc exec -T be test -f /app/data/inventory/ventasInventory---itemRack.csv
-dc exec -T be node dist/scripts/importInventoryLegacy.js --source-dir=/app/data/inventory
-dc exec -T be node dist/scripts/syncHetInventory.js
-
 dc ps
 
 for _ in $(seq 1 30); do

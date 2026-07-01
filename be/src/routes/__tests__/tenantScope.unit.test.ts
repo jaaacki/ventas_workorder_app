@@ -9,6 +9,10 @@ const mocks = vi.hoisted(() => ({
   },
   phaseService: {
     listPhases: vi.fn(),
+    getPhase: vi.fn(),
+    createPhase: vi.fn(),
+    updatePhase: vi.fn(),
+    deletePhase: vi.fn(),
   },
   workOrderService: {
     listWorkOrders: vi.fn(),
@@ -95,6 +99,19 @@ const workflowDetail = {
   createdBy: null,
   updatedBy: null,
   phases: [],
+};
+
+const phaseDetail = {
+  id: 'phase-1',
+  tenantId,
+  phaseName: 'Intake',
+  phaseShort: 'INT',
+  phaseOrder: 10,
+  description: null,
+  bomId: null,
+  keyText: null,
+  createdAt: now,
+  updatedAt: now,
 };
 
 const workOrderDetail = {
@@ -246,6 +263,10 @@ function resetServiceMocks() {
   mocks.workflowService.createWorkflow.mockResolvedValue(workflowDetail);
   mocks.workflowService.updateWorkflow.mockResolvedValue(workflowDetail);
   mocks.phaseService.listPhases.mockResolvedValue([]);
+  mocks.phaseService.getPhase.mockResolvedValue(null);
+  mocks.phaseService.createPhase.mockResolvedValue(phaseDetail);
+  mocks.phaseService.updatePhase.mockResolvedValue(phaseDetail);
+  mocks.phaseService.deletePhase.mockResolvedValue({ success: true });
   mocks.workOrderService.listWorkOrders.mockResolvedValue([]);
   mocks.workOrderService.getWorkOrder.mockResolvedValue(null);
   mocks.workOrderService.listWorkOrderAuditEvents.mockResolvedValue([]);
@@ -347,6 +368,9 @@ describe('route tenant propagation', () => {
 
       await get('/api/phases');
       expect(mocks.phaseService.listPhases).toHaveBeenCalledWith(tenantId);
+
+      await get('/api/phases/phase-1');
+      expect(mocks.phaseService.getPhase).toHaveBeenCalledWith('phase-1', tenantId);
 
       await get('/api/work-orders');
       expect(mocks.workOrderService.listWorkOrders).toHaveBeenCalledWith(tenantId);
@@ -462,7 +486,7 @@ describe('route tenant propagation', () => {
       });
 
       const injectJson = (
-        method: 'PATCH' | 'POST',
+        method: 'DELETE' | 'PATCH' | 'POST',
         url: string,
         payload?: unknown,
         token = adminToken,
@@ -495,6 +519,28 @@ describe('route tenant propagation', () => {
         adminActorId,
         tenantId,
       );
+
+      await injectJson('POST', '/api/phases', {
+        phaseName: 'Intake',
+        phaseShort: 'INT',
+        phaseOrder: 10,
+      });
+      expect(mocks.phaseService.createPhase).toHaveBeenCalledWith(
+        { phaseName: 'Intake', phaseShort: 'INT', phaseOrder: 10 },
+        adminActorId,
+        tenantId,
+      );
+
+      await injectJson('PATCH', '/api/phases/phase-1', { description: 'Updated phase' });
+      expect(mocks.phaseService.updatePhase).toHaveBeenCalledWith(
+        'phase-1',
+        { description: 'Updated phase' },
+        adminActorId,
+        tenantId,
+      );
+
+      await injectJson('DELETE', '/api/phases/phase-1');
+      expect(mocks.phaseService.deletePhase).toHaveBeenCalledWith('phase-1', tenantId);
 
       await injectJson('POST', '/api/work-orders', { workflowId: 'workflow-1', hetId: 'het-1' });
       expect(mocks.workOrderService.createWorkOrder).toHaveBeenCalledWith(

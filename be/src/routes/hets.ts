@@ -43,6 +43,7 @@ export const hetRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'listHets',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
         response: { 200: z.array(hetSchema), 401: errorResponse },
       },
     },
@@ -62,6 +63,8 @@ export const hetRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'useHet',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
         params: z.object({ id: z.string() }),
         body: hetLinkBodySchema,
         response: {
@@ -105,6 +108,8 @@ export const hetRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'finishHet',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
         params: z.object({ id: z.string() }),
         body: hetLinkBodySchema,
         response: {

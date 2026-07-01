@@ -53,6 +53,7 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
         description: 'Authenticate with local email/password credentials and receive a JWT.',
         operationId: 'login',
         'x-route-kind': 'auth',
+        'x-auth': 'anonymous',
         body: z.object({
           email: z.string().email(),
           password: z.string().min(1),
@@ -101,6 +102,8 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'registerStaff',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'auth',
+        'x-auth': 'role',
+        'x-required-roles': ['owner'],
         body: z.object({
           email: z.string().email(),
           password: z.string().min(8),
@@ -148,6 +151,7 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'getCurrentUser',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'auth',
+        'x-auth': 'authenticated',
         response: {
           200: userSchema,
           401: errorResponse,
@@ -174,6 +178,7 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'logout',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'auth',
+        'x-auth': 'authenticated',
         response: {
           200: z.object({ success: z.boolean() }),
           401: errorResponse,
@@ -196,6 +201,7 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'listRoles',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
         response: {
           200: z.array(roleSchema),
           401: errorResponse,
@@ -218,6 +224,8 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'updateRole',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'resource-crud',
+        'x-auth': 'role',
+        'x-required-roles': ['owner'],
         params: z.object({ id: z.string() }),
         body: z.object({
           name: z.string().min(1).optional(),
@@ -254,6 +262,8 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'listStaff',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'read-model',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
         response: {
           200: z.array(userSchema),
           401: errorResponse,
@@ -282,6 +292,8 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'updateStaffRole',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'resource-crud',
+        'x-auth': 'role',
+        'x-required-roles': ['owner'],
         params: z.object({ id: z.string() }),
         body: z.object({ roleId: z.string() }),
         response: {
@@ -321,6 +333,8 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'updateStaffActive',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'resource-crud',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
         params: z.object({ id: z.string() }),
         body: z.object({ active: z.boolean() }),
         response: {

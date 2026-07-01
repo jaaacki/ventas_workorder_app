@@ -83,6 +83,7 @@ export const workflowRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'listWorkflows',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'resource-crud',
+        'x-auth': 'authenticated',
         querystring: z.object({ active: z.string().optional() }),
         response: { 200: z.array(workflowSummarySchema), 401: errorResponse },
       },
@@ -104,6 +105,7 @@ export const workflowRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'getWorkflow',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'resource-crud',
+        'x-auth': 'authenticated',
         params: z.object({ id: z.string() }),
         response: { 200: workflowDetailSchema, 401: errorResponse, 404: errorResponse },
       },
@@ -128,6 +130,8 @@ export const workflowRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'createWorkflow',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'resource-crud',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
         body: createBodySchema,
         response: {
           201: workflowDetailSchema,
@@ -167,6 +171,8 @@ export const workflowRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'updateWorkflow',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'resource-crud',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
         params: z.object({ id: z.string() }),
         body: updateBodySchema,
         response: {

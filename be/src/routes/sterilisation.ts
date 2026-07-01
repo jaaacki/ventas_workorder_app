@@ -62,6 +62,8 @@ export const sterilisationRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'createSterilisation',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
         body: createBodySchema,
         response: {
           201: steriliseDetailSchema,
@@ -105,6 +107,7 @@ export const sterilisationRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'listSterilisations',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
         querystring: z.object({ workOrderId: z.string().min(1) }),
         response: {
           200: z.array(steriliseDetailSchema),
@@ -128,6 +131,8 @@ export const sterilisationRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'setSterilisationResult',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
         params: z.object({ id: z.string() }),
         body: patchBodySchema,
         response: {

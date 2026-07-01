@@ -11,6 +11,7 @@ export const healthRoutes: FastifyPluginAsyncZod = async function (app) {
         description: 'Returns a small liveness payload used by CI, Docker, and reverse-proxy health checks.',
         operationId: 'getHealth',
         'x-route-kind': 'health',
+        'x-auth': 'anonymous',
         response: {
           200: z.object({ status: z.literal('ok') }),
         },

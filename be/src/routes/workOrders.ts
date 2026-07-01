@@ -75,6 +75,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'listWorkOrders',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
         response: { 200: z.array(workOrderSummarySchema), 401: errorResponse },
       },
     },
@@ -94,6 +95,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'getWorkOrder',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
         params: z.object({ id: z.string() }),
         response: { 200: workOrderDetailSchema, 401: errorResponse, 404: errorResponse },
       },
@@ -118,6 +120,8 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'createWorkOrder',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
         body: createBodySchema,
         response: {
           201: workOrderDetailSchema,
@@ -154,6 +158,13 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Work Orders'],
+        summary: 'Start work order phase',
+        description: 'Sign and mark the current work-order phase as started.',
+        operationId: 'startWorkOrderPhase',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
+        'x-auth': 'authenticated',
         params: z.object({ id: z.string() }),
         body: phaseSignoffBodySchema,
         response: {
@@ -184,6 +195,13 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Work Orders'],
+        summary: 'Finish work order phase',
+        description: 'Sign and mark the current work-order phase as finished.',
+        operationId: 'finishWorkOrderPhase',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
+        'x-auth': 'authenticated',
         params: z.object({ id: z.string() }),
         body: phaseSignoffBodySchema,
         response: {
@@ -220,6 +238,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'advanceWorkOrder',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',
+        'x-auth': 'authenticated',
         params: z.object({ id: z.string() }),
         response: {
           200: workOrderDetailSchema,

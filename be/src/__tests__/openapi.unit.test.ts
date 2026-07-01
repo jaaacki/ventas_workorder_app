@@ -1,6 +1,69 @@
 import { describe, expect, it, afterEach, vi } from 'vitest';
 import type { OpenAPIV3 } from 'openapi-types';
 
+type RouteKind = 'auth' | 'health' | 'import-admin' | 'lifecycle-action' | 'read-model' | 'resource-crud';
+type AuthKind = 'anonymous' | 'authenticated' | 'role';
+
+type ExpectedOperation = {
+  method: OpenAPIV3.HttpMethods;
+  path: string;
+  operationId: string;
+  routeKind: RouteKind;
+  auth: AuthKind;
+  requiredRoles?: string[];
+};
+
+const expectedOperations: ExpectedOperation[] = [
+  { method: 'get', path: '/api/health', operationId: 'getHealth', routeKind: 'health', auth: 'anonymous' },
+  { method: 'post', path: '/api/auth/login', operationId: 'login', routeKind: 'auth', auth: 'anonymous' },
+  { method: 'post', path: '/api/auth/register', operationId: 'registerStaff', routeKind: 'auth', auth: 'role', requiredRoles: ['owner'] },
+  { method: 'get', path: '/api/auth/me', operationId: 'getCurrentUser', routeKind: 'auth', auth: 'authenticated' },
+  { method: 'post', path: '/api/auth/logout', operationId: 'logout', routeKind: 'auth', auth: 'authenticated' },
+  { method: 'get', path: '/api/auth/roles', operationId: 'listRoles', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'patch', path: '/api/auth/roles/{id}', operationId: 'updateRole', routeKind: 'resource-crud', auth: 'role', requiredRoles: ['owner'] },
+  { method: 'get', path: '/api/auth/staff', operationId: 'listStaff', routeKind: 'read-model', auth: 'role', requiredRoles: ['admin', 'owner'] },
+  { method: 'patch', path: '/api/auth/staff/{id}/role', operationId: 'updateStaffRole', routeKind: 'resource-crud', auth: 'role', requiredRoles: ['owner'] },
+  { method: 'patch', path: '/api/auth/staff/{id}/active', operationId: 'updateStaffActive', routeKind: 'resource-crud', auth: 'role', requiredRoles: ['admin', 'owner'] },
+  { method: 'get', path: '/api/auth/oauth/{provider}/authorize', operationId: 'authorizeOAuthProvider', routeKind: 'auth', auth: 'anonymous' },
+  { method: 'get', path: '/api/auth/oauth/{provider}/callback', operationId: 'handleOAuthCallback', routeKind: 'auth', auth: 'anonymous' },
+  { method: 'get', path: '/api/workflows', operationId: 'listWorkflows', routeKind: 'resource-crud', auth: 'authenticated' },
+  { method: 'post', path: '/api/workflows', operationId: 'createWorkflow', routeKind: 'resource-crud', auth: 'role', requiredRoles: ['admin', 'owner'] },
+  { method: 'get', path: '/api/workflows/{id}', operationId: 'getWorkflow', routeKind: 'resource-crud', auth: 'authenticated' },
+  { method: 'patch', path: '/api/workflows/{id}', operationId: 'updateWorkflow', routeKind: 'resource-crud', auth: 'role', requiredRoles: ['admin', 'owner'] },
+  { method: 'get', path: '/api/work-orders', operationId: 'listWorkOrders', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'post', path: '/api/work-orders', operationId: 'createWorkOrder', routeKind: 'lifecycle-action', auth: 'role', requiredRoles: ['admin', 'owner'] },
+  { method: 'get', path: '/api/work-orders/{id}', operationId: 'getWorkOrder', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'post', path: '/api/work-orders/{id}/start', operationId: 'startWorkOrderPhase', routeKind: 'lifecycle-action', auth: 'authenticated' },
+  { method: 'post', path: '/api/work-orders/{id}/finish', operationId: 'finishWorkOrderPhase', routeKind: 'lifecycle-action', auth: 'authenticated' },
+  { method: 'post', path: '/api/work-orders/{id}/advance', operationId: 'advanceWorkOrder', routeKind: 'lifecycle-action', auth: 'authenticated' },
+  { method: 'post', path: '/api/sterilisation', operationId: 'createSterilisation', routeKind: 'lifecycle-action', auth: 'role', requiredRoles: ['admin', 'owner'] },
+  { method: 'get', path: '/api/sterilisation', operationId: 'listSterilisations', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'patch', path: '/api/sterilisation/{id}', operationId: 'setSterilisationResult', routeKind: 'lifecycle-action', auth: 'role', requiredRoles: ['admin', 'owner'] },
+  { method: 'post', path: '/api/manufacturing/generate', operationId: 'generateBatchRecord', routeKind: 'lifecycle-action', auth: 'role', requiredRoles: ['admin', 'owner'] },
+  { method: 'get', path: '/api/manufacturing/{id}', operationId: 'getBatchRecord', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/hets', operationId: 'listHets', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'post', path: '/api/hets/{id}/use', operationId: 'useHet', routeKind: 'lifecycle-action', auth: 'role', requiredRoles: ['admin', 'owner'] },
+  { method: 'post', path: '/api/hets/{id}/finish', operationId: 'finishHet', routeKind: 'lifecycle-action', auth: 'role', requiredRoles: ['admin', 'owner'] },
+  { method: 'get', path: '/api/procurement/overview', operationId: 'getProcurementOverview', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/procurement/supply-entities', operationId: 'listSupplyEntities', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/procurement/collection-points', operationId: 'listCollectionPoints', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/procurement/collection-units', operationId: 'listCollectionUnits', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/procurement/collection-units/{id}', operationId: 'getCollectionUnit', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/procurement/issuance-orders', operationId: 'listIssuanceOrders', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/procurement/collection-orders', operationId: 'listCollectionOrders', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/procurement/collection-receipts', operationId: 'listCollectionReceipts', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/procurement/import-reports', operationId: 'listProcurementImportReports', routeKind: 'import-admin', auth: 'role', requiredRoles: ['admin', 'owner'] },
+  { method: 'get', path: '/api/inventory/overview', operationId: 'getInventoryOverview', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/inventory/skus', operationId: 'listInventorySkus', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/inventory/lots', operationId: 'listInventoryLots', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/inventory/transactions', operationId: 'listInventoryTransactions', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/inventory/locations', operationId: 'listInventoryLocations', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/inventory/genealogy/{lotId}', operationId: 'getInventoryGenealogy', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/inventory/import-reports', operationId: 'listInventoryImportReports', routeKind: 'import-admin', auth: 'role', requiredRoles: ['admin', 'owner'] },
+];
+
+const httpMethods = new Set<OpenAPIV3.HttpMethods>(['delete', 'get', 'head', 'options', 'patch', 'post', 'put', 'trace']);
+
 function stubRequiredEnv() {
   vi.stubEnv('NODE_ENV', 'test');
   vi.stubEnv('DATABASE_URL', 'postgresql://workorder:workorder@localhost:5432/workorder_test');
@@ -14,6 +77,21 @@ function normalizedPaths(doc: OpenAPIV3.Document) {
 
 function pathItem(doc: OpenAPIV3.Document, path: string) {
   return doc.paths[path] ?? doc.paths[`${path}/`];
+}
+
+function operationInventory(doc: OpenAPIV3.Document) {
+  return Object.entries(doc.paths)
+    .flatMap(([path, item]) => {
+      const normalizedPath = path.replace(/\/$/, '');
+      return Object.entries(item ?? {})
+        .filter(([method]) => httpMethods.has(method as OpenAPIV3.HttpMethods))
+        .map(([method, operation]) => ({
+          method: method as OpenAPIV3.HttpMethods,
+          path: normalizedPath,
+          operation: operation as OpenAPIV3.OperationObject,
+        }));
+    })
+    .sort((a, b) => `${a.method} ${a.path}`.localeCompare(`${b.method} ${b.path}`));
 }
 
 describe('OpenAPI contract', () => {
@@ -40,41 +118,35 @@ describe('OpenAPI contract', () => {
       scheme: 'bearer',
     });
 
-    expect(normalizedPaths(doc)).toEqual(
-      expect.arrayContaining([
-        '/api/health',
-        '/api/auth/login',
-        '/api/auth/me',
-        '/api/auth/oauth/{provider}/authorize',
-        '/api/workflows',
-        '/api/workflows/{id}',
-        '/api/work-orders',
-        '/api/work-orders/{id}',
-        '/api/work-orders/{id}/advance',
-        '/api/sterilisation',
-        '/api/manufacturing/generate',
-        '/api/manufacturing/{id}',
-        '/api/hets',
-        '/api/hets/{id}/use',
-        '/api/hets/{id}/finish',
-        '/api/procurement/overview',
-        '/api/procurement/supply-entities',
-        '/api/procurement/collection-points',
-        '/api/procurement/collection-units',
-        '/api/procurement/collection-units/{id}',
-        '/api/procurement/issuance-orders',
-        '/api/procurement/collection-orders',
-        '/api/procurement/collection-receipts',
-        '/api/procurement/import-reports',
-        '/api/inventory/overview',
-        '/api/inventory/skus',
-        '/api/inventory/lots',
-        '/api/inventory/transactions',
-        '/api/inventory/locations',
-        '/api/inventory/genealogy/{lotId}',
-        '/api/inventory/import-reports',
-      ]),
+    expect(new Set(normalizedPaths(doc))).toEqual(new Set(expectedOperations.map((route) => route.path)));
+
+    const actualOperations = operationInventory(doc);
+    expect(actualOperations.map(({ method, path }) => ({ method, path }))).toEqual(
+      expectedOperations
+        .map(({ method, path }) => ({ method, path }))
+        .sort((a, b) => `${a.method} ${a.path}`.localeCompare(`${b.method} ${b.path}`)),
     );
+
+    for (const expected of expectedOperations) {
+      const operation = pathItem(doc, expected.path)?.[expected.method] as OpenAPIV3.OperationObject | undefined;
+      expect(operation, `${expected.method.toUpperCase()} ${expected.path}`).toBeDefined();
+      expect(operation?.operationId).toBe(expected.operationId);
+      expect(operation?.summary).toBeTruthy();
+      expect(operation?.tags?.length).toBeGreaterThan(0);
+      expect(operation?.['x-route-kind']).toBe(expected.routeKind);
+      expect(operation?.['x-auth']).toBe(expected.auth);
+
+      if (expected.auth === 'anonymous') {
+        expect(operation?.security).toBeUndefined();
+        expect(operation?.['x-required-roles']).toBeUndefined();
+      } else {
+        expect(operation?.security).toEqual([{ bearerAuth: [] }]);
+      }
+
+      if (expected.requiredRoles) {
+        expect(operation?.['x-required-roles']).toEqual(expected.requiredRoles);
+      }
+    }
 
     const login = doc.paths['/api/auth/login']?.post;
     expect(login?.tags).toEqual(['Auth']);

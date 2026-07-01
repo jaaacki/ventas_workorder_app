@@ -40,6 +40,8 @@ export const manufacturingRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'generateBatchRecord',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
         body: generateBodySchema,
         response: {
           201: manufacturerSchema,
@@ -83,6 +85,7 @@ export const manufacturingRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'getBatchRecord',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
         params: z.object({ id: z.string() }),
         response: {
           200: manufacturerSchema,

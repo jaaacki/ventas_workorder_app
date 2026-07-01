@@ -101,6 +101,15 @@ function concreteUrl(path: string) {
   return path.replace(/\{provider\}/g, 'google').replace(/\{[^}]+\}/g, 'test-id');
 }
 
+function responseObject(response: OpenAPIV3.ReferenceObject | OpenAPIV3.ResponseObject | undefined) {
+  if (!response || '$ref' in response) return undefined;
+  return response;
+}
+
+function jsonMedia(response: OpenAPIV3.ReferenceObject | OpenAPIV3.ResponseObject | undefined) {
+  return responseObject(response)?.content?.['application/json'];
+}
+
 describe('OpenAPI contract', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -202,6 +211,52 @@ describe('OpenAPI contract', () => {
     const inventoryGenealogy = pathItem(doc, '/api/inventory/genealogy/{lotId}')?.get;
     expect(inventoryGenealogy?.operationId).toBe('getInventoryGenealogy');
     expect(inventoryGenealogy?.['x-route-kind']).toBe('read-model');
+  });
+
+  it('adds useful examples and standard JSON error examples to the generated contract', async () => {
+    stubRequiredEnv();
+    const { buildServer } = await import('../server.js');
+    const app = await buildServer();
+
+    await app.ready();
+    const response = await app.inject({ method: 'GET', url: '/api/openapi.json' });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    const doc = JSON.parse(response.body) as OpenAPIV3.Document;
+    expect(doc.info.description).toContain('{ "error": "message" }');
+    expect(doc.info.description).toContain('take');
+
+    for (const { method, path, operation } of operationInventory(doc)) {
+      const successStatus = Object.keys(operation.responses).find((status) => /^[23]/.test(status));
+      expect(successStatus, `${method.toUpperCase()} ${path} has a 2xx/3xx response`).toBeDefined();
+      const successResponse = responseObject(operation.responses[successStatus!]);
+      const successExample = jsonMedia(successResponse)?.example ?? successResponse?.headers?.Location;
+      expect(successExample, `${method.toUpperCase()} ${path} success example`).toBeDefined();
+
+      if (operation.requestBody && !('$ref' in operation.requestBody)) {
+        const requestExample = operation.requestBody.content?.['application/json']?.example;
+        expect(requestExample, `${method.toUpperCase()} ${path} request example`).toBeDefined();
+      }
+
+      for (const [status, responseObject] of Object.entries(operation.responses)) {
+        if (!/^[45]/.test(status)) continue;
+        const examples = jsonMedia(responseObject)?.examples;
+        expect(examples, `${method.toUpperCase()} ${path} ${status} error example`).toBeDefined();
+        expect(JSON.stringify(examples)).toContain('"error"');
+      }
+    }
+
+    const createWorkOrder = pathItem(doc, '/api/work-orders')?.post;
+    expect(createWorkOrder?.requestBody && !('$ref' in createWorkOrder.requestBody)
+      ? createWorkOrder.requestBody.content?.['application/json']?.example
+      : undefined).toEqual({ workflowId: 'wf-amgraft', hetId: 'het-1001' });
+
+    const listInventoryLots = pathItem(doc, '/api/inventory/lots')?.get;
+    expect(jsonMedia(listInventoryLots?.responses['200'])?.example).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'lot-1001', inventoryType: 'HET' })]),
+    );
+    expect(jsonMedia(listInventoryLots?.responses['401'])?.examples).toBeDefined();
   });
 
   it('serves a human-readable docs landing page that points to the JSON contract', async () => {

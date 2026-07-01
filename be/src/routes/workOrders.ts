@@ -104,6 +104,13 @@ const workOrderSchema = z.object({
     uom: z.string().nullable(),
     serialNumber: z.string().nullable(),
   })),
+  allowedEquipment: z.array(z.object({
+    phaseEquipId: z.string(),
+    equipId: z.string().nullable(),
+    name: z.string().nullable(),
+    description: z.string().nullable(),
+    recorded: z.boolean(),
+  })),
   combinedHetCheck: z.boolean(),
   phaseTimeline: z.array(workOrderPhaseTimelineSchema),
   counts: z.object({ serials: z.number(), equipment: z.number(), sterilisationRecords: z.number() }),
@@ -123,6 +130,7 @@ const auditStateSchema = z.object({
   prodEnd: z.string().nullable(),
   prodDurationMinutes: z.string().nullable(),
   outputQuantity: z.string().nullable(),
+  equipmentCount: z.number().nullable().optional(),
   serialCount: z.number().nullable().optional(),
 }).nullable();
 
@@ -154,6 +162,10 @@ const serialBodySchema = z.object({
 
 const outputQuantityBodySchema = z.object({
   outputQuantity: z.union([z.number().positive(), z.string().trim().min(1)]),
+});
+
+const equipmentBodySchema = z.object({
+  phaseEquipId: z.string().min(1),
 });
 
 function actorIdOf(req: { user: unknown }): string {
@@ -255,6 +267,54 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         return reply.status(404).send({ error: 'Work order not found' });
       }
       return events;
+    },
+  );
+
+  app.post(
+    '/:id/equipment',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        tags: ['Work Orders'],
+        summary: 'Record work order equipment',
+        description: 'Capture equipment used for the current work-order phase from the phase allowed-equipment catalog.',
+        operationId: 'recordWorkOrderEquipment',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
+        'x-auth': 'authenticated',
+        params: z.object({ id: z.string() }),
+        body: equipmentBodySchema,
+        response: {
+          200: workOrderDetailSchema,
+          400: errorResponse,
+          401: errorResponse,
+          404: errorResponse,
+          409: errorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      try {
+        return await workOrderService.recordWorkOrderEquipment(
+          req.params.id,
+          { phaseEquipId: req.body.phaseEquipId },
+          actorIdOf(req),
+          tenantIdOf(req),
+        );
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith('cannot record equipment:')) {
+          return reply.status(409).send({ error: err.message });
+        }
+        if (err instanceof Prisma.PrismaClientKnownRequestError) {
+          if (err.code === 'P2025') {
+            return reply.status(404).send({ error: 'Work order not found' });
+          }
+          if (err.code === 'P2003') {
+            return reply.status(400).send({ error: 'Referenced equipment does not exist' });
+          }
+        }
+        throw err;
+      }
     },
   );
 

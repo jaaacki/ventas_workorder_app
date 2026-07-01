@@ -4,6 +4,7 @@ import {
   createWorkOrder,
   advanceWorkOrder,
   getWorkOrder,
+  recordWorkOrderEquipment,
   recordWorkOrderOutputQuantity,
   recordWorkOrderSerial,
   startWorkOrderPhase,
@@ -27,9 +28,10 @@ const ctx: {
   phaseIds: string[];
   bomId: string;
   bomLineId: string;
+  phaseEquipId: string;
   hetId: string;
   workOrderId?: string;
-} = { actorId: '', tenantId: DEFAULT_TENANT_ID, workflowId: '', phaseIds: [], bomId: '', bomLineId: '', hetId: '' };
+} = { actorId: '', tenantId: DEFAULT_TENANT_ID, workflowId: '', phaseIds: [], bomId: '', bomLineId: '', phaseEquipId: '', hetId: '' };
 
 beforeAll(async () => {
   // Actor (any staff row; create a throwaway one if none exist).
@@ -48,6 +50,7 @@ beforeAll(async () => {
   ctx.workflowId = workflow.id;
   ctx.bomId = `${code}:BOM`;
   ctx.bomLineId = `${code}:BOM:LINE:SERIAL`;
+  ctx.phaseEquipId = `${code}:EQUIP:SEALER`;
   await prisma.bom.create({
     data: { id: ctx.bomId, tenantId: ctx.tenantId, bomName: `${code} serial BOM`, keyText: ctx.bomId },
   });
@@ -63,6 +66,9 @@ beforeAll(async () => {
       keyText: ctx.bomLineId,
     },
   });
+  await prisma.phaseEquip.create({
+    data: { id: ctx.phaseEquipId, tenantId: ctx.tenantId, equipId: `${code}-SEALER`, name: 'Integration heat sealer', keyText: ctx.phaseEquipId },
+  });
 
   // Phases + ordered WorkflowPhase bindings.
   ctx.phaseIds = [];
@@ -72,6 +78,11 @@ beforeAll(async () => {
     await prisma.phase.create({
       data: { id: phaseId, tenantId: ctx.tenantId, phaseName: phaseNames[i], phaseOrder: i, phaseShort: phaseNames[i].slice(0, 4), keyText: phaseId, ...(i === 0 && { bomId: ctx.bomId }) },
     });
+    if (i === 0) {
+      await prisma.phasePhaseEquip.create({
+        data: { phaseId, phaseEquipId: ctx.phaseEquipId },
+      });
+    }
     await prisma.workflowPhase.create({
       data: { workflowId: workflow.id, phaseId, sortOrder: i },
     });
@@ -91,9 +102,12 @@ afterAll(async () => {
     await prisma.workOrder.deleteMany({ where: { id: woId } }).catch(() => undefined);
   }
   await prisma.workOrderHet.deleteMany({ where: { hetId: ctx.hetId } }).catch(() => undefined);
+  await prisma.workOrderPhaseEquip.deleteMany({ where: { phaseEquipId: ctx.phaseEquipId } }).catch(() => undefined);
   await prisma.het.deleteMany({ where: { id: ctx.hetId } }).catch(() => undefined);
   await prisma.workflowPhase.deleteMany({ where: { workflowId: ctx.workflowId } }).catch(() => undefined);
+  await prisma.phasePhaseEquip.deleteMany({ where: { phaseEquipId: ctx.phaseEquipId } }).catch(() => undefined);
   await prisma.phase.deleteMany({ where: { id: { in: ctx.phaseIds } } }).catch(() => undefined);
+  await prisma.phaseEquip.deleteMany({ where: { id: ctx.phaseEquipId } }).catch(() => undefined);
   await prisma.bomLine.deleteMany({ where: { id: ctx.bomLineId } }).catch(() => undefined);
   await prisma.bom.deleteMany({ where: { id: ctx.bomId } }).catch(() => undefined);
   await prisma.workflow.deleteMany({ where: { id: ctx.workflowId } }).catch(() => undefined);
@@ -111,6 +125,9 @@ describe('AmGraft production run (integration)', () => {
     expect(wo.phase?.phaseName).toBe('Preparation');
     expect(wo.serialRequiredCount).toBe(1);
     expect(wo.serialCheckDone).toBe(false);
+    expect(wo.allowedEquipment).toEqual([
+      expect.objectContaining({ phaseEquipId: ctx.phaseEquipId, recorded: false }),
+    ]);
 
     const serialised = await recordWorkOrderSerial(
       wo.id,
@@ -120,6 +137,10 @@ describe('AmGraft production run (integration)', () => {
     expect(serialised.serialCheckDone).toBe(true);
     expect(serialised.requiredSerials).toEqual([
       expect.objectContaining({ bomRefId: ctx.bomLineId, serialNumber: `${ctx.bomLineId}:SN-001` }),
+    ]);
+    const equipped = await recordWorkOrderEquipment(wo.id, { phaseEquipId: ctx.phaseEquipId }, ctx.actorId);
+    expect(equipped.allowedEquipment).toEqual([
+      expect.objectContaining({ phaseEquipId: ctx.phaseEquipId, recorded: true }),
     ]);
 
     // 2. Manufacturing batch record.

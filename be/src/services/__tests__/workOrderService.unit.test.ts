@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
     create: vi.fn(),
     findMany: vi.fn(),
   },
+  workOrderPhaseEquip: {
+    create: vi.fn(),
+  },
   woSerial: {
     upsert: vi.fn(),
   },
@@ -28,6 +31,7 @@ vi.mock('../../db/prisma.js', () => ({
     workflow: mocks.workflow,
     workOrder: mocks.workOrder,
     workOrderAuditEvent: mocks.workOrderAuditEvent,
+    workOrderPhaseEquip: mocks.workOrderPhaseEquip,
     woSerial: mocks.woSerial,
     sterilise: mocks.sterilise,
   },
@@ -38,6 +42,7 @@ import {
   listWorkOrders,
   listWorkOrderAuditEvents,
   getWorkOrder,
+  recordWorkOrderEquipment,
   recordWorkOrderOutputQuantity,
   recordWorkOrderSerial,
   startWorkOrderPhase,
@@ -292,6 +297,129 @@ describe('workOrderService', () => {
     expect(mocks.workOrder.findFirst).not.toHaveBeenCalled();
     expect(mocks.workOrder.update).not.toHaveBeenCalled();
     expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('recordWorkOrderEquipment records allowed current-phase equipment and writes an audit event', async () => {
+    const workOrder = {
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: null,
+      prodEnd: null,
+      prodDuration: null,
+      outputQuantity: null,
+      phase: { phaseEquips: [{ phaseEquipId: 'equip-1' }] },
+      phaseEquips: [],
+    };
+    mocks.workOrder.findFirst.mockResolvedValue(workOrder);
+    mocks.workOrderPhaseEquip.create.mockResolvedValue({ workOrderId: 'wo-1', phaseEquipId: 'equip-1' });
+    mocks.workOrder.findFirstOrThrow.mockResolvedValue({
+      ...workOrder,
+      workflow: { phases: [] },
+      phase: {
+        phaseShort: 'P1',
+        bom: { lines: [] },
+        phaseEquips: [{ phaseEquip: { id: 'equip-1', equipId: 'EQ-1', name: 'Sealer', description: 'Heat sealer' } }],
+      },
+      sterilises: [],
+      woSerials: [],
+      phaseEquips: [{ phaseEquip: { id: 'equip-1', equipId: 'EQ-1', name: 'Sealer' } }],
+      batchHets: [],
+    });
+
+    const result = await recordWorkOrderEquipment('wo-1', { phaseEquipId: 'equip-1' }, 'actor1', 'tenant-a');
+
+    expect(mocks.workOrder.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'wo-1', tenantId: 'tenant-a' } }),
+    );
+    expect(mocks.workOrderPhaseEquip.create).toHaveBeenCalledWith({
+      data: { workOrderId: 'wo-1', phaseEquipId: 'equip-1' },
+    });
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tenantId: 'tenant-a',
+          workOrderId: 'wo-1',
+          action: 'work_order.equipment_recorded',
+          source: 'workOrderService.recordWorkOrderEquipment',
+          previousState: expect.objectContaining({ equipmentCount: 0 }),
+          newState: expect.objectContaining({ equipmentCount: 1 }),
+        }),
+      }),
+    );
+    expect(result).toMatchObject({
+      id: 'wo-1',
+      counts: { equipment: 1 },
+      allowedEquipment: [expect.objectContaining({ phaseEquipId: 'equip-1', recorded: true })],
+    });
+  });
+
+  it('recordWorkOrderEquipment rejects equipment not allowed by the current phase', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: null,
+      prodEnd: null,
+      prodDuration: null,
+      outputQuantity: null,
+      phase: { phaseEquips: [{ phaseEquipId: 'equip-other' }] },
+      phaseEquips: [],
+    });
+
+    await expect(
+      recordWorkOrderEquipment('wo-1', { phaseEquipId: 'equip-1' }, 'actor1', 'tenant-a'),
+    ).rejects.toThrow('cannot record equipment: equipment is not allowed for the current phase');
+
+    expect(mocks.workOrderPhaseEquip.create).not.toHaveBeenCalled();
+    expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('recordWorkOrderEquipment is idempotent for already recorded equipment', async () => {
+    const workOrder = {
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: null,
+      prodEnd: null,
+      prodDuration: null,
+      outputQuantity: null,
+      phase: { phaseEquips: [{ phaseEquipId: 'equip-1' }] },
+      phaseEquips: [{ phaseEquipId: 'equip-1' }],
+    };
+    mocks.workOrder.findFirst.mockResolvedValue(workOrder);
+    mocks.workOrder.findFirstOrThrow.mockResolvedValue({
+      ...workOrder,
+      workflow: { phases: [] },
+      phase: {
+        phaseShort: 'P1',
+        bom: { lines: [] },
+        phaseEquips: [{ phaseEquip: { id: 'equip-1', equipId: 'EQ-1', name: 'Sealer', description: null } }],
+      },
+      sterilises: [],
+      woSerials: [],
+      phaseEquips: [{ phaseEquip: { id: 'equip-1', equipId: 'EQ-1', name: 'Sealer' } }],
+      batchHets: [],
+    });
+
+    const result = await recordWorkOrderEquipment('wo-1', { phaseEquipId: 'equip-1' }, 'actor1', 'tenant-a');
+
+    expect(mocks.workOrderPhaseEquip.create).not.toHaveBeenCalled();
+    expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      id: 'wo-1',
+      counts: { equipment: 1 },
+      allowedEquipment: [expect.objectContaining({ phaseEquipId: 'equip-1', recorded: true })],
+    });
   });
 
   it('recordWorkOrderSerial rejects BOM lines not required by the current phase', async () => {

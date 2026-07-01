@@ -66,6 +66,41 @@ describe('workOrderService', () => {
     expect(call.where).toEqual({ id: 'wo-1', tenantId: 'ventas' });
   });
 
+  it('listWorkOrders scopes reads to the caller tenant', async () => {
+    mocks.workOrder.findMany.mockResolvedValue([]);
+    await listWorkOrders('tenant-a');
+    expect(mocks.workOrder.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { deleted: false, tenantId: 'tenant-a' } }),
+    );
+  });
+
+  it('getWorkOrder scopes detail and peer-context reads to the caller tenant', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-1',
+      hetId: 'h1',
+      batchHets: [],
+      workflow: { phases: [] },
+      sterilises: [],
+      woSerials: [],
+      phaseEquips: [],
+    });
+    mocks.workOrder.findMany.mockResolvedValue([]);
+
+    await getWorkOrder('wo-1', 'tenant-a');
+
+    expect(mocks.workOrder.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'wo-1', tenantId: 'tenant-a' } }),
+    );
+    expect(mocks.workOrder.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          deleted: false,
+          tenantId: 'tenant-a',
+        }),
+      }),
+    );
+  });
+
   it('createWorkOrder sets the first phase and generates a woNumber starting with WO-', async () => {
     mocks.workflow.findFirst.mockResolvedValue({
       id: 'w1',
@@ -115,6 +150,37 @@ describe('workOrderService', () => {
     });
   });
 
+  it('createWorkOrder scopes workflow lookup, creation, and decorated reload to the caller tenant', async () => {
+    mocks.workflow.findFirst.mockResolvedValue({
+      id: 'w1',
+      phases: [{ phaseId: 'p1', sortOrder: 0, phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 0 } }],
+    });
+    mocks.workOrder.create.mockResolvedValue({ id: 'wo-created' });
+    mocks.workOrder.findFirstOrThrow.mockResolvedValue({
+      id: 'wo-created',
+      hetId: null,
+      workflow: { phases: [] },
+      sterilises: [],
+      woSerials: [],
+      phaseEquips: [],
+      batchHets: [],
+    });
+
+    await createWorkOrder({ workflowId: 'w1' }, 'actor1', 'tenant-a');
+
+    expect(mocks.workflow.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'w1', tenantId: 'tenant-a' } }),
+    );
+    expect(mocks.workOrder.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ tenantId: 'tenant-a' }),
+      }),
+    );
+    expect(mocks.workOrder.findFirstOrThrow).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'wo-created', tenantId: 'tenant-a' } }),
+    );
+  });
+
   it('createWorkOrder throws "workflow has no phases configured" when the workflow has none', async () => {
     mocks.workflow.findFirst.mockResolvedValue({ id: 'w1', phases: [] });
     await expect(createWorkOrder({ workflowId: 'w1' }, 'actor1')).rejects.toThrow(
@@ -152,6 +218,39 @@ describe('workOrderService', () => {
     expect(updateCall.data.startSignById).toBe('actor1');
     expect(updateCall.data.updatedById).toBe('actor1');
     expect(result).toMatchObject({ lifecycleState: 'InProgress' });
+  });
+
+  it('startWorkOrderPhase scopes the preflight lookup and decorated reload to the caller tenant', async () => {
+    mocks.workOrder.findFirst.mockResolvedValueOnce({
+      id: 'wo-1',
+      hetId: 'h1',
+      prodStart: null,
+    });
+    mocks.workOrder.update.mockResolvedValue({ id: 'wo-1' });
+    mocks.workOrder.findFirstOrThrow.mockResolvedValue({
+      id: 'wo-1',
+      hetId: 'h1',
+      prodStart: new Date('2026-06-30T08:00:00Z'),
+      workflow: { phases: [] },
+      sterilises: [],
+      woSerials: [],
+      phaseEquips: [],
+      batchHets: [],
+    });
+    mocks.workOrder.findMany.mockResolvedValue([]);
+
+    await startWorkOrderPhase('wo-1', 'actor1', undefined, 'tenant-a');
+
+    expect(mocks.workOrder.findFirst).toHaveBeenCalledWith({
+      where: { id: 'wo-1', tenantId: 'tenant-a' },
+      select: { id: true, hetId: true, prodStart: true },
+    });
+    expect(mocks.workOrder.findFirstOrThrow).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'wo-1', tenantId: 'tenant-a' } }),
+    );
+    expect(mocks.workOrder.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ tenantId: 'tenant-a' }) }),
+    );
   });
 
   it('startWorkOrderPhase blocks work without HET', async () => {

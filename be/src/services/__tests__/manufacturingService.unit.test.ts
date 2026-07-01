@@ -67,4 +67,28 @@ describe('manufacturingService', () => {
     expect(mocks.manufacturer.create).not.toHaveBeenCalled();
     expect(mocks.workOrder.update).not.toHaveBeenCalled();
   });
+
+  it('generateBatchRecord scopes work order lookup and manufacturer creation to the caller tenant', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo1', tenantId: 'tenant-a' });
+    mocks.manufacturer.create.mockResolvedValue({ id: 'm1', manuNumber: 'MANU-XYZ' });
+
+    await manufacturingService.generateBatchRecord('wo1', 'actor1', 'tenant-a');
+
+    expect(mocks.workOrder.findFirst).toHaveBeenCalledWith({
+      where: { id: 'wo1', tenantId: 'tenant-a' },
+    });
+    expect(mocks.manufacturer.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ tenantId: 'tenant-a' }),
+      }),
+    );
+  });
+
+  it('getBatchRecord scopes reads to the caller tenant', async () => {
+    mocks.manufacturer.findFirst.mockResolvedValue({ id: 'm1' });
+    await manufacturingService.getBatchRecord('m1', 'tenant-a');
+    expect(mocks.manufacturer.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'm1', tenantId: 'tenant-a' } }),
+    );
+  });
 });

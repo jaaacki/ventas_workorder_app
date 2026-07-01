@@ -72,6 +72,18 @@ describe('workflowService', () => {
     );
   });
 
+  it('createWorkflow uses the caller tenant instead of the default tenant', async () => {
+    mocks.workflow.create.mockResolvedValue({ id: 'w1' });
+    await workflowService.createWorkflow({ name: 'AmGraft', code: 'AMG' }, 'actor1', 'tenant-a');
+    expect(mocks.workflow.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tenantId: 'tenant-a',
+        }),
+      }),
+    );
+  });
+
   it('createWorkflow omits the phases relation when none are supplied', async () => {
     mocks.workflow.create.mockResolvedValue({ id: 'w1' });
     await workflowService.createWorkflow({ name: 'AmGraft', code: 'AMG' }, 'actor1');
@@ -109,5 +121,15 @@ describe('workflowService', () => {
     const call = mocks.workflow.update.mock.calls[0][0] as { data: Record<string, unknown> };
     expect(call.data.phases).toBeUndefined();
     expect(call.data.active).toBe(false);
+  });
+
+  it('updateWorkflow scopes the preflight lookup to the caller tenant', async () => {
+    mocks.workflow.findFirst.mockResolvedValue({ id: 'w1' });
+    mocks.workflow.update.mockResolvedValue({ id: 'w1' });
+    await workflowService.updateWorkflow('w1', { active: false }, 'actor1', 'tenant-a');
+    expect(mocks.workflow.findFirst).toHaveBeenCalledWith({
+      where: { id: 'w1', tenantId: 'tenant-a' },
+      select: { id: true },
+    });
   });
 });

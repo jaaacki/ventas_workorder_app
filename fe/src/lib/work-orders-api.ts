@@ -145,6 +145,29 @@ export interface WorkOrderInventoryTrace {
   }>;
 }
 
+export interface WorkOrderAuditState {
+  id: string;
+  tenantId: string;
+  workflowId: string | null;
+  phaseId: string | null;
+  phaseOrder: number | null;
+  hetId: string | null;
+  prodStart: string | null;
+  prodEnd: string | null;
+}
+
+export interface WorkOrderAuditEvent {
+  id: string;
+  tenantId: string;
+  workOrderId: string;
+  action: string;
+  actorId: string | null;
+  source: string;
+  previousState: WorkOrderAuditState | null;
+  newState: WorkOrderAuditState | null;
+  createdAt: string;
+}
+
 function asWorkOrderList(data: unknown): WorkOrderSummary[] {
   if (Array.isArray(data)) return data as WorkOrderSummary[];
   if (data && typeof data === 'object') {
@@ -167,6 +190,11 @@ export async function fetchWorkOrder(id: string): Promise<WorkOrderDetail> {
 
 export async function fetchWorkOrderInventoryTrace(id: string): Promise<WorkOrderInventoryTrace> {
   const { data } = await api.get<WorkOrderInventoryTrace>(`/api/work-orders/${id}/inventory-trace`);
+  return data;
+}
+
+export async function fetchWorkOrderAuditEvents(id: string): Promise<WorkOrderAuditEvent[]> {
+  const { data } = await api.get<WorkOrderAuditEvent[]>(`/api/work-orders/${id}/audit-events`);
   return data;
 }
 

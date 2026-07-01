@@ -137,6 +137,17 @@ export interface WorkOrderDetail extends WorkOrderSummary {
   phaseId: string | null;
 }
 
+export interface QaWorkOrderQueue {
+  counts: {
+    sterilisation: number;
+    quarantine: number;
+    release: number;
+  };
+  sterilisation: WorkOrderSummary[];
+  quarantine: WorkOrderSummary[];
+  release: WorkOrderSummary[];
+}
+
 export interface WorkOrderInventoryTrace {
   subject: { type: 'workOrder'; id: string; label?: string | null };
   lots: InventoryLot[];
@@ -211,6 +222,11 @@ export async function fetchWorkOrders(): Promise<WorkOrderSummary[]> {
 
 export async function fetchWorkOrder(id: string): Promise<WorkOrderDetail> {
   const { data } = await api.get<WorkOrderDetail>(`/api/work-orders/${id}`);
+  return data;
+}
+
+export async function fetchQaWorkOrderQueue(): Promise<QaWorkOrderQueue> {
+  const { data } = await api.get<QaWorkOrderQueue>('/api/work-orders/qa-queue');
   return data;
 }
 

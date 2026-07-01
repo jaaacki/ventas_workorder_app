@@ -33,6 +33,7 @@ const expectedOperations: ExpectedOperation[] = [
   { method: 'get', path: '/api/phases', operationId: 'listPhases', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/work-orders', operationId: 'listWorkOrders', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders', operationId: 'createWorkOrder', routeKind: 'lifecycle-action', auth: 'role', requiredRoles: ['admin', 'owner'] },
+  { method: 'get', path: '/api/work-orders/qa-queue', operationId: 'listQaWorkOrderQueue', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/work-orders/{id}', operationId: 'getWorkOrder', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/work-orders/{id}/audit-events', operationId: 'listWorkOrderAuditEvents', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/work-orders/{id}/inventory-trace', operationId: 'getWorkOrderInventoryTrace', routeKind: 'read-model', auth: 'authenticated' },
@@ -211,6 +212,16 @@ describe('OpenAPI contract', () => {
     expect(workOrderAudit?.['x-method-policy']).toMatchObject({
       resource: 'Work order audit trail',
       completeness: 'read-only-audit',
+      destructiveDeletes: 'not-exposed',
+    });
+
+    const qaQueue = pathItem(doc, '/api/work-orders/qa-queue')?.get;
+    expect(qaQueue?.tags).toEqual(['Work Orders', 'Sterilisation']);
+    expect(qaQueue?.operationId).toBe('listQaWorkOrderQueue');
+    expect(qaQueue?.description).toContain('final release readiness');
+    expect(qaQueue?.['x-method-policy']).toMatchObject({
+      resource: 'Work order QA queue',
+      completeness: 'read-model',
       destructiveDeletes: 'not-exposed',
     });
 

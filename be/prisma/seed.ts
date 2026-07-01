@@ -153,20 +153,6 @@ async function main() {
       data: { roleId: userRole.id },
     });
   }
-
-  await prisma.staff.updateMany({ where: { tenantId: null }, data: { tenantId: DEFAULT_TENANT_ID } });
-  await prisma.manufacturer.updateMany({ where: { tenantId: null }, data: { tenantId: DEFAULT_TENANT_ID } });
-  await prisma.procedure.updateMany({ where: { tenantId: null }, data: { tenantId: DEFAULT_TENANT_ID } });
-  await prisma.bom.updateMany({ where: { tenantId: null }, data: { tenantId: DEFAULT_TENANT_ID } });
-  await prisma.bomLine.updateMany({ where: { tenantId: null }, data: { tenantId: DEFAULT_TENANT_ID } });
-  await prisma.het.updateMany({ where: { tenantId: null }, data: { tenantId: DEFAULT_TENANT_ID } });
-  await prisma.workflow.updateMany({ where: { tenantId: null }, data: { tenantId: DEFAULT_TENANT_ID } });
-  await prisma.phase.updateMany({ where: { tenantId: null }, data: { tenantId: DEFAULT_TENANT_ID } });
-  await prisma.phaseEquip.updateMany({ where: { tenantId: null }, data: { tenantId: DEFAULT_TENANT_ID } });
-  await prisma.workOrder.updateMany({ where: { tenantId: null }, data: { tenantId: DEFAULT_TENANT_ID } });
-  await prisma.woSerial.updateMany({ where: { tenantId: null }, data: { tenantId: DEFAULT_TENANT_ID } });
-  await prisma.sterilise.updateMany({ where: { tenantId: null }, data: { tenantId: DEFAULT_TENANT_ID } });
-  await prisma.printLabel.updateMany({ where: { tenantId: null }, data: { tenantId: DEFAULT_TENANT_ID } });
 }
 
 main()

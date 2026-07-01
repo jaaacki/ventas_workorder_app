@@ -5,9 +5,13 @@ import {
   fetchPhases,
   fetchWorkflow,
   fetchWorkflows,
+  createPhase,
   createWorkflow,
+  deletePhase,
+  updatePhase,
   updateWorkflow,
   type PhaseCatalogItem,
+  type PhaseMutationPayload,
   type WorkflowDetail,
   type WorkflowPhaseBinding,
   type WorkflowSummary,
@@ -18,7 +22,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AdminPanel, EmptyState, MetricCard, PageHeader, StatusPill } from '@/components/tailadmin';
 import { toast } from 'sonner';
-import { ArrowDown, ArrowUp, Boxes, Link2, Plus, Save, Trash2, Workflow as WorkflowIcon } from 'lucide-react';
+import { ArrowDown, ArrowUp, Boxes, Edit3, Link2, Plus, Save, Trash2, Workflow as WorkflowIcon } from 'lucide-react';
 
 function phaseLabel(phase?: PhaseCatalogItem | WorkflowPhaseBinding['phase'] | null) {
   if (!phase) return 'Unknown phase';
@@ -227,6 +231,181 @@ function PhaseBindingsPanel({
   );
 }
 
+function PhaseCatalogPanel({ phases, isLoading }: { phases: PhaseCatalogItem[]; isLoading: boolean }) {
+  const queryClient = useQueryClient();
+  const [editingPhaseId, setEditingPhaseId] = useState<string | null>(null);
+  const [phaseName, setPhaseName] = useState('');
+  const [phaseShort, setPhaseShort] = useState('');
+  const [phaseOrder, setPhaseOrder] = useState('');
+  const [description, setDescription] = useState('');
+  const [keyText, setKeyText] = useState('');
+
+  const resetForm = () => {
+    setEditingPhaseId(null);
+    setPhaseName('');
+    setPhaseShort('');
+    setPhaseOrder('');
+    setDescription('');
+    setKeyText('');
+  };
+
+  const mutationPayload = (): PhaseMutationPayload => ({
+    phaseName: phaseName.trim() || null,
+    phaseShort: phaseShort.trim() || null,
+    phaseOrder: phaseOrder.trim() ? Number(phaseOrder) : null,
+    description: description.trim() || null,
+    keyText: keyText.trim() || null,
+  });
+
+  const createPhaseMutation = useMutation({
+    mutationFn: createPhase,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['phases'] });
+      toast.success('Phase created');
+      resetForm();
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(e.response?.data?.error || 'Failed to create phase'),
+  });
+
+  const updatePhaseMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: PhaseMutationPayload }) => updatePhase(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['phases'] });
+      queryClient.invalidateQueries({ queryKey: ['workflow'] });
+      toast.success('Phase updated');
+      resetForm();
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(e.response?.data?.error || 'Failed to update phase'),
+  });
+
+  const deletePhaseMutation = useMutation({
+    mutationFn: deletePhase,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['phases'] });
+      queryClient.invalidateQueries({ queryKey: ['workflow'] });
+      queryClient.invalidateQueries({ queryKey: ['workflows'] });
+      toast.success('Phase deleted');
+      resetForm();
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(e.response?.data?.error || 'Failed to delete phase'),
+  });
+
+  const startEdit = (phase: PhaseCatalogItem) => {
+    setEditingPhaseId(phase.id);
+    setPhaseName(phase.phaseName || '');
+    setPhaseShort(phase.phaseShort || '');
+    setPhaseOrder(phase.phaseOrder == null ? '' : String(phase.phaseOrder));
+    setDescription(phase.description || '');
+    setKeyText(phase.keyText || '');
+  };
+
+  const submitPhase = (event: FormEvent) => {
+    event.preventDefault();
+    if (!phaseName.trim() && !phaseShort.trim()) return;
+    const payload = mutationPayload();
+    if (editingPhaseId) {
+      updatePhaseMutation.mutate({ id: editingPhaseId, payload });
+    } else {
+      createPhaseMutation.mutate(payload);
+    }
+  };
+
+  const busy = createPhaseMutation.isPending || updatePhaseMutation.isPending || deletePhaseMutation.isPending;
+
+  return (
+    <AdminPanel title="Phase catalog" description="Tenant phase master data available for workflow binding.">
+      <form onSubmit={submitPhase} className="grid gap-3 lg:grid-cols-[1fr_140px_120px_1.5fr_1fr_auto] lg:items-end">
+        <div className="grid gap-1.5">
+          <Label htmlFor="phase-name">Name</Label>
+          <Input id="phase-name" value={phaseName} onChange={(event) => setPhaseName(event.target.value)} placeholder="Intake" />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="phase-short">Short</Label>
+          <Input id="phase-short" value={phaseShort} onChange={(event) => setPhaseShort(event.target.value)} placeholder="INT" />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="phase-order">Order</Label>
+          <Input id="phase-order" type="number" value={phaseOrder} onChange={(event) => setPhaseOrder(event.target.value)} placeholder="10" />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="phase-description">Description</Label>
+          <Input id="phase-description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="optional" />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="phase-key">Key</Label>
+          <Input id="phase-key" value={keyText} onChange={(event) => setKeyText(event.target.value)} placeholder="optional" />
+        </div>
+        <div className="flex gap-2">
+          <Button type="submit" disabled={busy || (!phaseName.trim() && !phaseShort.trim())}>
+            {editingPhaseId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            {editingPhaseId ? 'Save' : 'Create'}
+          </Button>
+          {editingPhaseId ? (
+            <Button type="button" variant="outline" onClick={resetForm} disabled={busy}>
+              Cancel
+            </Button>
+          ) : null}
+        </div>
+      </form>
+
+      <div className="mt-5">
+        {isLoading ? (
+          <div className="flex h-32 items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+          </div>
+        ) : !phases.length ? (
+          <EmptyState icon={<WorkflowIcon className="h-6 w-6" />} title="No phases yet" description="Create phases before binding workflows." />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Order</TableHead>
+                <TableHead>Phase</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Key</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {phases.map((phase) => (
+                <TableRow key={phase.id}>
+                  <TableCell>{phase.phaseOrder ?? '-'}</TableCell>
+                  <TableCell className="min-w-48 whitespace-normal">
+                    <div className="font-medium text-gray-800 dark:text-white/90">{phaseLabel(phase)}</div>
+                    <div className="break-all text-xs text-gray-500">{phase.phaseShort || phase.id}</div>
+                  </TableCell>
+                  <TableCell className="whitespace-normal">{phase.description || '-'}</TableCell>
+                  <TableCell className="break-all">{phase.keyText || '-'}</TableCell>
+                  <TableCell>
+                    <div className="flex justify-end gap-2">
+                      <Button type="button" variant="outline" size="icon" onClick={() => startEdit(phase)} disabled={busy}>
+                        <Edit3 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        disabled={busy}
+                        onClick={() => {
+                          if (window.confirm(`Delete ${phaseLabel(phase)}?`)) {
+                            deletePhaseMutation.mutate(phase.id);
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+    </AdminPanel>
+  );
+}
+
 export default function WorkflowsPage() {
   const queryClient = useQueryClient();
   const { data: workflows, isLoading } = useQuery({
@@ -354,6 +533,8 @@ export default function WorkflowsPage() {
           </div>
         )}
       </AdminPanel>
+
+      <PhaseCatalogPanel phases={phasesQuery.data ?? []} isLoading={phasesQuery.isLoading} />
 
       <PhaseBindingsPanel
         key={workflowQuery.data?.id ?? effectiveSelectedWorkflowId ?? 'none'}

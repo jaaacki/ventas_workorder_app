@@ -74,6 +74,30 @@ export async function fetchPhases(): Promise<PhaseCatalogItem[]> {
   return data;
 }
 
+export type PhaseMutationPayload = {
+  phaseName?: string | null;
+  phaseShort?: string | null;
+  phaseOrder?: number | null;
+  description?: string | null;
+  bomId?: string | null;
+  keyText?: string | null;
+};
+
+export async function createPhase(payload: PhaseMutationPayload): Promise<PhaseCatalogItem> {
+  const { data } = await api.post<PhaseCatalogItem>('/api/phases', payload);
+  return data;
+}
+
+export async function updatePhase(id: string, payload: PhaseMutationPayload): Promise<PhaseCatalogItem> {
+  const { data } = await api.patch<PhaseCatalogItem>(`/api/phases/${id}`, payload);
+  return data;
+}
+
+export async function deletePhase(id: string): Promise<{ success: true }> {
+  const { data } = await api.delete<{ success: true }>(`/api/phases/${id}`);
+  return data;
+}
+
 export async function createWorkflow(payload: {
   name: string;
   code: string;

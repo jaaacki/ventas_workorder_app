@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchCollectionOrders,
@@ -17,7 +18,7 @@ import { AdminPanel, EmptyState, MetricCard, PageHeader, StatusPill } from '@/co
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, Boxes, Building2, ClipboardList, Eye, EyeOff, FileCheck2, PackageCheck, Route, Search } from 'lucide-react';
+import { AlertTriangle, Boxes, Building2, ClipboardList, Eye, EyeOff, ExternalLink, FileCheck2, PackageCheck, Route, Search } from 'lucide-react';
 
 function formatDate(value?: string | null) {
   return value ? new Date(value).toLocaleString() : '-';
@@ -70,7 +71,13 @@ function UnitTable({
         {units.map((unit) => (
           <TableRow key={unit.id}>
             <TableCell>
-              <div className="font-medium text-gray-800 dark:text-white/90">{unit.unitNumber || unit.id}</div>
+              <Link
+                to={`/dashboard/procurement/collection-units/${encodeURIComponent(unit.id)}`}
+                className="inline-flex items-center gap-1 font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
+              >
+                {unit.unitNumber || unit.id}
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Link>
               <div className="text-xs text-gray-500">{unit.parcelTrackingNumber || unit.sourceSystem || '-'}</div>
             </TableCell>
             <TableCell>{unit.supplyEntityId ? entityName(entitiesById.get(unit.supplyEntityId)) : '-'}</TableCell>

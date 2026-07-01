@@ -3,11 +3,12 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useAuthStore } from '@/store/authStore';
-import { LayoutDashboard, Users, Shield, Menu, LogOut, Settings2, Factory, Search, Boxes, Warehouse, ArrowRight } from 'lucide-react';
+import { LayoutDashboard, Users, Shield, Menu, LogOut, Settings2, Factory, Search, Boxes, Warehouse, ArrowRight, ShieldCheck } from 'lucide-react';
 
 const navItems = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['owner', 'admin', 'user'], keywords: ['home', 'overview', 'metrics'] },
   { label: 'Production', href: '/dashboard/work-orders', icon: Factory, roles: ['owner', 'admin', 'user'], keywords: ['work orders', 'wo', 'operator', 'phases', 'manufacturing', 'batches'] },
+  { label: 'QA queue', href: '/dashboard/qa', icon: ShieldCheck, roles: ['owner', 'admin', 'user'], keywords: ['qa', 'sterilisation', 'bet', 'release', 'quarantine'] },
   { label: 'Procurement', href: '/dashboard/procurement', icon: Boxes, roles: ['owner', 'admin', 'user'], keywords: ['collection units', 'collection', 'issuance', 'receipts', 'het', 'supplier'] },
   { label: 'Inventory', href: '/dashboard/inventory', icon: Warehouse, roles: ['owner', 'admin', 'user'], keywords: ['lots', 'sku', 'transactions', 'genealogy', 'locations', 'stock'] },
   { label: 'Configuration', href: '/dashboard/workflows', icon: Settings2, roles: ['owner', 'admin'], keywords: ['workflows', 'phases', 'setup', 'master data'] },

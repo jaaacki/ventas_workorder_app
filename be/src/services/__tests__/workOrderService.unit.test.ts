@@ -39,6 +39,7 @@ vi.mock('../../db/prisma.js', () => ({
 
 import {
   createWorkOrder,
+  listQaWorkOrderQueue,
   listWorkOrders,
   listWorkOrderAuditEvents,
   getWorkOrder,
@@ -90,6 +91,84 @@ describe('workOrderService', () => {
     expect(mocks.workOrder.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { deleted: false, tenantId: 'tenant-a' } }),
     );
+  });
+
+  it('listQaWorkOrderQueue groups sterilisation, quarantine, and release work', async () => {
+    const startedAt = new Date('2026-07-01T09:00:00Z');
+    const finishedAt = new Date('2026-07-01T11:00:00Z');
+    mocks.workOrder.findMany.mockResolvedValue([
+      {
+        id: 'wo-ster',
+        tenantId: 'tenant-a',
+        hetId: 'het-1',
+        phaseId: 'phase-ster',
+        phaseOrder: 20,
+        prodStart: null,
+        prodEnd: null,
+        workflow: {
+          phases: [
+            { sortOrder: 10, phase: { id: 'phase-prep', phaseName: 'Preparation', phaseShort: 'PREP', phaseOrder: 10 } },
+            { sortOrder: 20, phase: { id: 'phase-ster', phaseName: 'Sterilisation', phaseShort: 'STER', phaseOrder: 20 } },
+            { sortOrder: 30, phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 30 } },
+          ],
+        },
+        phase: { id: 'phase-ster', phaseName: 'Sterilisation', phaseShort: 'STER', phaseOrder: 20, bom: { lines: [] }, phaseEquips: [] },
+        sterilises: [],
+        woSerials: [],
+        phaseEquips: [],
+        batchHets: [],
+      },
+      {
+        id: 'wo-quarantine',
+        tenantId: 'tenant-a',
+        hetId: 'het-2',
+        phaseId: 'phase-review',
+        phaseOrder: 20,
+        prodStart: null,
+        prodEnd: null,
+        steralisationCurrent: { id: 'ster-fail', result: false, createdAt: startedAt },
+        workflow: {
+          phases: [
+            { sortOrder: 20, phase: { id: 'phase-review', phaseName: 'Inspection', phaseShort: 'INSP', phaseOrder: 20 } },
+          ],
+        },
+        phase: { id: 'phase-review', phaseName: 'Inspection', phaseShort: 'INSP', phaseOrder: 20, bom: { lines: [] }, phaseEquips: [] },
+        sterilises: [{ id: 'ster-fail', result: false }],
+        woSerials: [],
+        phaseEquips: [],
+        batchHets: [],
+      },
+      {
+        id: 'wo-release',
+        tenantId: 'tenant-a',
+        hetId: 'het-3',
+        phaseId: 'phase-release',
+        phaseOrder: 30,
+        prodStart: startedAt,
+        prodEnd: finishedAt,
+        workflow: {
+          phases: [
+            { sortOrder: 30, phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 30 } },
+          ],
+        },
+        phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 30, bom: { lines: [] }, phaseEquips: [] },
+        sterilises: [{ id: 'ster-pass', result: true }],
+        woSerials: [],
+        phaseEquips: [],
+        batchHets: [],
+        imagePath: 'data:image/png;base64,AAAA',
+      },
+    ]);
+
+    const result = await listQaWorkOrderQueue('tenant-a');
+
+    expect(mocks.workOrder.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { deleted: false, tenantId: 'tenant-a' } }),
+    );
+    expect(result.counts).toEqual({ sterilisation: 1, quarantine: 1, release: 1 });
+    expect(result.sterilisation.map((workOrder) => workOrder.id)).toEqual(['wo-ster']);
+    expect(result.quarantine.map((workOrder) => workOrder.id)).toEqual(['wo-quarantine']);
+    expect(result.release.map((workOrder) => workOrder.id)).toEqual(['wo-release']);
   });
 
   it('getWorkOrder scopes detail and peer-context reads to the caller tenant', async () => {

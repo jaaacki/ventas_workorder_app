@@ -461,6 +461,27 @@ export async function listWorkOrders(tenantId?: string | null) {
   return workOrders.map((workOrder) => decorateOperationalWorkOrder(workOrder, context));
 }
 
+export async function listQaWorkOrderQueue(tenantId?: string | null) {
+  const workOrders = await listWorkOrders(tenantId);
+  const sterilisation = workOrders.filter((workOrder) =>
+    isGatePhase(workOrder.phase?.phaseName) &&
+    workOrder.readinessBlockers.includes('Sterilisation/BET pass required'),
+  );
+  const quarantine = workOrders.filter((workOrder) => workOrder.legacyStateBucket === '3. In Quarantine');
+  const release = workOrders.filter((workOrder) => workOrder.lifecycleState === 'ReleasePending');
+
+  return {
+    counts: {
+      sterilisation: sterilisation.length,
+      quarantine: quarantine.length,
+      release: release.length,
+    },
+    sterilisation,
+    quarantine,
+    release,
+  };
+}
+
 export async function getWorkOrder(id: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
   const workOrder = await prisma.workOrder.findFirst({

@@ -208,6 +208,21 @@ const successExamples: Record<string, unknown> = {
   updateWorkflow: { ...workflowExample, description: 'Updated workflow description' },
   listPhases: [phaseExample],
   listWorkOrders: [workOrderExample],
+  listQaWorkOrderQueue: {
+    counts: { sterilisation: 1, quarantine: 0, release: 1 },
+    sterilisation: [{
+      ...workOrderExample,
+      phase: { id: 'phase-sterilisation', phaseName: 'Sterilisation', phaseShort: 'STER', phaseOrder: 30 },
+      readinessBlockers: ['Sterilisation/BET pass required'],
+    }],
+    quarantine: [],
+    release: [{
+      ...workOrderExample,
+      phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 50 },
+      lifecycleState: 'ReleasePending',
+      operationalStatus: 'ReleasePending',
+    }],
+  },
   createWorkOrder: workOrderExample,
   getWorkOrder: workOrderExample,
   listWorkOrderAuditEvents: [workOrderAuditEventExample],
@@ -468,6 +483,14 @@ const methodPolicies: Record<string, MethodPolicy> = {
     omittedMethods: [{ method: 'PUT/PATCH/DELETE', reason: 'Production runs change through explicit lifecycle actions to protect traceability.' }],
     destructiveDeletes: 'not-exposed',
     notes: 'Board read model for active work orders.',
+  },
+  listQaWorkOrderQueue: {
+    resource: 'Work order QA queue',
+    completeness: 'read-model',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'POST/PATCH/DELETE', reason: 'QA and release queues are derived from controlled sterilisation/BET and work-order lifecycle evidence.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Focused read model for sterilisation/BET gate, quarantine, and final-release work-order queues.',
   },
   getWorkOrder: {
     resource: 'Work order',

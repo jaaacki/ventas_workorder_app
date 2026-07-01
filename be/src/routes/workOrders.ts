@@ -119,6 +119,16 @@ const workOrderSchema = z.object({
 
 const workOrderSummarySchema = workOrderSchema;
 const workOrderDetailSchema = workOrderSchema;
+const qaWorkOrderQueueSchema = z.object({
+  counts: z.object({
+    sterilisation: z.number(),
+    quarantine: z.number(),
+    release: z.number(),
+  }),
+  sterilisation: z.array(workOrderSummarySchema),
+  quarantine: z.array(workOrderSummarySchema),
+  release: z.array(workOrderSummarySchema),
+});
 
 const auditStateSchema = z.object({
   id: z.string(),
@@ -200,6 +210,26 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req) => {
       return workOrderService.listWorkOrders(tenantIdOf(req));
+    },
+  );
+
+  app.get(
+    '/qa-queue',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        tags: ['Work Orders', 'Sterilisation'],
+        summary: 'List QA and release work-order queues',
+        description: 'Read focused QA queues for sterilisation/BET gate work, quarantine review, and final release readiness.',
+        operationId: 'listQaWorkOrderQueue',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
+        response: { 200: qaWorkOrderQueueSchema, 401: errorResponse },
+      },
+    },
+    async (req) => {
+      return workOrderService.listQaWorkOrderQueue(tenantIdOf(req));
     },
   );
 

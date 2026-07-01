@@ -94,6 +94,10 @@ function operationInventory(doc: OpenAPIV3.Document) {
     .sort((a, b) => `${a.method} ${a.path}`.localeCompare(`${b.method} ${b.path}`));
 }
 
+function concreteUrl(path: string) {
+  return path.replace(/\{provider\}/g, 'google').replace(/\{[^}]+\}/g, 'test-id');
+}
+
 describe('OpenAPI contract', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -196,5 +200,43 @@ describe('OpenAPI contract', () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers['content-type']).toContain('text/html');
     expect(response.body).toContain('/api/openapi.json');
+  });
+
+  it('enforces anonymous and role-gated access according to the generated contract metadata', async () => {
+    stubRequiredEnv();
+    const { buildServer } = await import('../server.js');
+    const app = await buildServer();
+
+    await app.ready();
+    const openApiResponse = await app.inject({ method: 'GET', url: '/api/openapi.json' });
+    const doc = JSON.parse(openApiResponse.body) as OpenAPIV3.Document;
+    const operations = operationInventory(doc);
+
+    for (const { method, path, operation } of operations) {
+      if (operation['x-auth'] === 'anonymous') continue;
+
+      const response = await app.inject({ method: method.toUpperCase(), url: concreteUrl(path) });
+      expect(response.statusCode, `${method.toUpperCase()} ${path}`).toBe(401);
+    }
+
+    const userToken = app.jwt.sign({
+      id: 'staff-user',
+      role: 'user',
+      email: 'user@example.test',
+      tenantId: 'tenant-a',
+    });
+
+    for (const { method, path, operation } of operations) {
+      if (operation['x-auth'] !== 'role') continue;
+
+      const response = await app.inject({
+        method: method.toUpperCase(),
+        url: concreteUrl(path),
+        headers: { authorization: `Bearer ${userToken}` },
+      });
+      expect(response.statusCode, `${method.toUpperCase()} ${path}`).toBe(403);
+    }
+
+    await app.close();
   });
 });

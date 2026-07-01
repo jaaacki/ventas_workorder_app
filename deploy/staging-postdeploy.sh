@@ -7,8 +7,8 @@ dc() {
 
 mkdir -p data/legacy data/inventory
 
-dc up -d --remove-orphans postgres
-dc up -d --force-recreate be-migrate
+dc up -d --no-recreate postgres
+dc up -d --force-recreate --no-deps be-migrate
 
 migrate_state=""
 for _ in $(seq 1 60); do
@@ -25,7 +25,7 @@ if [ "$migrate_state" != "exited 0" ]; then
   exit 1
 fi
 
-dc up -d --no-deps be
+dc up -d --force-recreate --no-deps be
 
 for _ in $(seq 1 30); do
   dc exec -T be node -e "fetch('http://127.0.0.1:3001/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))" && break
@@ -33,7 +33,7 @@ for _ in $(seq 1 30); do
 done
 
 dc exec -T be node -e "fetch('http://127.0.0.1:3001/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
-dc up -d --no-deps fe
+dc up -d --force-recreate --no-deps fe
 
 dc exec -T be node dist/scripts/exportProcurementGoogleSheet.js --output-dir=/app/data/legacy
 dc exec -T be test -f /app/data/legacy/HETDeliveryReturnRecords---clinicDb.csv

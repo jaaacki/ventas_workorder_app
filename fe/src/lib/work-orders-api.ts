@@ -106,6 +106,7 @@ export interface WorkOrderSummary {
   prodEnd: string | null;
   prodDuration: string | number | null;
   outputQuantity: string | number | null;
+  imagePath: string | null;
   workflow: WorkOrderWorkflowRef | null;
   phase: WorkOrderPhaseRef | null;
   het: WorkOrderHetRef | null;
@@ -176,6 +177,7 @@ export interface WorkOrderAuditState {
   prodEnd: string | null;
   prodDurationMinutes: string | null;
   outputQuantity: string | null;
+  imageCaptured?: boolean | null;
   equipmentCount?: number | null;
   serialCount?: number | null;
 }
@@ -253,6 +255,14 @@ export async function recordWorkOrderEquipment(
   payload: { phaseEquipId: string },
 ): Promise<WorkOrderDetail> {
   const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/equipment`, payload);
+  return data;
+}
+
+export async function recordWorkOrderPhotoEvidence(
+  id: string,
+  payload: { imageDataUrl: string },
+): Promise<WorkOrderDetail> {
+  const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/photo-evidence`, payload);
   return data;
 }
 

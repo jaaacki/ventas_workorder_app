@@ -63,6 +63,7 @@ const workOrderSchema = z.object({
   endSignById: z.string().nullable(),
   prodDuration: decimalish.nullable(),
   outputQuantity: decimalish.nullable(),
+  imagePath: z.string().nullable(),
   manuId: z.string().nullable(),
   manuNumber: z.string().nullable(),
   woNumber: z.string().nullable(),
@@ -130,6 +131,7 @@ const auditStateSchema = z.object({
   prodEnd: z.string().nullable(),
   prodDurationMinutes: z.string().nullable(),
   outputQuantity: z.string().nullable(),
+  imageCaptured: z.boolean().nullable().optional(),
   equipmentCount: z.number().nullable().optional(),
   serialCount: z.number().nullable().optional(),
 }).nullable();
@@ -166,6 +168,10 @@ const outputQuantityBodySchema = z.object({
 
 const equipmentBodySchema = z.object({
   phaseEquipId: z.string().min(1),
+});
+
+const photoEvidenceBodySchema = z.object({
+  imageDataUrl: z.string().trim().min(1),
 });
 
 function actorIdOf(req: { user: unknown }): string {
@@ -312,6 +318,49 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
           if (err.code === 'P2003') {
             return reply.status(400).send({ error: 'Referenced equipment does not exist' });
           }
+        }
+        throw err;
+      }
+    },
+  );
+
+  app.post(
+    '/:id/photo-evidence',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        tags: ['Work Orders'],
+        summary: 'Record work order photo evidence',
+        description: 'Capture required image/photo evidence for the current work order before phase advancement.',
+        operationId: 'recordWorkOrderPhotoEvidence',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
+        'x-auth': 'authenticated',
+        params: z.object({ id: z.string() }),
+        body: photoEvidenceBodySchema,
+        response: {
+          200: workOrderDetailSchema,
+          400: errorResponse,
+          401: errorResponse,
+          404: errorResponse,
+          409: errorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      try {
+        return await workOrderService.recordWorkOrderPhotoEvidence(
+          req.params.id,
+          { imageDataUrl: req.body.imageDataUrl },
+          actorIdOf(req),
+          tenantIdOf(req),
+        );
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith('cannot record photo evidence:')) {
+          return reply.status(409).send({ error: err.message });
+        }
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+          return reply.status(404).send({ error: 'Work order not found' });
         }
         throw err;
       }

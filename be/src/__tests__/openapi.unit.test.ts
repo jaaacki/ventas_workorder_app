@@ -38,6 +38,7 @@ const expectedOperations: ExpectedOperation[] = [
   { method: 'get', path: '/api/work-orders/{id}/inventory-trace', operationId: 'getWorkOrderInventoryTrace', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders/{id}/equipment', operationId: 'recordWorkOrderEquipment', routeKind: 'lifecycle-action', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders/{id}/output-quantity', operationId: 'recordWorkOrderOutputQuantity', routeKind: 'lifecycle-action', auth: 'authenticated' },
+  { method: 'post', path: '/api/work-orders/{id}/photo-evidence', operationId: 'recordWorkOrderPhotoEvidence', routeKind: 'lifecycle-action', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders/{id}/serials', operationId: 'recordWorkOrderSerial', routeKind: 'lifecycle-action', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders/{id}/start', operationId: 'startWorkOrderPhase', routeKind: 'lifecycle-action', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders/{id}/finish', operationId: 'finishWorkOrderPhase', routeKind: 'lifecycle-action', auth: 'authenticated' },

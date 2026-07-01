@@ -6,6 +6,7 @@ import {
   getWorkOrder,
   recordWorkOrderEquipment,
   recordWorkOrderOutputQuantity,
+  recordWorkOrderPhotoEvidence,
   recordWorkOrderSerial,
   startWorkOrderPhase,
   finishWorkOrderPhase,
@@ -157,6 +158,13 @@ describe('AmGraft production run (integration)', () => {
     expect(Number(finishedPreparation.prodDuration)).toBeGreaterThanOrEqual(0);
     const withOutput = await recordWorkOrderOutputQuantity(wo.id, { outputQuantity: '1.0000' }, ctx.actorId);
     expect(Number(withOutput.outputQuantity)).toBe(1);
+    const withPhoto = await recordWorkOrderPhotoEvidence(
+      wo.id,
+      { imageDataUrl: 'data:image/png;base64,AAAA' },
+      ctx.actorId,
+    );
+    expect(withPhoto.imagePath).toBe('data:image/png;base64,AAAA');
+    expect(withPhoto.missingAdvanceRequirements).not.toContain('Work-order image captured');
     let cur = await advanceWorkOrder(wo.id, ctx.actorId);
     expect(cur.phaseOrder).toBe(1);
     expect(cur.phase?.phaseName).toBe('Production');

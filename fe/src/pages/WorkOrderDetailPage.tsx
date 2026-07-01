@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
@@ -11,6 +11,7 @@ import {
   FlaskConical,
   GitBranch,
   History,
+  ImageUp,
   PackageSearch,
   Route,
 } from 'lucide-react';
@@ -27,6 +28,7 @@ import {
   finishWorkOrderPhase,
   recordWorkOrderEquipment,
   recordWorkOrderOutputQuantity,
+  recordWorkOrderPhotoEvidence,
   recordWorkOrderSerial,
   startWorkOrderPhase,
   type WorkOrderAuditEvent,
@@ -98,6 +100,9 @@ function stateSummary(event: WorkOrderAuditEvent) {
     previous.outputQuantity !== next.outputQuantity
       ? `Output ${formatQuantity(previous.outputQuantity)} -> ${formatQuantity(next.outputQuantity)}`
       : null,
+    previous.imageCaptured !== next.imageCaptured
+      ? `Photo ${previous.imageCaptured ? 'captured' : 'missing'} -> ${next.imageCaptured ? 'captured' : 'missing'}`
+      : null,
     previous.equipmentCount !== next.equipmentCount
       ? `Equipment ${previous.equipmentCount ?? '-'} -> ${next.equipmentCount ?? '-'}`
       : null,
@@ -111,6 +116,86 @@ function stateSummary(event: WorkOrderAuditEvent) {
 
 function equipmentLabel(equipment: WorkOrderAllowedEquipment) {
   return equipment.name || equipment.equipId || equipment.phaseEquipId;
+}
+
+function PhotoEvidencePanel({
+  workOrder,
+  onSaved,
+}: {
+  workOrder: WorkOrderDetail;
+  onSaved: (updated: WorkOrderDetail) => void;
+}) {
+  const [imageDataUrl, setImageDataUrl] = useState('');
+  const [fileName, setFileName] = useState('');
+  const preview = imageDataUrl || workOrder.imagePath || '';
+
+  const photoMutation = useMutation({
+    mutationFn: () => recordWorkOrderPhotoEvidence(workOrder.id, { imageDataUrl }),
+    onSuccess: (updated) => {
+      onSaved(updated);
+      setImageDataUrl('');
+      setFileName('');
+      toast.success('Photo evidence recorded');
+    },
+    onError: (e: AxiosError<{ error?: string }>) =>
+      toast.error(e.response?.data?.error || 'Failed to record photo evidence'),
+  });
+
+  const selectFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setImageDataUrl('');
+      setFileName('');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      toast.error('Select an image file');
+      event.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImageDataUrl(String(reader.result || ''));
+      setFileName(file.name);
+    };
+    reader.onerror = () => toast.error('Failed to read image file');
+    reader.readAsDataURL(file);
+  };
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!imageDataUrl) return;
+    photoMutation.mutate();
+  };
+
+  return (
+    <AdminPanel title="Photo evidence" description="Required work-order image captured before advancement.">
+      <div className="grid gap-4 lg:grid-cols-[240px_1fr] lg:items-start">
+        <div className="overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900">
+          {preview ? (
+            <img src={preview} alt="Work-order evidence" className="aspect-[4/3] w-full object-cover" />
+          ) : (
+            <div className="flex aspect-[4/3] items-center justify-center text-gray-400">
+              <ImageUp className="h-8 w-8" />
+            </div>
+          )}
+        </div>
+        <form onSubmit={submit} className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+          <div className="grid gap-1.5">
+            <Label htmlFor="photo-evidence">Image</Label>
+            <Input id="photo-evidence" type="file" accept="image/*" capture="environment" onChange={selectFile} />
+            <div className="text-xs text-gray-500">
+              {fileName || (workOrder.imagePath ? 'Photo evidence already recorded' : 'No photo evidence recorded')}
+            </div>
+          </div>
+          <Button type="submit" disabled={!imageDataUrl || photoMutation.isPending}>
+            Record
+          </Button>
+        </form>
+      </div>
+    </AdminPanel>
+  );
 }
 
 function EquipmentEvidencePanel({
@@ -423,6 +508,10 @@ export default function WorkOrderDetailPage() {
     updateCachedWorkOrder(updated);
   };
 
+  const recordPhotoSaved = (updated: WorkOrderDetail) => {
+    updateCachedWorkOrder(updated);
+  };
+
   const advanceMutation = useMutation({
     mutationFn: () => advanceWorkOrder(id!),
     onSuccess: (updated) => {
@@ -504,6 +593,8 @@ export default function WorkOrderDetailPage() {
       </AdminPanel>
 
       <OutputEvidencePanel key={workOrder.id} workOrder={workOrder} onSaved={recordOutputSaved} />
+
+      <PhotoEvidencePanel workOrder={workOrder} onSaved={recordPhotoSaved} />
 
       <EquipmentEvidencePanel workOrder={workOrder} onSaved={recordEquipmentSaved} />
 

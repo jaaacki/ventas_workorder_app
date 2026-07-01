@@ -10,6 +10,7 @@ export interface CreateWorkOrderInput {
 type WorkOrderAuditAction =
   | 'work_order.created'
   | 'work_order.equipment_recorded'
+  | 'work_order.photo_evidence_recorded'
   | 'work_order.output_quantity_recorded'
   | 'work_order.serial_recorded'
   | 'work_order.phase_started'
@@ -27,6 +28,7 @@ interface WorkOrderAuditState extends Prisma.InputJsonObject {
   prodEnd: string | null;
   prodDurationMinutes: string | null;
   outputQuantity: string | null;
+  imageCaptured?: boolean | null;
   equipmentCount?: number | null;
   serialCount?: number | null;
 }
@@ -119,7 +121,7 @@ function auditState(
   workOrder: Pick<
     WorkOrder,
     'id' | 'tenantId' | 'workflowId' | 'phaseId' | 'phaseOrder' | 'hetId' | 'prodStart' | 'prodEnd' | 'prodDuration' | 'outputQuantity'
-  > & { phaseEquips?: unknown[]; woSerials?: unknown[] },
+  > & { imagePath?: string | null; phaseEquips?: unknown[]; woSerials?: unknown[] },
 ): WorkOrderAuditState {
   return {
     id: workOrder.id,
@@ -132,6 +134,7 @@ function auditState(
     prodEnd: workOrder.prodEnd?.toISOString() ?? null,
     prodDurationMinutes: workOrder.prodDuration?.toString() ?? null,
     outputQuantity: workOrder.outputQuantity?.toString() ?? null,
+    ...('imagePath' in workOrder ? { imageCaptured: Boolean(workOrder.imagePath) } : {}),
     ...(workOrder.phaseEquips ? { equipmentCount: workOrder.phaseEquips.length } : {}),
     ...(workOrder.woSerials ? { serialCount: workOrder.woSerials.length } : {}),
   };
@@ -312,7 +315,7 @@ function getLegacyWorkOrderState(workOrder: OperationalWorkOrder, context: Legac
     (workOrder.phaseEquips ?? []).map((equipment) => equipment.phaseEquip.id).filter(Boolean),
   );
   const combinedHetCheck = (workOrder.batchHets?.length ?? 0) > 0;
-  const hasImageParityGap = true;
+  const imageCaptured = Boolean(workOrder.imagePath);
   let legacyStateBucket: LegacyStateBucket;
   let legacyProductionState: string;
 
@@ -343,7 +346,7 @@ function getLegacyWorkOrderState(workOrder: OperationalWorkOrder, context: Legac
     { key: 'current_phase', label: 'Current HET/batch phase', met: phaseOrderCurrent === phaseOrder },
     { key: 'prod_start', label: 'Production started', met: Boolean(workOrder.prodStart) },
     { key: 'prod_end', label: 'Production finished', met: Boolean(workOrder.prodEnd) },
-    { key: 'image', label: 'Work-order image captured', met: false, parityGap: hasImageParityGap },
+    { key: 'image', label: 'Work-order image captured', met: imageCaptured },
     { key: 'serial_check', label: 'Serial/BOM entries complete', met: serialCheckDone },
   ];
 
@@ -365,7 +368,7 @@ function getLegacyWorkOrderState(workOrder: OperationalWorkOrder, context: Legac
     missingAdvanceRequirements: advanceRequirements
       .filter((requirement) => !requirement.met)
       .map((requirement) => requirement.label),
-    parityGaps: hasImageParityGap ? ['workOrder.image is not present in the imported schema; AppSheet image gating cannot be satisfied yet'] : [],
+    parityGaps: [],
     serialCheckDone,
     serialRequiredCount,
     requiredSerials: serialRequiredLines.map((line) => {
@@ -619,6 +622,66 @@ export async function recordWorkOrderOutputQuantity(
     action: 'work_order.output_quantity_recorded',
     actorId,
     source: 'workOrderService.recordWorkOrderOutputQuantity',
+    previousState: auditState(workOrder),
+    newState: auditState(updated),
+  });
+
+  return getDecoratedWorkOrderOrThrow(id, scopedTenantId);
+}
+
+export async function recordWorkOrderPhotoEvidence(
+  id: string,
+  input: { imageDataUrl: string },
+  actorId: string,
+  tenantId?: string | null,
+) {
+  const imageDataUrl = input.imageDataUrl.trim();
+  if (!imageDataUrl) {
+    throw new Error('cannot record photo evidence: image data is required');
+  }
+  if (!/^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(imageDataUrl)) {
+    throw new Error('cannot record photo evidence: image data must be a base64 data URL');
+  }
+
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const workOrder = await prisma.workOrder.findFirst({
+    where: { id, tenantId: scopedTenantId },
+    select: {
+      id: true,
+      tenantId: true,
+      workflowId: true,
+      phaseId: true,
+      phaseOrder: true,
+      hetId: true,
+      prodStart: true,
+      prodEnd: true,
+      prodDuration: true,
+      outputQuantity: true,
+      imagePath: true,
+    },
+  });
+
+  if (!workOrder) {
+    throw new Prisma.PrismaClientKnownRequestError('Work order not found', {
+      code: 'P2025',
+      clientVersion: 'unknown',
+    });
+  }
+
+  const updated = await prisma.workOrder.update({
+    where: { id },
+    data: {
+      imagePath: imageDataUrl,
+      updatedById: actorId,
+    },
+  });
+
+  await recordWorkOrderAuditEvent({
+    tenantId: scopedTenantId,
+    workOrderId: id,
+    action: 'work_order.photo_evidence_recorded',
+    actorId,
+    source: 'workOrderService.recordWorkOrderPhotoEvidence',
     previousState: auditState(workOrder),
     newState: auditState(updated),
   });

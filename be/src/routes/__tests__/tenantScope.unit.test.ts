@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
     listWorkOrderAuditEvents: vi.fn(),
     createWorkOrder: vi.fn(),
     recordWorkOrderEquipment: vi.fn(),
+    recordWorkOrderPhotoEvidence: vi.fn(),
     recordWorkOrderOutputQuantity: vi.fn(),
     recordWorkOrderSerial: vi.fn(),
     startWorkOrderPhase: vi.fn(),
@@ -114,6 +115,7 @@ const workOrderDetail = {
   endSignById: null,
   prodDuration: null,
   outputQuantity: null,
+  imagePath: null,
   manuId: null,
   manuNumber: null,
   woNumber: 'WO-1',
@@ -244,6 +246,7 @@ function resetServiceMocks() {
   mocks.workOrderService.listWorkOrderAuditEvents.mockResolvedValue([]);
   mocks.workOrderService.createWorkOrder.mockResolvedValue(workOrderDetail);
   mocks.workOrderService.recordWorkOrderEquipment.mockResolvedValue(workOrderDetail);
+  mocks.workOrderService.recordWorkOrderPhotoEvidence.mockResolvedValue(workOrderDetail);
   mocks.workOrderService.recordWorkOrderOutputQuantity.mockResolvedValue(workOrderDetail);
   mocks.workOrderService.recordWorkOrderSerial.mockResolvedValue(workOrderDetail);
   mocks.workOrderService.startWorkOrderPhase.mockResolvedValue(workOrderDetail);
@@ -545,6 +548,19 @@ describe('route tenant propagation', () => {
       expect(mocks.workOrderService.recordWorkOrderOutputQuantity).toHaveBeenCalledWith(
         'wo-1',
         { outputQuantity: '1.0000' },
+        userActorId,
+        tenantId,
+      );
+
+      await injectJson(
+        'POST',
+        '/api/work-orders/wo-1/photo-evidence',
+        { imageDataUrl: 'data:image/png;base64,AAAA' },
+        userToken,
+      );
+      expect(mocks.workOrderService.recordWorkOrderPhotoEvidence).toHaveBeenCalledWith(
+        'wo-1',
+        { imageDataUrl: 'data:image/png;base64,AAAA' },
         userActorId,
         tenantId,
       );

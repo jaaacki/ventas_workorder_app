@@ -44,6 +44,7 @@ import {
   getWorkOrder,
   recordWorkOrderEquipment,
   recordWorkOrderOutputQuantity,
+  recordWorkOrderPhotoEvidence,
   recordWorkOrderSerial,
   startWorkOrderPhase,
   finishWorkOrderPhase,
@@ -293,6 +294,78 @@ describe('workOrderService', () => {
     await expect(
       recordWorkOrderOutputQuantity('wo-1', { outputQuantity: '0' }, 'actor1', 'tenant-a'),
     ).rejects.toThrow('cannot record output quantity: quantity must be greater than zero');
+
+    expect(mocks.workOrder.findFirst).not.toHaveBeenCalled();
+    expect(mocks.workOrder.update).not.toHaveBeenCalled();
+    expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('recordWorkOrderPhotoEvidence stores image evidence and writes an audit event', async () => {
+    const workOrder = {
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: null,
+      prodEnd: null,
+      prodDuration: null,
+      outputQuantity: null,
+      imagePath: null,
+    };
+    const updated = {
+      ...workOrder,
+      imagePath: 'data:image/png;base64,AAAA',
+    };
+    mocks.workOrder.findFirst.mockResolvedValue(workOrder);
+    mocks.workOrder.update.mockResolvedValue(updated);
+    mocks.workOrder.findFirstOrThrow.mockResolvedValue({
+      ...updated,
+      workflow: { phases: [] },
+      phase: { phaseShort: 'P1', bom: { lines: [] } },
+      sterilises: [],
+      woSerials: [],
+      phaseEquips: [],
+      batchHets: [],
+    });
+
+    const result = await recordWorkOrderPhotoEvidence(
+      'wo-1',
+      { imageDataUrl: 'data:image/png;base64,AAAA' },
+      'actor1',
+      'tenant-a',
+    );
+
+    expect(mocks.workOrder.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'wo-1', tenantId: 'tenant-a' } }),
+    );
+    expect(mocks.workOrder.update).toHaveBeenCalledWith({
+      where: { id: 'wo-1' },
+      data: {
+        imagePath: 'data:image/png;base64,AAAA',
+        updatedById: 'actor1',
+      },
+    });
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tenantId: 'tenant-a',
+          workOrderId: 'wo-1',
+          action: 'work_order.photo_evidence_recorded',
+          source: 'workOrderService.recordWorkOrderPhotoEvidence',
+          previousState: expect.objectContaining({ imageCaptured: false }),
+          newState: expect.objectContaining({ imageCaptured: true }),
+        }),
+      }),
+    );
+    expect(result).toMatchObject({ id: 'wo-1', imagePath: updated.imagePath });
+  });
+
+  it('recordWorkOrderPhotoEvidence rejects non-image data URLs before writing', async () => {
+    await expect(
+      recordWorkOrderPhotoEvidence('wo-1', { imageDataUrl: 'data:text/plain;base64,AAAA' }, 'actor1', 'tenant-a'),
+    ).rejects.toThrow('cannot record photo evidence: image data must be a base64 data URL');
 
     expect(mocks.workOrder.findFirst).not.toHaveBeenCalled();
     expect(mocks.workOrder.update).not.toHaveBeenCalled();
@@ -1070,13 +1143,14 @@ describe('workOrderService', () => {
     });
   });
 
-  it('does not mark next-phase rows advanceable when AppSheet image parity is unavailable', async () => {
+  it('requires work-order photo evidence before next-phase advancement is ready', async () => {
     mocks.workOrder.findMany.mockResolvedValue([
       {
         id: 'wo-next',
         hetId: 'h1',
         phaseOrder: 6,
         phaseShort: 'P6',
+        imagePath: null,
         prodStart: new Date('2026-06-30T08:00:00Z'),
         prodEnd: new Date('2026-06-30T09:00:00Z'),
         workflow: { phases: [] },
@@ -1097,7 +1171,39 @@ describe('workOrderService', () => {
       serialCheckDone: true,
       canAdvanceLegacy: false,
       missingAdvanceRequirements: ['Work-order image captured'],
-      parityGaps: ['workOrder.image is not present in the imported schema; AppSheet image gating cannot be satisfied yet'],
+      parityGaps: [],
+    });
+  });
+
+  it('marks next-phase rows advanceable when required evidence is captured', async () => {
+    mocks.workOrder.findMany.mockResolvedValue([
+      {
+        id: 'wo-next',
+        hetId: 'h1',
+        phaseOrder: 6,
+        phaseShort: 'P6',
+        imagePath: 'data:image/png;base64,AAAA',
+        prodStart: new Date('2026-06-30T08:00:00Z'),
+        prodEnd: new Date('2026-06-30T09:00:00Z'),
+        workflow: { phases: [] },
+        phase: { phaseShort: 'P6', bom: { lines: [{ id: 'bom-1', hasSerial: true }] } },
+        nextPhase: { phaseShort: 'P7' },
+        steralisationCurrent: null,
+        sterilises: [],
+        woSerials: [{ id: 'serial-1', bomRef: { id: 'bom-1' } }],
+        phaseEquips: [],
+        batchHets: [],
+      },
+    ]);
+
+    const [result] = await listWorkOrders();
+
+    expect(result).toMatchObject({
+      legacyStateBucket: '2. Next Phase',
+      serialCheckDone: true,
+      canAdvanceLegacy: true,
+      missingAdvanceRequirements: [],
+      parityGaps: [],
     });
   });
 });

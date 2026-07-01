@@ -95,6 +95,14 @@ async function readCsv(filePath: string): Promise<Row[]> {
   });
 }
 
+async function readFirstExistingCsv(sourceDir: string, fileNames: string[]): Promise<Row[]> {
+  for (const fileName of fileNames) {
+    const rows = await readCsv(path.join(sourceDir, fileName));
+    if (rows.length > 0) return rows;
+  }
+  return [];
+}
+
 async function writeOrCount<T>(dryRun: boolean, write: () => Promise<T>) {
   if (dryRun) return undefined;
   return write();
@@ -194,9 +202,19 @@ export async function importProcurementLegacy(options: {
     warnings: [],
   };
 
-  const clinicRows = await readCsv(path.join(options.sourceDir, 'clinicDb.csv'));
-  const deliverCollectRows = await readCsv(path.join(options.sourceDir, 'deliverCollect.csv'));
-  const hetRows = await readCsv(path.join(options.sourceDir, 'HETLot_TODEL.csv'));
+  const clinicRows = await readFirstExistingCsv(options.sourceDir, [
+    'clinicDb.csv',
+    'HETDeliveryReturnRecords---clinicDb.csv',
+  ]);
+  const deliverCollectRows = await readFirstExistingCsv(options.sourceDir, [
+    'deliverCollect.csv',
+    'HETDeliveryReturnRecords---deliverCollect.csv',
+  ]);
+  const hetRows = await readFirstExistingCsv(options.sourceDir, [
+    'HETLot_TODEL.csv',
+    'HETLot-TODEL.csv',
+    'HETDeliveryReturnRecords---HETLot-TODEL.csv',
+  ]);
   report.totals.clinicRows = clinicRows.length;
   report.totals.deliverCollectRows = deliverCollectRows.length;
   report.totals.hetRows = hetRows.length;

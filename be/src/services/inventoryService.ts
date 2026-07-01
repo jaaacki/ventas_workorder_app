@@ -77,6 +77,13 @@ export async function listLots(options: {
   });
 }
 
+export async function getLot(id: string, tenantId?: string | null) {
+  return prisma.inventoryLot.findFirst({
+    where: { id, tenantId: tenantIdOrDefault(tenantId) },
+    include: { inventorySku: true, currentLocation: true },
+  });
+}
+
 export async function listTransactions(options: { tenantId?: string | null; q?: string; take?: number }) {
   const q = options.q?.trim();
   return prisma.inventoryTransaction.findMany({

@@ -40,6 +40,7 @@ export interface InventoryLocation {
 
 export interface InventoryLot {
   id: string;
+  tenantId?: string;
   inventorySkuId: string | null;
   lotNumber: string | null;
   inventoryType: string;
@@ -53,7 +54,9 @@ export interface InventoryLot {
   workOrderId: string | null;
   sourceSystem: string | null;
   legacyItemSerialId: string | null;
+  legacyCheckInOutId?: string | null;
   legacyHetId: string | null;
+  legacyRaw?: unknown | null;
   createdAt: string;
   updatedAt: string;
   inventorySku?: InventorySku | null;
@@ -136,6 +139,11 @@ export async function fetchInventoryLots(options: {
       take: 300,
     },
   });
+  return data;
+}
+
+export async function fetchInventoryLot(id: string): Promise<InventoryLot> {
+  const { data } = await api.get<InventoryLot>(`/api/inventory/lots/${encodeURIComponent(id)}`);
   return data;
 }
 

@@ -201,6 +201,7 @@ const successExamples: Record<string, unknown> = {
   getInventoryOverview: { skus: 250, lots: 1200, transactions: 4500, locations: 24, balances: 640, importReports: 4, hetLots: 118, finishedGoodLots: 32 },
   listInventorySkus: [{ id: 'sku-graft', sku: 'GRAFT-001', description: 'AmGraft tissue graft', category: 'Graft', brand: 'Ventas', size: '10x10', colour: null, uom: 'ea', serialisedMode: 'lot', sourceSystem: 'legacy', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z' }],
   listInventoryLots: [inventoryLotExample],
+  getInventoryLot: inventoryLotExample,
   listInventoryTransactions: inventoryTraceExample.transactions,
   listInventoryLocations: [{ id: 'loc-clean-room', locationType: 'ROOM', name: 'Clean Room', parentLocationId: null, description: 'Production clean room', imagePath: null, sourceSystem: 'legacy', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z' }],
   getInventoryGenealogy: { id: 'lot-1001', lot: inventoryLotExample, parents: [], children: [] },
@@ -513,7 +514,7 @@ for (const operationId of ['getProcurementOverview', 'listSupplyEntities', 'list
   };
 }
 
-for (const operationId of ['getInventoryOverview', 'listInventorySkus', 'listInventoryLots', 'listInventoryTransactions', 'listInventoryLocations']) {
+for (const operationId of ['getInventoryOverview', 'listInventorySkus', 'listInventoryLots', 'getInventoryLot', 'listInventoryTransactions', 'listInventoryLocations']) {
   methodPolicies[operationId] = {
     resource: 'Inventory read model',
     completeness: 'read-model-operational-mutations-deferred',

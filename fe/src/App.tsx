@@ -14,6 +14,7 @@ import WorkOrderDetailPage from './pages/WorkOrderDetailPage';
 import ProcurementPage from './pages/ProcurementPage';
 import CollectionUnitDetailPage from './pages/CollectionUnitDetailPage';
 import InventoryPage from './pages/InventoryPage';
+import InventoryLotDetailPage from './pages/InventoryLotDetailPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 function App() {
@@ -100,6 +101,16 @@ function App() {
               <ProtectedRoute roles={['owner', 'admin', 'user']}>
                 <DashboardLayout>
                   <ProcurementPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/inventory/lots/:id"
+            element={
+              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+                <DashboardLayout>
+                  <InventoryLotDetailPage />
                 </DashboardLayout>
               </ProtectedRoute>
             }

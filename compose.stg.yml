@@ -43,6 +43,8 @@ services:
     volumes:
       - ./data/legacy:/app/data/legacy
       - ./data/inventory:/app/data/inventory
+      - ./secrets/workorder-ms.crt:/run/secrets/workorder-ms.crt:ro
+      - ./secrets/workorder-ms.key:/run/secrets/workorder-ms.key:ro
 
   fe:
     build:

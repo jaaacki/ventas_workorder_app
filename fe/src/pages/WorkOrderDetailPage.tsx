@@ -33,8 +33,23 @@ function formatDate(value?: string | null) {
   return value ? new Date(value).toLocaleString() : '-';
 }
 
+function formatDurationMinutes(value?: string | number | null) {
+  if (value == null || value === '') return '-';
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes)) return String(value);
+  if (minutes < 60) return `${minutes.toFixed(1)} min`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = Math.round(minutes % 60);
+  return remainingMinutes ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+}
+
 function workOrderTitle(workOrder: WorkOrderDetail) {
   return workOrder.woNumber || workOrder.id;
+}
+
+function lifecycleDetail(workOrder: WorkOrderDetail) {
+  const duration = formatDurationMinutes(workOrder.prodDuration);
+  return duration === '-' ? workOrder.operationalStatus : `${workOrder.operationalStatus} - ${duration}`;
 }
 
 function actionLabel(action: string) {
@@ -61,6 +76,9 @@ function stateSummary(event: WorkOrderAuditEvent) {
       : null,
     previous.prodEnd !== next.prodEnd
       ? `End ${previous.prodEnd ? formatDate(previous.prodEnd) : '-'} -> ${next.prodEnd ? formatDate(next.prodEnd) : '-'}`
+      : null,
+    previous.prodDurationMinutes !== next.prodDurationMinutes
+      ? `Duration ${formatDurationMinutes(previous.prodDurationMinutes)} -> ${formatDurationMinutes(next.prodDurationMinutes)}`
       : null,
   ].filter(Boolean);
 
@@ -181,7 +199,7 @@ export default function WorkOrderDetailPage() {
         <MetricCard icon={<Factory className="h-6 w-6" />} label="Current phase" value={workOrder.currentPhaseLabel} detail={`Order ${workOrder.phaseOrder ?? '-'}`} />
         <MetricCard icon={<Boxes className="h-6 w-6" />} label="HET / batch" value={workOrder.het?.hetNumber || workOrder.hetId || 'Unassigned'} />
         <MetricCard icon={<FlaskConical className="h-6 w-6" />} label="Sterilisation/BET" value={workOrder.counts.sterilisationRecords} />
-        <MetricCard icon={<Route className="h-6 w-6" />} label="Lifecycle" value={workOrder.lifecycleState} detail={workOrder.operationalStatus} />
+        <MetricCard icon={<Route className="h-6 w-6" />} label="Lifecycle" value={workOrder.lifecycleState} detail={lifecycleDetail(workOrder)} />
       </div>
 
       <AdminPanel title="Production execution" description="Controlled phase actions, readiness gates, evidence counts, and workflow timeline for this production run.">

@@ -88,6 +88,7 @@ export interface WorkOrderSummary {
   phaseShort: string | null;
   prodStart: string | null;
   prodEnd: string | null;
+  prodDuration: string | number | null;
   workflow: WorkOrderWorkflowRef | null;
   phase: WorkOrderPhaseRef | null;
   het: WorkOrderHetRef | null;
@@ -154,6 +155,7 @@ export interface WorkOrderAuditState {
   hetId: string | null;
   prodStart: string | null;
   prodEnd: string | null;
+  prodDurationMinutes: string | null;
 }
 
 export interface WorkOrderAuditEvent {

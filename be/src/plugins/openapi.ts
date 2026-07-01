@@ -68,6 +68,7 @@ const workOrderExample = {
   phaseOrder: 10,
   prodStart: '2026-07-01T09:00:00.000Z',
   prodEnd: null,
+  prodDuration: null,
   workflow: { id: 'wf-amgraft', name: 'AmGraft Standard', code: 'AMGRAFT_STD' },
   phase: { id: 'phase-intake', phaseName: 'Intake', phaseShort: 'INT', phaseOrder: 10 },
 };
@@ -88,6 +89,7 @@ const workOrderAuditEventExample = {
     hetId: 'het-1001',
     prodStart: null,
     prodEnd: null,
+    prodDurationMinutes: null,
   },
   newState: {
     id: 'WO-1001',
@@ -98,6 +100,7 @@ const workOrderAuditEventExample = {
     hetId: 'het-1001',
     prodStart: '2026-07-01T09:00:00.000Z',
     prodEnd: null,
+    prodDurationMinutes: null,
   },
   createdAt: '2026-07-01T09:00:00.000Z',
 };
@@ -184,7 +187,7 @@ const successExamples: Record<string, unknown> = {
   listWorkOrderAuditEvents: [workOrderAuditEventExample],
   getWorkOrderInventoryTrace: inventoryTraceExample,
   startWorkOrderPhase: { ...workOrderExample, prodStart: '2026-07-01T09:00:00.000Z' },
-  finishWorkOrderPhase: { ...workOrderExample, prodEnd: '2026-07-01T11:00:00.000Z' },
+  finishWorkOrderPhase: { ...workOrderExample, prodEnd: '2026-07-01T11:00:00.000Z', prodDuration: '120' },
   advanceWorkOrder: { ...workOrderExample, phaseId: 'phase-sterilisation', phaseOrder: 20 },
   createSterilisation: {
     id: 'sterilise-1001',

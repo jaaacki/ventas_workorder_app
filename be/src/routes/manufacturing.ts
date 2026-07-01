@@ -34,6 +34,12 @@ export const manufacturingRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('admin', 'owner')],
       schema: {
+        tags: ['Manufacturing'],
+        summary: 'Generate batch record',
+        description: 'Create and link the manufacturing batch record for a work order. Admin or owner role required.',
+        operationId: 'generateBatchRecord',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
         body: generateBodySchema,
         response: {
           201: manufacturerSchema,
@@ -71,6 +77,12 @@ export const manufacturingRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Manufacturing'],
+        summary: 'Get batch record',
+        description: 'Read one manufacturing batch record by id.',
+        operationId: 'getBatchRecord',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
         params: z.object({ id: z.string() }),
         response: {
           200: manufacturerSchema,

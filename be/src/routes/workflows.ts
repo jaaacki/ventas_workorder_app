@@ -77,6 +77,12 @@ export const workflowRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Workflows'],
+        summary: 'List workflows',
+        description: 'Read configured product workflows. Optional active=true narrows the read model to active workflows.',
+        operationId: 'listWorkflows',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'resource-crud',
         querystring: z.object({ active: z.string().optional() }),
         response: { 200: z.array(workflowSummarySchema), 401: errorResponse },
       },
@@ -92,6 +98,12 @@ export const workflowRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Workflows'],
+        summary: 'Get workflow',
+        description: 'Read one workflow with its ordered phase bindings.',
+        operationId: 'getWorkflow',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'resource-crud',
         params: z.object({ id: z.string() }),
         response: { 200: workflowDetailSchema, 401: errorResponse, 404: errorResponse },
       },
@@ -110,6 +122,12 @@ export const workflowRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('admin', 'owner')],
       schema: {
+        tags: ['Workflows'],
+        summary: 'Create workflow',
+        description: 'Create a product workflow and, when supplied, its initial ordered phase bindings. Admin or owner role required.',
+        operationId: 'createWorkflow',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'resource-crud',
         body: createBodySchema,
         response: {
           201: workflowDetailSchema,
@@ -143,6 +161,12 @@ export const workflowRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('admin', 'owner')],
       schema: {
+        tags: ['Workflows'],
+        summary: 'Update workflow',
+        description: 'Patch workflow metadata and optionally replace ordered phase bindings atomically. Admin or owner role required.',
+        operationId: 'updateWorkflow',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'resource-crud',
         params: z.object({ id: z.string() }),
         body: updateBodySchema,
         response: {

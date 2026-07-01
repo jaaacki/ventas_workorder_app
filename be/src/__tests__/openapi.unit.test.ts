@@ -57,6 +57,22 @@ describe('OpenAPI contract', () => {
         '/api/hets',
         '/api/hets/{id}/use',
         '/api/hets/{id}/finish',
+        '/api/procurement/overview',
+        '/api/procurement/supply-entities',
+        '/api/procurement/collection-points',
+        '/api/procurement/collection-units',
+        '/api/procurement/collection-units/{id}',
+        '/api/procurement/issuance-orders',
+        '/api/procurement/collection-orders',
+        '/api/procurement/collection-receipts',
+        '/api/procurement/import-reports',
+        '/api/inventory/overview',
+        '/api/inventory/skus',
+        '/api/inventory/lots',
+        '/api/inventory/transactions',
+        '/api/inventory/locations',
+        '/api/inventory/genealogy/{lotId}',
+        '/api/inventory/import-reports',
       ]),
     );
 
@@ -74,6 +90,26 @@ describe('OpenAPI contract', () => {
     expect(advanceWorkOrder?.tags).toEqual(['Work Orders']);
     expect(advanceWorkOrder?.security).toEqual([{ bearerAuth: [] }]);
     expect(advanceWorkOrder?.['x-route-kind']).toBe('lifecycle-action');
+
+    const listCollectionUnits = pathItem(doc, '/api/procurement/collection-units')?.get;
+    expect(listCollectionUnits?.tags).toEqual(['Procurement']);
+    expect(listCollectionUnits?.security).toEqual([{ bearerAuth: [] }]);
+    expect(listCollectionUnits?.['x-route-kind']).toBe('read-model');
+    expect(listCollectionUnits?.description).toContain('status=received');
+
+    const procurementReports = pathItem(doc, '/api/procurement/import-reports')?.get;
+    expect(procurementReports?.tags).toEqual(['Procurement']);
+    expect(procurementReports?.['x-route-kind']).toBe('import-admin');
+
+    const listInventoryLots = pathItem(doc, '/api/inventory/lots')?.get;
+    expect(listInventoryLots?.tags).toEqual(['Inventory']);
+    expect(listInventoryLots?.security).toEqual([{ bearerAuth: [] }]);
+    expect(listInventoryLots?.['x-route-kind']).toBe('read-model');
+    expect(listInventoryLots?.description).toContain('inventoryType=HET');
+
+    const inventoryGenealogy = pathItem(doc, '/api/inventory/genealogy/{lotId}')?.get;
+    expect(inventoryGenealogy?.operationId).toBe('getInventoryGenealogy');
+    expect(inventoryGenealogy?.['x-route-kind']).toBe('read-model');
   });
 
   it('serves a human-readable docs landing page that points to the JSON contract', async () => {

@@ -29,6 +29,8 @@ export async function registerOpenApi(app: FastifyInstance) {
         { name: 'Sterilisation', description: 'Sterilisation and BET gate records.' },
         { name: 'Manufacturing', description: 'Manufacturing batch-record actions and reads.' },
         { name: 'HETs', description: 'HET register reads and lifecycle linkage actions.' },
+        { name: 'Procurement', description: 'Read models for collection-unit procurement traceability and import audit records.' },
+        { name: 'Inventory', description: 'Read models for inventory lots, transactions, locations, genealogy, and import audit records.' },
       ],
       components: {
         securitySchemes: {

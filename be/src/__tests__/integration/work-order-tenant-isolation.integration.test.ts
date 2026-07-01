@@ -122,6 +122,7 @@ describe('work-order tenant isolation (integration)', () => {
   });
 
   afterAll(async () => {
+    await prisma.workOrderAuditEvent.deleteMany({ where: { workOrderId: { in: [workOrderA, workOrderB] } } }).catch(() => undefined);
     await prisma.workOrder.deleteMany({ where: { id: { in: [workOrderA, workOrderB] } } }).catch(() => undefined);
     await prisma.het.deleteMany({ where: { id: { in: [hetA, hetB] } } }).catch(() => undefined);
     await prisma.workflowPhase.deleteMany({ where: { workflowId: { in: [workflowA, workflowB] } } }).catch(() => undefined);
@@ -174,6 +175,53 @@ describe('work-order tenant isolation (integration)', () => {
       select: { tenantId: true, prodStart: true, startSignById: true },
     });
     expect(stored).toEqual({ tenantId: tenantA, prodStart: null, startSignById: null });
+  });
+
+  it('records and exposes audit events for owning-tenant lifecycle actions', async () => {
+    const token = tokenFor({ actorId: actorA, tenantId: tenantA, email: 'a@example.test' });
+    const startResponse = await app.inject({
+      method: 'POST',
+      url: `/api/work-orders/${workOrderA}/start`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { signatureDataUrl: 'data:image/png;base64,test-signature' },
+    });
+
+    expect(startResponse.statusCode).toBe(200);
+
+    const auditResponse = await app.inject({
+      method: 'GET',
+      url: `/api/work-orders/${workOrderA}/audit-events`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(auditResponse.statusCode).toBe(200);
+    const events = JSON.parse(auditResponse.body) as Array<{
+      tenantId: string;
+      workOrderId: string;
+      action: string;
+      actorId: string | null;
+      source: string;
+      previousState: { prodStart: string | null } | null;
+      newState: { prodStart: string | null } | null;
+    }>;
+    expect(events).toEqual([
+      expect.objectContaining({
+        tenantId: tenantA,
+        workOrderId: workOrderA,
+        action: 'work_order.phase_started',
+        actorId: actorA,
+        source: 'workOrderService.startWorkOrderPhase',
+        previousState: expect.objectContaining({ prodStart: null }),
+        newState: expect.objectContaining({ prodStart: expect.any(String) }),
+      }),
+    ]);
+
+    const crossTenantAuditResponse = await app.inject({
+      method: 'GET',
+      url: `/api/work-orders/${workOrderA}/audit-events`,
+      headers: { authorization: `Bearer ${tokenFor({ actorId: actorB, tenantId: tenantB, email: 'b@example.test' })}` },
+    });
+    expect(crossTenantAuditResponse.statusCode).toBe(404);
   });
 
   it('does not create a work order from another tenant workflow id', async () => {

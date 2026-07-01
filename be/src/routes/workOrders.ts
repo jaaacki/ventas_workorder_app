@@ -104,6 +104,29 @@ const workOrderSchema = z.object({
 const workOrderSummarySchema = workOrderSchema;
 const workOrderDetailSchema = workOrderSchema;
 
+const auditStateSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  workflowId: z.string().nullable(),
+  phaseId: z.string().nullable(),
+  phaseOrder: z.number().nullable(),
+  hetId: z.string().nullable(),
+  prodStart: z.string().nullable(),
+  prodEnd: z.string().nullable(),
+}).nullable();
+
+const workOrderAuditEventSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  workOrderId: z.string(),
+  action: z.string(),
+  actorId: z.string().nullable(),
+  source: z.string(),
+  previousState: auditStateSchema,
+  newState: auditStateSchema,
+  createdAt: z.date(),
+});
+
 const createBodySchema = z.object({
   workflowId: z.string().min(1),
   hetId: z.string().optional(),
@@ -187,6 +210,31 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
       const trace = await inventoryTraceService.getWorkOrderInventoryTrace(req.params.id, tenantIdOf(req));
       if (!trace) return reply.status(404).send({ error: 'Work order not found' });
       return trace;
+    },
+  );
+
+  app.get(
+    '/:id/audit-events',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        tags: ['Work Orders'],
+        summary: 'List work order audit events',
+        description: 'Read the append-only audit trail for controlled work-order lifecycle actions. Example: GET /api/work-orders/WO-1001/audit-events.',
+        operationId: 'listWorkOrderAuditEvents',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
+        params: z.object({ id: z.string() }),
+        response: { 200: z.array(workOrderAuditEventSchema), 401: errorResponse, 404: errorResponse },
+      },
+    },
+    async (req, reply) => {
+      const events = await workOrderService.listWorkOrderAuditEvents(req.params.id, tenantIdOf(req));
+      if (!events) {
+        return reply.status(404).send({ error: 'Work order not found' });
+      }
+      return events;
     },
   );
 

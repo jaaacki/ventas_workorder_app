@@ -72,6 +72,36 @@ const workOrderExample = {
   phase: { id: 'phase-intake', phaseName: 'Intake', phaseShort: 'INT', phaseOrder: 10 },
 };
 
+const workOrderAuditEventExample = {
+  id: 'audit-1001',
+  tenantId: 'ventas',
+  workOrderId: 'WO-1001',
+  action: 'work_order.phase_started',
+  actorId: 'staff-operator-1',
+  source: 'workOrderService.startWorkOrderPhase',
+  previousState: {
+    id: 'WO-1001',
+    tenantId: 'ventas',
+    workflowId: 'wf-amgraft',
+    phaseId: 'phase-intake',
+    phaseOrder: 10,
+    hetId: 'het-1001',
+    prodStart: null,
+    prodEnd: null,
+  },
+  newState: {
+    id: 'WO-1001',
+    tenantId: 'ventas',
+    workflowId: 'wf-amgraft',
+    phaseId: 'phase-intake',
+    phaseOrder: 10,
+    hetId: 'het-1001',
+    prodStart: '2026-07-01T09:00:00.000Z',
+    prodEnd: null,
+  },
+  createdAt: '2026-07-01T09:00:00.000Z',
+};
+
 const inventoryLotExample = {
   id: 'lot-1001',
   inventorySkuId: 'sku-graft',
@@ -151,6 +181,7 @@ const successExamples: Record<string, unknown> = {
   listWorkOrders: [workOrderExample],
   createWorkOrder: workOrderExample,
   getWorkOrder: workOrderExample,
+  listWorkOrderAuditEvents: [workOrderAuditEventExample],
   getWorkOrderInventoryTrace: inventoryTraceExample,
   startWorkOrderPhase: { ...workOrderExample, prodStart: '2026-07-01T09:00:00.000Z' },
   finishWorkOrderPhase: { ...workOrderExample, prodEnd: '2026-07-01T11:00:00.000Z' },
@@ -389,6 +420,14 @@ const methodPolicies: Record<string, MethodPolicy> = {
     omittedMethods: [{ method: 'PUT/PATCH/DELETE', reason: 'Generic mutation/delete would bypass phase and signature controls.' }],
     destructiveDeletes: 'not-exposed',
     notes: 'Work-order detail read model.',
+  },
+  listWorkOrderAuditEvents: {
+    resource: 'Work order audit trail',
+    completeness: 'read-only-audit',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'POST/PATCH/DELETE', reason: 'Audit events are written by controlled lifecycle actions and are not directly user-mutated.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Tenant-scoped audit trail for controlled work-order lifecycle actions with actor, source, previous state, and new state.',
   },
   createWorkOrder: {
     resource: 'Work order',

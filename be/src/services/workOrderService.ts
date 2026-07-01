@@ -1,10 +1,27 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, type WorkOrder } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { tenantIdOrDefault } from './tenant.js';
 
 export interface CreateWorkOrderInput {
   workflowId: string;
   hetId?: string;
+}
+
+type WorkOrderAuditAction =
+  | 'work_order.created'
+  | 'work_order.phase_started'
+  | 'work_order.phase_finished'
+  | 'work_order.phase_advanced';
+
+interface WorkOrderAuditState extends Prisma.InputJsonObject {
+  id: string;
+  tenantId: string;
+  workflowId: string | null;
+  phaseId: string | null;
+  phaseOrder: number | null;
+  hetId: string | null;
+  prodStart: string | null;
+  prodEnd: string | null;
 }
 
 /**
@@ -78,6 +95,58 @@ const workOrderWithWorkflowPhasesInclude = {
   },
 } satisfies Prisma.WorkOrderInclude;
 
+const workOrderAuditSelect = {
+  id: true,
+  tenantId: true,
+  workOrderId: true,
+  action: true,
+  actorId: true,
+  source: true,
+  previousState: true,
+  newState: true,
+  createdAt: true,
+} satisfies Prisma.WorkOrderAuditEventSelect;
+
+function auditState(
+  workOrder: Pick<
+    WorkOrder,
+    'id' | 'tenantId' | 'workflowId' | 'phaseId' | 'phaseOrder' | 'hetId' | 'prodStart' | 'prodEnd'
+  >,
+): WorkOrderAuditState {
+  return {
+    id: workOrder.id,
+    tenantId: workOrder.tenantId,
+    workflowId: workOrder.workflowId,
+    phaseId: workOrder.phaseId,
+    phaseOrder: workOrder.phaseOrder,
+    hetId: workOrder.hetId,
+    prodStart: workOrder.prodStart?.toISOString() ?? null,
+    prodEnd: workOrder.prodEnd?.toISOString() ?? null,
+  };
+}
+
+async function recordWorkOrderAuditEvent(input: {
+  tenantId: string;
+  workOrderId: string;
+  action: WorkOrderAuditAction;
+  actorId: string;
+  source: string;
+  previousState?: WorkOrderAuditState | null;
+  newState: WorkOrderAuditState;
+}) {
+  await prisma.workOrderAuditEvent.create({
+    data: {
+      tenantId: input.tenantId,
+      workOrderId: input.workOrderId,
+      action: input.action,
+      actorId: input.actorId,
+      source: input.source,
+      ...(input.previousState ? { previousState: input.previousState } : {}),
+      newState: input.newState,
+    },
+  });
+}
+
 export async function createWorkOrder(input: CreateWorkOrderInput, actorId: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
   const workflow = await prisma.workflow.findFirst({
@@ -123,6 +192,15 @@ export async function createWorkOrder(input: CreateWorkOrderInput, actorId: stri
       createdById: actorId,
       updatedById: actorId,
     },
+  });
+  await recordWorkOrderAuditEvent({
+    tenantId: scopedTenantId,
+    workOrderId: created.id,
+    action: 'work_order.created',
+    actorId,
+    source: 'workOrderService.createWorkOrder',
+    previousState: null,
+    newState: auditState(created),
   });
   return getDecoratedWorkOrderOrThrow(created.id, scopedTenantId);
 }
@@ -349,6 +427,26 @@ export async function getWorkOrder(id: string, tenantId?: string | null) {
   return decorateOperationalWorkOrder(workOrder, context);
 }
 
+export async function listWorkOrderAuditEvents(id: string, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const workOrder = await prisma.workOrder.findFirst({
+    where: { id, tenantId: scopedTenantId, deleted: false },
+    select: { id: true },
+  });
+  if (!workOrder) return null;
+
+  const events = await prisma.workOrderAuditEvent.findMany({
+    where: { workOrderId: id, tenantId: scopedTenantId },
+    select: workOrderAuditSelect,
+    orderBy: { createdAt: 'asc' },
+  });
+  return events.map((event) => ({
+    ...event,
+    previousState: event.previousState as WorkOrderAuditState | null,
+    newState: event.newState as WorkOrderAuditState | null,
+  }));
+}
+
 async function getLegacyContextForWorkOrder(workOrder: OperationalWorkOrder, tenantId: string) {
   const hetIds = legacyHetKeys(workOrder);
   if (!hetIds.length) return buildLegacyWorkOrderContext([workOrder]);
@@ -373,7 +471,16 @@ export async function startWorkOrderPhase(id: string, actorId: string, signature
   const scopedTenantId = tenantIdOrDefault(tenantId);
   const workOrder = await prisma.workOrder.findFirst({
     where: { id, tenantId: scopedTenantId },
-    select: { id: true, hetId: true, prodStart: true },
+    select: {
+      id: true,
+      tenantId: true,
+      workflowId: true,
+      phaseId: true,
+      phaseOrder: true,
+      hetId: true,
+      prodStart: true,
+      prodEnd: true,
+    },
   });
 
   if (!workOrder) {
@@ -388,7 +495,7 @@ export async function startWorkOrderPhase(id: string, actorId: string, signature
   }
 
   if (!workOrder.prodStart) {
-    await prisma.workOrder.update({
+    const updated = await prisma.workOrder.update({
       where: { id },
       data: {
         prodStart: new Date(),
@@ -396,6 +503,15 @@ export async function startWorkOrderPhase(id: string, actorId: string, signature
         startSignById: actorId,
         updatedById: actorId,
       },
+    });
+    await recordWorkOrderAuditEvent({
+      tenantId: scopedTenantId,
+      workOrderId: id,
+      action: 'work_order.phase_started',
+      actorId,
+      source: 'workOrderService.startWorkOrderPhase',
+      previousState: auditState(workOrder),
+      newState: auditState(updated),
     });
   }
 
@@ -406,7 +522,16 @@ export async function finishWorkOrderPhase(id: string, actorId: string, signatur
   const scopedTenantId = tenantIdOrDefault(tenantId);
   const workOrder = await prisma.workOrder.findFirst({
     where: { id, tenantId: scopedTenantId },
-    select: { id: true, prodStart: true, prodEnd: true },
+    select: {
+      id: true,
+      tenantId: true,
+      workflowId: true,
+      phaseId: true,
+      phaseOrder: true,
+      hetId: true,
+      prodStart: true,
+      prodEnd: true,
+    },
   });
 
   if (!workOrder) {
@@ -421,7 +546,7 @@ export async function finishWorkOrderPhase(id: string, actorId: string, signatur
   }
 
   if (!workOrder.prodEnd) {
-    await prisma.workOrder.update({
+    const updated = await prisma.workOrder.update({
       where: { id },
       data: {
         prodEnd: new Date(),
@@ -429,6 +554,15 @@ export async function finishWorkOrderPhase(id: string, actorId: string, signatur
         endSignById: actorId,
         updatedById: actorId,
       },
+    });
+    await recordWorkOrderAuditEvent({
+      tenantId: scopedTenantId,
+      workOrderId: id,
+      action: 'work_order.phase_finished',
+      actorId,
+      source: 'workOrderService.finishWorkOrderPhase',
+      previousState: auditState(workOrder),
+      newState: auditState(updated),
     });
   }
 
@@ -484,13 +618,22 @@ export async function advanceWorkOrder(id: string, actorId: string, tenantId?: s
 
   const nextPhase = orderedPhases[currentIndex + 1];
 
-  await prisma.workOrder.update({
+  const updated = await prisma.workOrder.update({
     where: { id },
     data: {
       phaseId: nextPhase.phaseId,
       phaseOrder: nextPhase.sortOrder,
       updatedById: actorId,
     },
+  });
+  await recordWorkOrderAuditEvent({
+    tenantId: scopedTenantId,
+    workOrderId: id,
+    action: 'work_order.phase_advanced',
+    actorId,
+    source: 'workOrderService.advanceWorkOrder',
+    previousState: auditState(workOrder),
+    newState: auditState(updated),
   });
 
   return getDecoratedWorkOrderOrThrow(id, scopedTenantId);

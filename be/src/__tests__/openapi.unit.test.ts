@@ -33,6 +33,7 @@ const expectedOperations: ExpectedOperation[] = [
   { method: 'get', path: '/api/work-orders', operationId: 'listWorkOrders', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders', operationId: 'createWorkOrder', routeKind: 'lifecycle-action', auth: 'role', requiredRoles: ['admin', 'owner'] },
   { method: 'get', path: '/api/work-orders/{id}', operationId: 'getWorkOrder', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/work-orders/{id}/audit-events', operationId: 'listWorkOrderAuditEvents', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/work-orders/{id}/inventory-trace', operationId: 'getWorkOrderInventoryTrace', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders/{id}/start', operationId: 'startWorkOrderPhase', routeKind: 'lifecycle-action', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders/{id}/finish', operationId: 'finishWorkOrderPhase', routeKind: 'lifecycle-action', auth: 'authenticated' },
@@ -197,6 +198,16 @@ describe('OpenAPI contract', () => {
       destructiveDeletes: 'not-exposed',
     });
     expect(JSON.stringify(advanceWorkOrder?.['x-method-policy'])).toContain('guarded by lifecycle checks');
+
+    const workOrderAudit = pathItem(doc, '/api/work-orders/{id}/audit-events')?.get;
+    expect(workOrderAudit?.tags).toEqual(['Work Orders']);
+    expect(workOrderAudit?.operationId).toBe('listWorkOrderAuditEvents');
+    expect(workOrderAudit?.description).toContain('audit trail');
+    expect(workOrderAudit?.['x-method-policy']).toMatchObject({
+      resource: 'Work order audit trail',
+      completeness: 'read-only-audit',
+      destructiveDeletes: 'not-exposed',
+    });
 
     const workOrderTrace = pathItem(doc, '/api/work-orders/{id}/inventory-trace')?.get;
     expect(workOrderTrace?.tags).toEqual(['Work Orders', 'Inventory']);

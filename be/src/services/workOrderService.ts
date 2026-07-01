@@ -22,6 +22,7 @@ interface WorkOrderAuditState extends Prisma.InputJsonObject {
   hetId: string | null;
   prodStart: string | null;
   prodEnd: string | null;
+  prodDurationMinutes: string | null;
 }
 
 /**
@@ -110,7 +111,7 @@ const workOrderAuditSelect = {
 function auditState(
   workOrder: Pick<
     WorkOrder,
-    'id' | 'tenantId' | 'workflowId' | 'phaseId' | 'phaseOrder' | 'hetId' | 'prodStart' | 'prodEnd'
+    'id' | 'tenantId' | 'workflowId' | 'phaseId' | 'phaseOrder' | 'hetId' | 'prodStart' | 'prodEnd' | 'prodDuration'
   >,
 ): WorkOrderAuditState {
   return {
@@ -122,7 +123,13 @@ function auditState(
     hetId: workOrder.hetId,
     prodStart: workOrder.prodStart?.toISOString() ?? null,
     prodEnd: workOrder.prodEnd?.toISOString() ?? null,
+    prodDurationMinutes: workOrder.prodDuration?.toString() ?? null,
   };
+}
+
+function elapsedMinutes(start: Date, end: Date) {
+  const elapsedMs = Math.max(0, end.getTime() - start.getTime());
+  return new Prisma.Decimal((elapsedMs / 60000).toFixed(4));
 }
 
 async function recordWorkOrderAuditEvent(input: {
@@ -480,6 +487,7 @@ export async function startWorkOrderPhase(id: string, actorId: string, signature
       hetId: true,
       prodStart: true,
       prodEnd: true,
+      prodDuration: true,
     },
   });
 
@@ -531,6 +539,7 @@ export async function finishWorkOrderPhase(id: string, actorId: string, signatur
       hetId: true,
       prodStart: true,
       prodEnd: true,
+      prodDuration: true,
     },
   });
 
@@ -546,10 +555,12 @@ export async function finishWorkOrderPhase(id: string, actorId: string, signatur
   }
 
   if (!workOrder.prodEnd) {
+    const finishedAt = new Date();
     const updated = await prisma.workOrder.update({
       where: { id },
       data: {
-        prodEnd: new Date(),
+        prodEnd: finishedAt,
+        prodDuration: elapsedMinutes(workOrder.prodStart, finishedAt),
         endSignPath: signatureDataUrl,
         endSignById: actorId,
         updatedById: actorId,

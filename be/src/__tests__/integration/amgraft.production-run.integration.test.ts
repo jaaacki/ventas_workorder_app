@@ -63,6 +63,7 @@ beforeAll(async () => {
 afterAll(async () => {
   const woId = ctx.workOrderId;
   if (woId) {
+    await prisma.workOrderAuditEvent.deleteMany({ where: { workOrderId: woId } }).catch(() => undefined);
     await prisma.sterilise.deleteMany({ where: { workOrderId: woId } }).catch(() => undefined);
     await prisma.workOrderHet.deleteMany({ where: { workOrderId: woId } }).catch(() => undefined);
     await prisma.workOrder.deleteMany({ where: { id: woId } }).catch(() => undefined);
@@ -94,7 +95,9 @@ describe('AmGraft production run (integration)', () => {
 
     // 3. Complete Preparation, then advance to Production.
     await startWorkOrderPhase(wo.id, ctx.actorId);
-    await finishWorkOrderPhase(wo.id, ctx.actorId);
+    const finishedPreparation = await finishWorkOrderPhase(wo.id, ctx.actorId);
+    expect(finishedPreparation.prodDuration).not.toBeNull();
+    expect(Number(finishedPreparation.prodDuration)).toBeGreaterThanOrEqual(0);
     let cur = await advanceWorkOrder(wo.id, ctx.actorId);
     expect(cur.phaseOrder).toBe(1);
     expect(cur.phase?.phaseName).toBe('Production');

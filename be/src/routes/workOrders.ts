@@ -113,6 +113,7 @@ const auditStateSchema = z.object({
   hetId: z.string().nullable(),
   prodStart: z.string().nullable(),
   prodEnd: z.string().nullable(),
+  prodDurationMinutes: z.string().nullable(),
 }).nullable();
 
 const workOrderAuditEventSchema = z.object({

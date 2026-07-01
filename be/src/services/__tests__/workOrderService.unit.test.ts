@@ -369,6 +369,7 @@ describe('workOrderService', () => {
         hetId: true,
         prodStart: true,
         prodEnd: true,
+        prodDuration: true,
       },
     });
     expect(mocks.workOrder.findFirstOrThrow).toHaveBeenCalledWith(
@@ -398,57 +399,67 @@ describe('workOrderService', () => {
   });
 
   it('finishWorkOrderPhase records finish timestamp and signer', async () => {
-    mocks.workOrder.findFirst.mockResolvedValueOnce({
-      id: 'wo-1',
-      tenantId: 'ventas',
-      workflowId: 'w1',
-      phaseId: 'p1',
-      phaseOrder: 0,
-      hetId: 'h1',
-      prodStart: new Date('2026-06-30T08:00:00Z'),
-      prodEnd: null,
-    });
-    mocks.workOrder.update.mockResolvedValue({
-      id: 'wo-1',
-      tenantId: 'ventas',
-      workflowId: 'w1',
-      phaseId: 'p1',
-      phaseOrder: 0,
-      hetId: 'h1',
-      prodStart: new Date('2026-06-30T08:00:00Z'),
-      prodEnd: new Date('2026-06-30T09:00:00Z'),
-    });
-    mocks.workOrder.findFirstOrThrow.mockResolvedValue({
-      id: 'wo-1',
-      hetId: 'h1',
-      prodStart: new Date('2026-06-30T08:00:00Z'),
-      prodEnd: new Date('2026-06-30T09:00:00Z'),
-      workflow: { phases: [] },
-      sterilises: [],
-      woSerials: [],
-      phaseEquips: [],
-    });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-30T09:00:00Z'));
+    try {
+      mocks.workOrder.findFirst.mockResolvedValueOnce({
+        id: 'wo-1',
+        tenantId: 'ventas',
+        workflowId: 'w1',
+        phaseId: 'p1',
+        phaseOrder: 0,
+        hetId: 'h1',
+        prodStart: new Date('2026-06-30T08:00:00Z'),
+        prodEnd: null,
+        prodDuration: null,
+      });
+      mocks.workOrder.update.mockResolvedValue({
+        id: 'wo-1',
+        tenantId: 'ventas',
+        workflowId: 'w1',
+        phaseId: 'p1',
+        phaseOrder: 0,
+        hetId: 'h1',
+        prodStart: new Date('2026-06-30T08:00:00Z'),
+        prodEnd: new Date('2026-06-30T09:00:00Z'),
+        prodDuration: { toString: () => '60.0000' },
+      });
+      mocks.workOrder.findFirstOrThrow.mockResolvedValue({
+        id: 'wo-1',
+        hetId: 'h1',
+        prodStart: new Date('2026-06-30T08:00:00Z'),
+        prodEnd: new Date('2026-06-30T09:00:00Z'),
+        workflow: { phases: [] },
+        sterilises: [],
+        woSerials: [],
+        phaseEquips: [],
+      });
 
-    const result = await finishWorkOrderPhase('wo-1', 'actor1');
+      const result = await finishWorkOrderPhase('wo-1', 'actor1');
 
-    const updateCall = mocks.workOrder.update.mock.calls[0][0] as {
-      where: { id: string };
-      data: { prodEnd: Date; endSignById: string; updatedById: string };
-    };
-    expect(updateCall.where).toEqual({ id: 'wo-1' });
-    expect(updateCall.data.prodEnd).toBeInstanceOf(Date);
-    expect(updateCall.data.endSignById).toBe('actor1');
-    expect(updateCall.data.updatedById).toBe('actor1');
-    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          action: 'work_order.phase_finished',
-          previousState: expect.objectContaining({ prodEnd: null }),
-          newState: expect.objectContaining({ prodEnd: '2026-06-30T09:00:00.000Z' }),
+      const updateCall = mocks.workOrder.update.mock.calls[0][0] as {
+        where: { id: string };
+        data: { prodEnd: Date; prodDuration: { toString: () => string }; endSignById: string; updatedById: string };
+      };
+      expect(updateCall.where).toEqual({ id: 'wo-1' });
+      expect(updateCall.data.prodEnd).toBeInstanceOf(Date);
+      expect(updateCall.data.prodEnd.toISOString()).toBe('2026-06-30T09:00:00.000Z');
+      expect(updateCall.data.prodDuration.toString()).toBe('60');
+      expect(updateCall.data.endSignById).toBe('actor1');
+      expect(updateCall.data.updatedById).toBe('actor1');
+      expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'work_order.phase_finished',
+            previousState: expect.objectContaining({ prodEnd: null, prodDurationMinutes: null }),
+            newState: expect.objectContaining({ prodEnd: '2026-06-30T09:00:00.000Z', prodDurationMinutes: '60.0000' }),
+          }),
         }),
-      }),
-    );
-    expect(result).toMatchObject({ lifecycleState: 'ReadyToAdvance' });
+      );
+      expect(result).toMatchObject({ lifecycleState: 'ReadyToAdvance' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('finishWorkOrderPhase blocks phases that have not started', async () => {

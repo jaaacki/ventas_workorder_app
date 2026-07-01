@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
     recordWorkOrderEquipment: vi.fn(),
     recordWorkOrderPhotoEvidence: vi.fn(),
     recordWorkOrderOutputQuantity: vi.fn(),
+    recordWorkOrderRelease: vi.fn(),
     recordWorkOrderSerial: vi.fn(),
     startWorkOrderPhase: vi.fn(),
     finishWorkOrderPhase: vi.fn(),
@@ -116,6 +117,10 @@ const workOrderDetail = {
   prodDuration: null,
   outputQuantity: null,
   imagePath: null,
+  releaseStatus: null,
+  releaseDecisionAt: null,
+  releaseDecisionById: null,
+  releaseRemarks: null,
   manuId: null,
   manuNumber: null,
   woNumber: 'WO-1',
@@ -248,6 +253,7 @@ function resetServiceMocks() {
   mocks.workOrderService.recordWorkOrderEquipment.mockResolvedValue(workOrderDetail);
   mocks.workOrderService.recordWorkOrderPhotoEvidence.mockResolvedValue(workOrderDetail);
   mocks.workOrderService.recordWorkOrderOutputQuantity.mockResolvedValue(workOrderDetail);
+  mocks.workOrderService.recordWorkOrderRelease.mockResolvedValue(workOrderDetail);
   mocks.workOrderService.recordWorkOrderSerial.mockResolvedValue(workOrderDetail);
   mocks.workOrderService.startWorkOrderPhase.mockResolvedValue(workOrderDetail);
   mocks.workOrderService.finishWorkOrderPhase.mockResolvedValue(workOrderDetail);

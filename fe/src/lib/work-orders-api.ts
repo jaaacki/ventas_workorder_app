@@ -49,7 +49,8 @@ export type WorkOrderLifecycleState =
   | 'NotStarted'
   | 'InProgress'
   | 'ReadyToAdvance'
-  | 'ReleasePending';
+  | 'ReleasePending'
+  | 'Released';
 
 export interface WorkOrderSterilisationRef {
   id: string;
@@ -107,6 +108,10 @@ export interface WorkOrderSummary {
   prodDuration: string | number | null;
   outputQuantity: string | number | null;
   imagePath: string | null;
+  releaseStatus: 'released' | 'quarantined' | 'rejected' | null;
+  releaseDecisionAt: string | null;
+  releaseDecisionById: string | null;
+  releaseRemarks: string | null;
   workflow: WorkOrderWorkflowRef | null;
   phase: WorkOrderPhaseRef | null;
   het: WorkOrderHetRef | null;
@@ -188,6 +193,8 @@ export interface WorkOrderAuditState {
   prodEnd: string | null;
   prodDurationMinutes: string | null;
   outputQuantity: string | null;
+  releaseStatus: string | null;
+  releaseDecisionAt: string | null;
   imageCaptured?: boolean | null;
   equipmentCount?: number | null;
   serialCount?: number | null;
@@ -279,6 +286,14 @@ export async function recordWorkOrderPhotoEvidence(
   payload: { imageDataUrl: string },
 ): Promise<WorkOrderDetail> {
   const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/photo-evidence`, payload);
+  return data;
+}
+
+export async function recordWorkOrderRelease(
+  id: string,
+  payload: { releaseStatus: 'released' | 'quarantined' | 'rejected'; remarks?: string },
+): Promise<WorkOrderDetail> {
+  const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/release`, payload);
   return data;
 }
 

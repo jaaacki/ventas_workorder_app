@@ -46,6 +46,7 @@ import {
   recordWorkOrderEquipment,
   recordWorkOrderOutputQuantity,
   recordWorkOrderPhotoEvidence,
+  recordWorkOrderRelease,
   recordWorkOrderSerial,
   startWorkOrderPhase,
   finishWorkOrderPhase,
@@ -447,6 +448,149 @@ describe('workOrderService', () => {
     ).rejects.toThrow('cannot record photo evidence: image data must be a base64 data URL');
 
     expect(mocks.workOrder.findFirst).not.toHaveBeenCalled();
+    expect(mocks.workOrder.update).not.toHaveBeenCalled();
+    expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('recordWorkOrderRelease records final release disposition and writes an audit event', async () => {
+    const startedAt = new Date('2026-07-01T09:00:00Z');
+    const finishedAt = new Date('2026-07-01T11:00:00Z');
+    const workOrder = {
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-release',
+      phaseOrder: 30,
+      hetId: 'het-1',
+      prodStart: startedAt,
+      prodEnd: finishedAt,
+      prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: null,
+      releaseDecisionAt: null,
+      workflow: {
+        phases: [
+          { sortOrder: 30, phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 30 } },
+        ],
+      },
+      phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 30, bom: { lines: [] }, phaseEquips: [] },
+      sterilises: [{ id: 'ster-pass', result: true }],
+      woSerials: [],
+      phaseEquips: [],
+      batchHets: [],
+      imagePath: 'data:image/png;base64,AAAA',
+    };
+    const updated = {
+      ...workOrder,
+      releaseStatus: 'released',
+      releaseDecisionAt: new Date('2026-07-01T12:00:00Z'),
+      releaseDecisionById: 'actor1',
+      releaseRemarks: 'Approved for finished goods.',
+    };
+    mocks.workOrder.findFirst.mockResolvedValue(workOrder);
+    mocks.workOrder.findMany.mockResolvedValue([]);
+    mocks.workOrder.update.mockResolvedValue(updated);
+    mocks.workOrder.findFirstOrThrow.mockResolvedValue(updated);
+
+    const result = await recordWorkOrderRelease(
+      'wo-1',
+      { releaseStatus: 'released', remarks: 'Approved for finished goods.' },
+      'actor1',
+      'tenant-a',
+    );
+
+    expect(mocks.workOrder.update).toHaveBeenCalledWith({
+      where: { id: 'wo-1' },
+      data: expect.objectContaining({
+        releaseStatus: 'released',
+        releaseDecisionById: 'actor1',
+        releaseRemarks: 'Approved for finished goods.',
+        updatedById: 'actor1',
+      }),
+    });
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tenantId: 'tenant-a',
+          workOrderId: 'wo-1',
+          action: 'work_order.release_recorded',
+          source: 'workOrderService.recordWorkOrderRelease',
+          previousState: expect.objectContaining({ releaseStatus: null }),
+          newState: expect.objectContaining({ releaseStatus: 'released' }),
+        }),
+      }),
+    );
+    expect(result).toMatchObject({ id: 'wo-1', releaseStatus: 'released', lifecycleState: 'Released' });
+  });
+
+  it('recordWorkOrderRelease rejects work orders that are not release-ready', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-work',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: new Date('2026-07-01T09:00:00Z'),
+      prodEnd: null,
+      prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: null,
+      releaseDecisionAt: null,
+      workflow: {
+        phases: [
+          { sortOrder: 10, phase: { id: 'phase-work', phaseName: 'Production', phaseShort: 'PROD', phaseOrder: 10 } },
+          { sortOrder: 20, phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 20 } },
+        ],
+      },
+      phase: { id: 'phase-work', phaseName: 'Production', phaseShort: 'PROD', phaseOrder: 10, bom: { lines: [] }, phaseEquips: [] },
+      sterilises: [],
+      woSerials: [],
+      phaseEquips: [],
+      batchHets: [],
+    });
+    mocks.workOrder.findMany.mockResolvedValue([]);
+
+    await expect(
+      recordWorkOrderRelease('wo-1', { releaseStatus: 'released' }, 'actor1', 'tenant-a'),
+    ).rejects.toThrow('cannot release: work order is not ready for final release');
+
+    expect(mocks.workOrder.update).not.toHaveBeenCalled();
+    expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('recordWorkOrderRelease rejects work orders that already have a disposition', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-release',
+      phaseOrder: 30,
+      hetId: 'het-1',
+      prodStart: new Date('2026-07-01T09:00:00Z'),
+      prodEnd: new Date('2026-07-01T11:00:00Z'),
+      prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: 'quarantined',
+      releaseDecisionAt: new Date('2026-07-01T12:00:00Z'),
+      workflow: {
+        phases: [
+          { sortOrder: 30, phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 30 } },
+        ],
+      },
+      phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 30, bom: { lines: [] }, phaseEquips: [] },
+      sterilises: [{ id: 'ster-pass', result: true }],
+      woSerials: [],
+      phaseEquips: [],
+      batchHets: [],
+      imagePath: 'data:image/png;base64,AAAA',
+    });
+    mocks.workOrder.findMany.mockResolvedValue([]);
+
+    await expect(
+      recordWorkOrderRelease('wo-1', { releaseStatus: 'released' }, 'actor1', 'tenant-a'),
+    ).rejects.toThrow('cannot release: work order already has a release disposition');
+
     expect(mocks.workOrder.update).not.toHaveBeenCalled();
     expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
   });

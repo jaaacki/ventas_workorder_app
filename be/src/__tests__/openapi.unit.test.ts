@@ -40,6 +40,7 @@ const expectedOperations: ExpectedOperation[] = [
   { method: 'post', path: '/api/work-orders/{id}/equipment', operationId: 'recordWorkOrderEquipment', routeKind: 'lifecycle-action', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders/{id}/output-quantity', operationId: 'recordWorkOrderOutputQuantity', routeKind: 'lifecycle-action', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders/{id}/photo-evidence', operationId: 'recordWorkOrderPhotoEvidence', routeKind: 'lifecycle-action', auth: 'authenticated' },
+  { method: 'post', path: '/api/work-orders/{id}/release', operationId: 'recordWorkOrderRelease', routeKind: 'lifecycle-action', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders/{id}/serials', operationId: 'recordWorkOrderSerial', routeKind: 'lifecycle-action', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders/{id}/start', operationId: 'startWorkOrderPhase', routeKind: 'lifecycle-action', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders/{id}/finish', operationId: 'finishWorkOrderPhase', routeKind: 'lifecycle-action', auth: 'authenticated' },
@@ -232,6 +233,15 @@ describe('OpenAPI contract', () => {
     expect(workOrderTrace?.['x-method-policy']).toMatchObject({
       resource: 'Inventory trace',
       completeness: 'read-only-trace',
+      destructiveDeletes: 'not-exposed',
+    });
+
+    const releaseAction = pathItem(doc, '/api/work-orders/{id}/release')?.post;
+    expect(releaseAction?.operationId).toBe('recordWorkOrderRelease');
+    expect(releaseAction?.['x-route-kind']).toBe('lifecycle-action');
+    expect(releaseAction?.['x-method-policy']).toMatchObject({
+      resource: 'Work order release disposition',
+      completeness: 'controlled-release-action',
       destructiveDeletes: 'not-exposed',
     });
 

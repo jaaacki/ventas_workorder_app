@@ -25,10 +25,12 @@ import {
   fetchWorkOrderAuditEvents,
   fetchWorkOrderInventoryTrace,
   finishWorkOrderPhase,
+  recordWorkOrderEquipment,
   recordWorkOrderOutputQuantity,
   recordWorkOrderSerial,
   startWorkOrderPhase,
   type WorkOrderAuditEvent,
+  type WorkOrderAllowedEquipment,
   type WorkOrderDetail,
   type WorkOrderRequiredSerial,
 } from '@/lib/work-orders-api';
@@ -96,12 +98,110 @@ function stateSummary(event: WorkOrderAuditEvent) {
     previous.outputQuantity !== next.outputQuantity
       ? `Output ${formatQuantity(previous.outputQuantity)} -> ${formatQuantity(next.outputQuantity)}`
       : null,
+    previous.equipmentCount !== next.equipmentCount
+      ? `Equipment ${previous.equipmentCount ?? '-'} -> ${next.equipmentCount ?? '-'}`
+      : null,
     previous.serialCount !== next.serialCount
       ? `Serials ${previous.serialCount ?? '-'} -> ${next.serialCount ?? '-'}`
       : null,
   ].filter(Boolean);
 
   return changes.length ? changes.join(' | ') : 'No visible state delta';
+}
+
+function equipmentLabel(equipment: WorkOrderAllowedEquipment) {
+  return equipment.name || equipment.equipId || equipment.phaseEquipId;
+}
+
+function EquipmentEvidencePanel({
+  workOrder,
+  onSaved,
+}: {
+  workOrder: WorkOrderDetail;
+  onSaved: (updated: WorkOrderDetail) => void;
+}) {
+  const [phaseEquipId, setPhaseEquipId] = useState('');
+  const missingEquipment = useMemo(
+    () => workOrder.allowedEquipment.filter((equipment) => !equipment.recorded),
+    [workOrder.allowedEquipment],
+  );
+  const selectedPhaseEquipId = phaseEquipId || missingEquipment[0]?.phaseEquipId || '';
+
+  const equipmentMutation = useMutation({
+    mutationFn: () => recordWorkOrderEquipment(workOrder.id, { phaseEquipId: selectedPhaseEquipId }),
+    onSuccess: (updated) => {
+      onSaved(updated);
+      setPhaseEquipId('');
+      toast.success('Equipment recorded');
+    },
+    onError: (e: AxiosError<{ error?: string }>) =>
+      toast.error(e.response?.data?.error || 'Failed to record equipment'),
+  });
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedPhaseEquipId) return;
+    equipmentMutation.mutate();
+  };
+
+  return (
+    <AdminPanel title="Equipment evidence" description="Allowed equipment for the current phase.">
+      {!workOrder.allowedEquipment.length ? (
+        <EmptyState icon={<Boxes className="h-6 w-6" />} title="No equipment required" description="The current phase does not define allowed equipment." />
+      ) : (
+        <div className="space-y-4">
+          <form onSubmit={submit} className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+            <div className="grid gap-1.5">
+              <Label htmlFor="phase-equipment">Equipment</Label>
+              <select
+                id="phase-equipment"
+                value={selectedPhaseEquipId}
+                onChange={(event) => setPhaseEquipId(event.target.value)}
+                disabled={!missingEquipment.length}
+                className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              >
+                {missingEquipment.length ? null : <option value="">All equipment recorded</option>}
+                {missingEquipment.map((equipment) => (
+                  <option key={equipment.phaseEquipId} value={equipment.phaseEquipId}>
+                    {equipmentLabel(equipment)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Button type="submit" disabled={!selectedPhaseEquipId || equipmentMutation.isPending}>
+              Record
+            </Button>
+          </form>
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Equipment</TableHead>
+                <TableHead>Asset</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {workOrder.allowedEquipment.map((equipment) => (
+                <TableRow key={equipment.phaseEquipId}>
+                  <TableCell>
+                    <div className="font-medium text-gray-800 dark:text-white/90">{equipmentLabel(equipment)}</div>
+                    <div className="text-xs text-gray-500">{equipment.description || equipment.phaseEquipId}</div>
+                  </TableCell>
+                  <TableCell>{equipment.equipId || '-'}</TableCell>
+                  <TableCell>
+                    <StatusPill tone={equipment.recorded ? 'success' : 'warning'}>
+                      {equipment.recorded ? 'Recorded' : 'Missing'}
+                    </StatusPill>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </AdminPanel>
+  );
 }
 
 function OutputEvidencePanel({
@@ -315,6 +415,10 @@ export default function WorkOrderDetailPage() {
     updateCachedWorkOrder(updated);
   };
 
+  const recordEquipmentSaved = (updated: WorkOrderDetail) => {
+    updateCachedWorkOrder(updated);
+  };
+
   const recordOutputSaved = (updated: WorkOrderDetail) => {
     updateCachedWorkOrder(updated);
   };
@@ -400,6 +504,8 @@ export default function WorkOrderDetailPage() {
       </AdminPanel>
 
       <OutputEvidencePanel key={workOrder.id} workOrder={workOrder} onSaved={recordOutputSaved} />
+
+      <EquipmentEvidencePanel workOrder={workOrder} onSaved={recordEquipmentSaved} />
 
       <SerialEvidencePanel workOrder={workOrder} onSaved={recordSerialSaved} />
 

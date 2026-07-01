@@ -86,6 +86,7 @@ const workOrderExample = {
   workflow: { id: 'wf-amgraft', name: 'AmGraft Standard', code: 'AMGRAFT_STD' },
   phase: { id: 'phase-intake', phaseName: 'Intake', phaseShort: 'INT', phaseOrder: 10 },
   requiredSerials: [{ bomRefId: 'bom-line-membrane', description: 'AmGraft membrane', quantity: '1', uom: 'ea', serialNumber: null }],
+  allowedEquipment: [{ phaseEquipId: 'equip-heat-sealer', equipId: 'EQ-SEAL-01', name: 'Heat sealer', description: 'Validated pouch heat sealer', recorded: false }],
 };
 
 const workOrderAuditEventExample = {
@@ -106,6 +107,7 @@ const workOrderAuditEventExample = {
     prodEnd: null,
     prodDurationMinutes: null,
     outputQuantity: null,
+    equipmentCount: 0,
     serialCount: 0,
   },
   newState: {
@@ -119,6 +121,7 @@ const workOrderAuditEventExample = {
     prodEnd: null,
     prodDurationMinutes: null,
     outputQuantity: null,
+    equipmentCount: 0,
     serialCount: 0,
   },
   createdAt: '2026-07-01T09:00:00.000Z',
@@ -206,6 +209,12 @@ const successExamples: Record<string, unknown> = {
   getWorkOrder: workOrderExample,
   listWorkOrderAuditEvents: [workOrderAuditEventExample],
   getWorkOrderInventoryTrace: inventoryTraceExample,
+  recordWorkOrderEquipment: {
+    ...workOrderExample,
+    phaseEquips: [{ phaseEquip: { id: 'equip-heat-sealer', equipId: 'EQ-SEAL-01', name: 'Heat sealer' } }],
+    allowedEquipment: [{ phaseEquipId: 'equip-heat-sealer', equipId: 'EQ-SEAL-01', name: 'Heat sealer', description: 'Validated pouch heat sealer', recorded: true }],
+    counts: { serials: 0, equipment: 1, sterilisationRecords: 0 },
+  },
   recordWorkOrderOutputQuantity: { ...workOrderExample, outputQuantity: '1.0000' },
   recordWorkOrderSerial: {
     ...workOrderExample,
@@ -279,6 +288,7 @@ const requestExamples: Record<string, unknown> = {
   createWorkflow: { name: 'AmGraft Standard', code: 'AMGRAFT_STD', description: 'Standard AmGraft processing workflow', phases: [{ phaseId: 'phase-intake', sortOrder: 10 }] },
   updateWorkflow: { description: 'Updated workflow description', active: true, phases: [{ phaseId: 'phase-intake', sortOrder: 10 }] },
   createWorkOrder: { workflowId: 'wf-amgraft', hetId: 'het-1001' },
+  recordWorkOrderEquipment: { phaseEquipId: 'equip-heat-sealer' },
   recordWorkOrderOutputQuantity: { outputQuantity: '1.0000' },
   recordWorkOrderSerial: { bomRefId: 'bom-line-membrane', serialNumber: 'SN-AMG-1001' },
   startWorkOrderPhase: { signatureDataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB' },
@@ -485,6 +495,14 @@ const methodPolicies: Record<string, MethodPolicy> = {
     omittedMethods: [{ method: 'PATCH/DELETE', reason: 'Phase execution is append-like state transition behavior, not generic resource editing.' }],
     destructiveDeletes: 'not-exposed',
     notes: 'Starts the current phase with optional signature evidence.',
+  },
+  recordWorkOrderEquipment: {
+    resource: 'Work order equipment evidence',
+    completeness: 'controlled-execution-evidence',
+    allowedMethods: ['POST'],
+    omittedMethods: [{ method: 'DELETE', reason: 'Equipment-use evidence is retained; corrections should be audit-backed rather than destructive.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Captures equipment used from the current phase allowed-equipment catalog and writes a work-order audit event.',
   },
   recordWorkOrderOutputQuantity: {
     resource: 'Work order output evidence',

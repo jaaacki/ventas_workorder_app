@@ -87,6 +87,14 @@ export interface WorkOrderRequiredSerial {
   serialNumber: string | null;
 }
 
+export interface WorkOrderAllowedEquipment {
+  phaseEquipId: string;
+  equipId: string | null;
+  name: string | null;
+  description: string | null;
+  recorded: boolean;
+}
+
 export interface WorkOrderSummary {
   id: string;
   woNumber: string | null;
@@ -118,6 +126,7 @@ export interface WorkOrderSummary {
   serialCheckDone: boolean;
   serialRequiredCount: number;
   requiredSerials: WorkOrderRequiredSerial[];
+  allowedEquipment: WorkOrderAllowedEquipment[];
   combinedHetCheck: boolean;
   phaseTimeline: WorkOrderPhaseTimelineItem[];
   counts: WorkOrderCounts;
@@ -167,6 +176,7 @@ export interface WorkOrderAuditState {
   prodEnd: string | null;
   prodDurationMinutes: string | null;
   outputQuantity: string | null;
+  equipmentCount?: number | null;
   serialCount?: number | null;
 }
 
@@ -235,6 +245,14 @@ export async function recordWorkOrderOutputQuantity(
   payload: { outputQuantity: string },
 ): Promise<WorkOrderDetail> {
   const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/output-quantity`, payload);
+  return data;
+}
+
+export async function recordWorkOrderEquipment(
+  id: string,
+  payload: { phaseEquipId: string },
+): Promise<WorkOrderDetail> {
+  const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/equipment`, payload);
   return data;
 }
 

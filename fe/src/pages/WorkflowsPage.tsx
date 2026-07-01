@@ -2,16 +2,40 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 import {
+  createBom,
+  createBomLine,
   fetchPhases,
+  fetchBoms,
+  fetchBomLines,
+  fetchPhaseEquipment,
+  fetchProcedures,
   fetchWorkflow,
   fetchWorkflows,
   createPhase,
+  createPhaseEquipment,
+  createProcedure,
   createWorkflow,
+  deleteBom,
+  deleteBomLine,
   deletePhase,
+  deletePhaseEquipment,
+  deleteProcedure,
+  updateBom,
+  updateBomLine,
   updatePhase,
+  updatePhaseEquipment,
+  updateProcedure,
   updateWorkflow,
+  type BomCatalogItem,
+  type BomLineCatalogItem,
+  type BomLineMutationPayload,
+  type BomMutationPayload,
   type PhaseCatalogItem,
+  type PhaseEquipmentCatalogItem,
+  type PhaseEquipmentMutationPayload,
   type PhaseMutationPayload,
+  type ProcedureCatalogItem,
+  type ProcedureMutationPayload,
   type WorkflowDetail,
   type WorkflowPhaseBinding,
   type WorkflowSummary,
@@ -22,7 +46,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AdminPanel, EmptyState, MetricCard, PageHeader, StatusPill } from '@/components/tailadmin';
 import { toast } from 'sonner';
-import { ArrowDown, ArrowUp, Boxes, Edit3, Link2, Plus, Save, Trash2, Workflow as WorkflowIcon } from 'lucide-react';
+import { ArrowDown, ArrowUp, Boxes, Edit3, Link2, Plus, Save, Trash2, Wrench, Workflow as WorkflowIcon } from 'lucide-react';
 
 function phaseLabel(phase?: PhaseCatalogItem | WorkflowPhaseBinding['phase'] | null) {
   if (!phase) return 'Unknown phase';
@@ -31,6 +55,14 @@ function phaseLabel(phase?: PhaseCatalogItem | WorkflowPhaseBinding['phase'] | n
 
 function workflowSortValue(binding: Pick<WorkflowPhaseBinding, 'sortOrder'>, index: number) {
   return binding.sortOrder ?? (index + 1) * 10;
+}
+
+function catalogLabel(item: { id: string }, primary?: string | null, secondary?: string | null) {
+  return primary || secondary || item.id;
+}
+
+function errorMessage(e: AxiosError<{ error?: string }>, fallback: string) {
+  return e.response?.data?.error || fallback;
 }
 
 function WorkflowCard({
@@ -406,6 +438,549 @@ function PhaseCatalogPanel({ phases, isLoading }: { phases: PhaseCatalogItem[]; 
   );
 }
 
+function WorkflowMasterDataPanel({
+  procedures,
+  boms,
+  bomLines,
+  phaseEquipment,
+  isLoading,
+}: {
+  procedures: ProcedureCatalogItem[];
+  boms: BomCatalogItem[];
+  bomLines: BomLineCatalogItem[];
+  phaseEquipment: PhaseEquipmentCatalogItem[];
+  isLoading: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [procedureEditingId, setProcedureEditingId] = useState<string | null>(null);
+  const [procedureName, setProcedureName] = useState('');
+  const [procedureShort, setProcedureShort] = useState('');
+  const [procedureDesc, setProcedureDesc] = useState('');
+  const [bomEditingId, setBomEditingId] = useState<string | null>(null);
+  const [bomName, setBomName] = useState('');
+  const [bomKeyText, setBomKeyText] = useState('');
+  const [bomLineEditingId, setBomLineEditingId] = useState<string | null>(null);
+  const [bomLineBomId, setBomLineBomId] = useState('');
+  const [bomLineDescription, setBomLineDescription] = useState('');
+  const [bomLineQuantity, setBomLineQuantity] = useState('');
+  const [bomLineUom, setBomLineUom] = useState('');
+  const [bomLineHasSerial, setBomLineHasSerial] = useState(false);
+  const [equipmentEditingId, setEquipmentEditingId] = useState<string | null>(null);
+  const [equipmentId, setEquipmentId] = useState('');
+  const [equipmentName, setEquipmentName] = useState('');
+  const [equipmentDescription, setEquipmentDescription] = useState('');
+
+  const invalidateMasterData = () => {
+    queryClient.invalidateQueries({ queryKey: ['procedures'] });
+    queryClient.invalidateQueries({ queryKey: ['boms'] });
+    queryClient.invalidateQueries({ queryKey: ['bom-lines'] });
+    queryClient.invalidateQueries({ queryKey: ['phase-equipment'] });
+  };
+
+  const resetProcedure = () => {
+    setProcedureEditingId(null);
+    setProcedureName('');
+    setProcedureShort('');
+    setProcedureDesc('');
+  };
+
+  const resetBom = () => {
+    setBomEditingId(null);
+    setBomName('');
+    setBomKeyText('');
+  };
+
+  const resetBomLine = () => {
+    setBomLineEditingId(null);
+    setBomLineBomId('');
+    setBomLineDescription('');
+    setBomLineQuantity('');
+    setBomLineUom('');
+    setBomLineHasSerial(false);
+  };
+
+  const resetEquipment = () => {
+    setEquipmentEditingId(null);
+    setEquipmentId('');
+    setEquipmentName('');
+    setEquipmentDescription('');
+  };
+
+  const procedureMutationPayload = (): ProcedureMutationPayload => ({
+    procedureName: procedureName.trim() || null,
+    procedureShort: procedureShort.trim() || null,
+    procedureDesc: procedureDesc.trim() || null,
+  });
+
+  const bomMutationPayload = (): BomMutationPayload => ({
+    bomName: bomName.trim() || null,
+    keyText: bomKeyText.trim() || null,
+  });
+
+  const bomLineMutationPayload = (): BomLineMutationPayload => ({
+    bomId: bomLineBomId,
+    description: bomLineDescription.trim() || null,
+    quantity: bomLineQuantity.trim() || null,
+    uom: bomLineUom.trim() || null,
+    hasSerial: bomLineHasSerial,
+  });
+
+  const equipmentMutationPayload = (): PhaseEquipmentMutationPayload => ({
+    equipId: equipmentId.trim() || null,
+    name: equipmentName.trim() || null,
+    description: equipmentDescription.trim() || null,
+  });
+
+  const createProcedureMutation = useMutation({
+    mutationFn: createProcedure,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['procedures'] });
+      toast.success('Procedure created');
+      resetProcedure();
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to create procedure')),
+  });
+
+  const updateProcedureMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: ProcedureMutationPayload }) => updateProcedure(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['procedures'] });
+      toast.success('Procedure updated');
+      resetProcedure();
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to update procedure')),
+  });
+
+  const deleteProcedureMutation = useMutation({
+    mutationFn: deleteProcedure,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['procedures'] });
+      toast.success('Procedure deleted');
+      resetProcedure();
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to delete procedure')),
+  });
+
+  const createBomMutation = useMutation({
+    mutationFn: createBom,
+    onSuccess: () => {
+      invalidateMasterData();
+      toast.success('BOM created');
+      resetBom();
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to create BOM')),
+  });
+
+  const updateBomMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: BomMutationPayload }) => updateBom(id, payload),
+    onSuccess: () => {
+      invalidateMasterData();
+      toast.success('BOM updated');
+      resetBom();
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to update BOM')),
+  });
+
+  const deleteBomMutation = useMutation({
+    mutationFn: deleteBom,
+    onSuccess: () => {
+      invalidateMasterData();
+      toast.success('BOM deleted');
+      resetBom();
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to delete BOM')),
+  });
+
+  const createBomLineMutation = useMutation({
+    mutationFn: createBomLine,
+    onSuccess: () => {
+      invalidateMasterData();
+      toast.success('BOM line created');
+      resetBomLine();
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to create BOM line')),
+  });
+
+  const updateBomLineMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: BomLineMutationPayload }) => updateBomLine(id, payload),
+    onSuccess: () => {
+      invalidateMasterData();
+      toast.success('BOM line updated');
+      resetBomLine();
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to update BOM line')),
+  });
+
+  const deleteBomLineMutation = useMutation({
+    mutationFn: deleteBomLine,
+    onSuccess: () => {
+      invalidateMasterData();
+      toast.success('BOM line deleted');
+      resetBomLine();
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to delete BOM line')),
+  });
+
+  const createEquipmentMutation = useMutation({
+    mutationFn: createPhaseEquipment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['phase-equipment'] });
+      toast.success('Equipment created');
+      resetEquipment();
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to create equipment')),
+  });
+
+  const updateEquipmentMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: PhaseEquipmentMutationPayload }) => updatePhaseEquipment(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['phase-equipment'] });
+      toast.success('Equipment updated');
+      resetEquipment();
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to update equipment')),
+  });
+
+  const deleteEquipmentMutation = useMutation({
+    mutationFn: deletePhaseEquipment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['phase-equipment'] });
+      toast.success('Equipment deleted');
+      resetEquipment();
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to delete equipment')),
+  });
+
+  const submitProcedure = (event: FormEvent) => {
+    event.preventDefault();
+    if (!procedureName.trim() && !procedureShort.trim()) return;
+    const payload = procedureMutationPayload();
+    if (procedureEditingId) updateProcedureMutation.mutate({ id: procedureEditingId, payload });
+    else createProcedureMutation.mutate(payload);
+  };
+
+  const submitBom = (event: FormEvent) => {
+    event.preventDefault();
+    if (!bomName.trim()) return;
+    const payload = bomMutationPayload();
+    if (bomEditingId) updateBomMutation.mutate({ id: bomEditingId, payload });
+    else createBomMutation.mutate(payload);
+  };
+
+  const submitBomLine = (event: FormEvent) => {
+    event.preventDefault();
+    if (!bomLineBomId || !bomLineDescription.trim()) return;
+    const payload = bomLineMutationPayload();
+    if (bomLineEditingId) updateBomLineMutation.mutate({ id: bomLineEditingId, payload });
+    else createBomLineMutation.mutate({ ...payload, bomId: bomLineBomId });
+  };
+
+  const submitEquipment = (event: FormEvent) => {
+    event.preventDefault();
+    if (!equipmentName.trim() && !equipmentId.trim()) return;
+    const payload = equipmentMutationPayload();
+    if (equipmentEditingId) updateEquipmentMutation.mutate({ id: equipmentEditingId, payload });
+    else createEquipmentMutation.mutate(payload);
+  };
+
+  const busy =
+    createProcedureMutation.isPending ||
+    updateProcedureMutation.isPending ||
+    deleteProcedureMutation.isPending ||
+    createBomMutation.isPending ||
+    updateBomMutation.isPending ||
+    deleteBomMutation.isPending ||
+    createBomLineMutation.isPending ||
+    updateBomLineMutation.isPending ||
+    deleteBomLineMutation.isPending ||
+    createEquipmentMutation.isPending ||
+    updateEquipmentMutation.isPending ||
+    deleteEquipmentMutation.isPending;
+
+  return (
+    <AdminPanel title="Workflow master data" description="Administer procedure, BOM, BOM-line, and equipment catalogs used by phase setup.">
+      {isLoading ? (
+        <div className="flex h-40 items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <form onSubmit={submitProcedure} className="grid gap-3 lg:grid-cols-[1fr_160px_1.5fr_auto] lg:items-end">
+            <div className="grid gap-1.5">
+              <Label htmlFor="procedure-name">Procedure</Label>
+              <Input id="procedure-name" value={procedureName} onChange={(event) => setProcedureName(event.target.value)} placeholder="Intake checklist" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="procedure-short">Short</Label>
+              <Input id="procedure-short" value={procedureShort} onChange={(event) => setProcedureShort(event.target.value)} placeholder="INTAKE" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="procedure-desc">Description</Label>
+              <Input id="procedure-desc" value={procedureDesc} onChange={(event) => setProcedureDesc(event.target.value)} placeholder="optional" />
+            </div>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={busy || (!procedureName.trim() && !procedureShort.trim())}>
+                {procedureEditingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                {procedureEditingId ? 'Save' : 'Create'}
+              </Button>
+              {procedureEditingId ? <Button type="button" variant="outline" onClick={resetProcedure} disabled={busy}>Cancel</Button> : null}
+            </div>
+          </form>
+
+          {procedures.length ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Procedure</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {procedures.map((procedure) => (
+                  <TableRow key={procedure.id}>
+                    <TableCell>
+                      <div className="font-medium text-gray-800 dark:text-white/90">{catalogLabel(procedure, procedure.procedureName, procedure.procedureShort)}</div>
+                      <div className="break-all text-xs text-gray-500">{procedure.procedureShort || procedure.id}</div>
+                    </TableCell>
+                    <TableCell className="whitespace-normal">{procedure.procedureDesc || '-'}</TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-2">
+                        <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => {
+                          setProcedureEditingId(procedure.id);
+                          setProcedureName(procedure.procedureName || '');
+                          setProcedureShort(procedure.procedureShort || '');
+                          setProcedureDesc(procedure.procedureDesc || '');
+                        }}>
+                          <Edit3 className="h-4 w-4" />
+                        </Button>
+                        <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => {
+                          if (window.confirm(`Delete ${catalogLabel(procedure, procedure.procedureName, procedure.procedureShort)}?`)) deleteProcedureMutation.mutate(procedure.id);
+                        }}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : null}
+
+          <div className="grid gap-6 xl:grid-cols-2">
+            <div className="space-y-4">
+              <form onSubmit={submitBom} className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="bom-name">BOM</Label>
+                  <Input id="bom-name" value={bomName} onChange={(event) => setBomName(event.target.value)} placeholder="AmGraft intake BOM" />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="bom-key">Key</Label>
+                  <Input id="bom-key" value={bomKeyText} onChange={(event) => setBomKeyText(event.target.value)} placeholder="optional" />
+                </div>
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={busy || !bomName.trim()}>
+                    {bomEditingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                    {bomEditingId ? 'Save' : 'Create'}
+                  </Button>
+                  {bomEditingId ? <Button type="button" variant="outline" onClick={resetBom} disabled={busy}>Cancel</Button> : null}
+                </div>
+              </form>
+
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>BOM</TableHead>
+                    <TableHead>Lines</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {boms.map((bom) => (
+                    <TableRow key={bom.id}>
+                      <TableCell>
+                        <div className="font-medium text-gray-800 dark:text-white/90">{catalogLabel(bom, bom.bomName, bom.keyText)}</div>
+                        <div className="break-all text-xs text-gray-500">{bom.keyText || bom.id}</div>
+                      </TableCell>
+                      <TableCell>{bom._count?.lines ?? bomLines.filter((line) => line.bomId === bom.id).length}</TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-2">
+                          <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => {
+                            setBomEditingId(bom.id);
+                            setBomName(bom.bomName || '');
+                            setBomKeyText(bom.keyText || '');
+                          }}>
+                            <Edit3 className="h-4 w-4" />
+                          </Button>
+                          <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => {
+                            if (window.confirm(`Delete ${catalogLabel(bom, bom.bomName, bom.keyText)}?`)) deleteBomMutation.mutate(bom.id);
+                          }}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="space-y-4">
+              <form onSubmit={submitEquipment} className="grid gap-3 md:grid-cols-[150px_1fr_1fr_auto] md:items-end">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="equipment-id">Equipment ID</Label>
+                  <Input id="equipment-id" value={equipmentId} onChange={(event) => setEquipmentId(event.target.value)} placeholder="EQ-1" />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="equipment-name">Equipment</Label>
+                  <Input id="equipment-name" value={equipmentName} onChange={(event) => setEquipmentName(event.target.value)} placeholder="Heat sealer" />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="equipment-description">Description</Label>
+                  <Input id="equipment-description" value={equipmentDescription} onChange={(event) => setEquipmentDescription(event.target.value)} placeholder="optional" />
+                </div>
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={busy || (!equipmentName.trim() && !equipmentId.trim())}>
+                    {equipmentEditingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                    {equipmentEditingId ? 'Save' : 'Create'}
+                  </Button>
+                  {equipmentEditingId ? <Button type="button" variant="outline" onClick={resetEquipment} disabled={busy}>Cancel</Button> : null}
+                </div>
+              </form>
+
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Equipment</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {phaseEquipment.map((equipment) => (
+                    <TableRow key={equipment.id}>
+                      <TableCell>
+                        <div className="font-medium text-gray-800 dark:text-white/90">{catalogLabel(equipment, equipment.name, equipment.equipId)}</div>
+                        <div className="break-all text-xs text-gray-500">{equipment.equipId || equipment.id}</div>
+                      </TableCell>
+                      <TableCell className="whitespace-normal">{equipment.description || '-'}</TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-2">
+                          <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => {
+                            setEquipmentEditingId(equipment.id);
+                            setEquipmentId(equipment.equipId || '');
+                            setEquipmentName(equipment.name || '');
+                            setEquipmentDescription(equipment.description || '');
+                          }}>
+                            <Edit3 className="h-4 w-4" />
+                          </Button>
+                          <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => {
+                            if (window.confirm(`Delete ${catalogLabel(equipment, equipment.name, equipment.equipId)}?`)) deleteEquipmentMutation.mutate(equipment.id);
+                          }}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          <form onSubmit={submitBomLine} className="grid gap-3 lg:grid-cols-[1fr_1.5fr_120px_100px_auto_auto] lg:items-end">
+            <div className="grid gap-1.5">
+              <Label htmlFor="bom-line-bom">BOM</Label>
+              <select
+                id="bom-line-bom"
+                value={bomLineBomId}
+                onChange={(event) => setBomLineBomId(event.target.value)}
+                className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              >
+                <option value="">Select BOM</option>
+                {boms.map((bom) => (
+                  <option key={bom.id} value={bom.id}>{catalogLabel(bom, bom.bomName, bom.keyText)}</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="bom-line-description">Line</Label>
+              <Input id="bom-line-description" value={bomLineDescription} onChange={(event) => setBomLineDescription(event.target.value)} placeholder="AmGraft membrane" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="bom-line-quantity">Quantity</Label>
+              <Input id="bom-line-quantity" type="number" step="0.0001" value={bomLineQuantity} onChange={(event) => setBomLineQuantity(event.target.value)} placeholder="1" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="bom-line-uom">UOM</Label>
+              <Input id="bom-line-uom" value={bomLineUom} onChange={(event) => setBomLineUom(event.target.value)} placeholder="ea" />
+            </div>
+            <label className="flex h-11 items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input type="checkbox" checked={bomLineHasSerial} onChange={(event) => setBomLineHasSerial(event.target.checked)} />
+              Serial
+            </label>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={busy || !bomLineBomId || !bomLineDescription.trim()}>
+                {bomLineEditingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                {bomLineEditingId ? 'Save' : 'Create'}
+              </Button>
+              {bomLineEditingId ? <Button type="button" variant="outline" onClick={resetBomLine} disabled={busy}>Cancel</Button> : null}
+            </div>
+          </form>
+
+          {bomLines.length ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>BOM line</TableHead>
+                  <TableHead>BOM</TableHead>
+                  <TableHead>Qty</TableHead>
+                  <TableHead>Serial</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {bomLines.map((line) => (
+                  <TableRow key={line.id}>
+                    <TableCell>
+                      <div className="font-medium text-gray-800 dark:text-white/90">{line.description || line.id}</div>
+                      <div className="break-all text-xs text-gray-500">{line.keyText || line.id}</div>
+                    </TableCell>
+                    <TableCell>{boms.find((bom) => bom.id === line.bomId)?.bomName || line.bomName || line.bomId}</TableCell>
+                    <TableCell>{line.quantity ?? '-'} {line.uom || ''}</TableCell>
+                    <TableCell>{line.hasSerial ? 'Yes' : 'No'}</TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-2">
+                        <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => {
+                          setBomLineEditingId(line.id);
+                          setBomLineBomId(line.bomId);
+                          setBomLineDescription(line.description || '');
+                          setBomLineQuantity(line.quantity == null ? '' : String(line.quantity));
+                          setBomLineUom(line.uom || '');
+                          setBomLineHasSerial(line.hasSerial);
+                        }}>
+                          <Edit3 className="h-4 w-4" />
+                        </Button>
+                        <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => {
+                          if (window.confirm(`Delete ${line.description || line.id}?`)) deleteBomLineMutation.mutate(line.id);
+                        }}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <EmptyState icon={<Wrench className="h-6 w-6" />} title="No BOM lines yet" description="Create a BOM header before adding material or serial requirements." />
+          )}
+        </div>
+      )}
+    </AdminPanel>
+  );
+}
+
 export default function WorkflowsPage() {
   const queryClient = useQueryClient();
   const { data: workflows, isLoading } = useQuery({
@@ -415,6 +990,22 @@ export default function WorkflowsPage() {
   const phasesQuery = useQuery({
     queryKey: ['phases'],
     queryFn: fetchPhases,
+  });
+  const proceduresQuery = useQuery({
+    queryKey: ['procedures'],
+    queryFn: fetchProcedures,
+  });
+  const bomsQuery = useQuery({
+    queryKey: ['boms'],
+    queryFn: fetchBoms,
+  });
+  const bomLinesQuery = useQuery({
+    queryKey: ['bom-lines'],
+    queryFn: () => fetchBomLines(),
+  });
+  const phaseEquipmentQuery = useQuery({
+    queryKey: ['phase-equipment'],
+    queryFn: fetchPhaseEquipment,
   });
 
   const [name, setName] = useState('');
@@ -535,6 +1126,14 @@ export default function WorkflowsPage() {
       </AdminPanel>
 
       <PhaseCatalogPanel phases={phasesQuery.data ?? []} isLoading={phasesQuery.isLoading} />
+
+      <WorkflowMasterDataPanel
+        procedures={proceduresQuery.data ?? []}
+        boms={bomsQuery.data ?? []}
+        bomLines={bomLinesQuery.data ?? []}
+        phaseEquipment={phaseEquipmentQuery.data ?? []}
+        isLoading={proceduresQuery.isLoading || bomsQuery.isLoading || bomLinesQuery.isLoading || phaseEquipmentQuery.isLoading}
+      />
 
       <PhaseBindingsPanel
         key={workflowQuery.data?.id ?? effectiveSelectedWorkflowId ?? 'none'}

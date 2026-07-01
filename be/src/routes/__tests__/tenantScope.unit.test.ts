@@ -14,6 +14,28 @@ const mocks = vi.hoisted(() => ({
     updatePhase: vi.fn(),
     deletePhase: vi.fn(),
   },
+  masterDataService: {
+    listProcedures: vi.fn(),
+    getProcedure: vi.fn(),
+    createProcedure: vi.fn(),
+    updateProcedure: vi.fn(),
+    deleteProcedure: vi.fn(),
+    listBoms: vi.fn(),
+    getBom: vi.fn(),
+    createBom: vi.fn(),
+    updateBom: vi.fn(),
+    deleteBom: vi.fn(),
+    listBomLines: vi.fn(),
+    getBomLine: vi.fn(),
+    createBomLine: vi.fn(),
+    updateBomLine: vi.fn(),
+    deleteBomLine: vi.fn(),
+    listPhaseEquipment: vi.fn(),
+    getPhaseEquipment: vi.fn(),
+    createPhaseEquipment: vi.fn(),
+    updatePhaseEquipment: vi.fn(),
+    deletePhaseEquipment: vi.fn(),
+  },
   workOrderService: {
     listWorkOrders: vi.fn(),
     getWorkOrder: vi.fn(),
@@ -72,6 +94,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../services/workflowService.js', () => mocks.workflowService);
 vi.mock('../../services/phaseService.js', () => mocks.phaseService);
+vi.mock('../../services/masterDataService.js', () => mocks.masterDataService);
 vi.mock('../../services/workOrderService.js', () => mocks.workOrderService);
 vi.mock('../../services/sterilisationService.js', () => mocks.sterilisationService);
 vi.mock('../../services/manufacturingService.js', () => mocks.manufacturingService);
@@ -112,6 +135,54 @@ const phaseDetail = {
   keyText: null,
   createdAt: now,
   updatedAt: now,
+};
+
+const procedureDetail = {
+  id: 'procedure-1',
+  tenantId,
+  procedureName: 'Intake checklist',
+  procedureDesc: null,
+  procedureShort: 'INTAKE',
+  keyText: null,
+  createdAt: now,
+  updatedAt: now,
+};
+
+const bomDetail = {
+  id: 'bom-1',
+  tenantId,
+  bomName: 'Intake BOM',
+  keyText: null,
+  createdAt: now,
+  updatedAt: now,
+  _count: { lines: 0, phases: 0 },
+};
+
+const bomLineDetail = {
+  id: 'bom-line-1',
+  tenantId,
+  bomId: 'bom-1',
+  bomName: 'Intake BOM',
+  description: 'Membrane',
+  quantity: '1.0000',
+  uom: 'ea',
+  hasSerial: true,
+  deleted: false,
+  keyText: null,
+  createdAt: now,
+  updatedAt: now,
+};
+
+const phaseEquipmentDetail = {
+  id: 'equip-1',
+  tenantId,
+  equipId: 'EQ-1',
+  name: 'Heat sealer',
+  description: null,
+  keyText: null,
+  createdAt: now,
+  updatedAt: now,
+  _count: { phases: 0, workOrders: 0 },
 };
 
 const workOrderDetail = {
@@ -267,6 +338,26 @@ function resetServiceMocks() {
   mocks.phaseService.createPhase.mockResolvedValue(phaseDetail);
   mocks.phaseService.updatePhase.mockResolvedValue(phaseDetail);
   mocks.phaseService.deletePhase.mockResolvedValue({ success: true });
+  mocks.masterDataService.listProcedures.mockResolvedValue([]);
+  mocks.masterDataService.getProcedure.mockResolvedValue(null);
+  mocks.masterDataService.createProcedure.mockResolvedValue(procedureDetail);
+  mocks.masterDataService.updateProcedure.mockResolvedValue(procedureDetail);
+  mocks.masterDataService.deleteProcedure.mockResolvedValue({ success: true });
+  mocks.masterDataService.listBoms.mockResolvedValue([]);
+  mocks.masterDataService.getBom.mockResolvedValue(null);
+  mocks.masterDataService.createBom.mockResolvedValue(bomDetail);
+  mocks.masterDataService.updateBom.mockResolvedValue(bomDetail);
+  mocks.masterDataService.deleteBom.mockResolvedValue({ success: true });
+  mocks.masterDataService.listBomLines.mockResolvedValue([]);
+  mocks.masterDataService.getBomLine.mockResolvedValue(null);
+  mocks.masterDataService.createBomLine.mockResolvedValue(bomLineDetail);
+  mocks.masterDataService.updateBomLine.mockResolvedValue(bomLineDetail);
+  mocks.masterDataService.deleteBomLine.mockResolvedValue({ success: true });
+  mocks.masterDataService.listPhaseEquipment.mockResolvedValue([]);
+  mocks.masterDataService.getPhaseEquipment.mockResolvedValue(null);
+  mocks.masterDataService.createPhaseEquipment.mockResolvedValue(phaseEquipmentDetail);
+  mocks.masterDataService.updatePhaseEquipment.mockResolvedValue(phaseEquipmentDetail);
+  mocks.masterDataService.deletePhaseEquipment.mockResolvedValue({ success: true });
   mocks.workOrderService.listWorkOrders.mockResolvedValue([]);
   mocks.workOrderService.getWorkOrder.mockResolvedValue(null);
   mocks.workOrderService.listWorkOrderAuditEvents.mockResolvedValue([]);
@@ -371,6 +462,34 @@ describe('route tenant propagation', () => {
 
       await get('/api/phases/phase-1');
       expect(mocks.phaseService.getPhase).toHaveBeenCalledWith('phase-1', tenantId);
+
+      await get('/api/master-data/procedures');
+      expect(mocks.masterDataService.listProcedures).toHaveBeenCalledWith(tenantId);
+
+      await get('/api/master-data/procedures/procedure-1');
+      expect(mocks.masterDataService.getProcedure).toHaveBeenCalledWith('procedure-1', tenantId);
+
+      await get('/api/master-data/boms');
+      expect(mocks.masterDataService.listBoms).toHaveBeenCalledWith(tenantId);
+
+      await get('/api/master-data/boms/bom-1');
+      expect(mocks.masterDataService.getBom).toHaveBeenCalledWith('bom-1', tenantId);
+
+      await get('/api/master-data/bom-lines?bomId=bom-1&includeDeleted=true');
+      expect(mocks.masterDataService.listBomLines).toHaveBeenCalledWith({
+        tenantId,
+        bomId: 'bom-1',
+        includeDeleted: true,
+      });
+
+      await get('/api/master-data/bom-lines/bom-line-1');
+      expect(mocks.masterDataService.getBomLine).toHaveBeenCalledWith('bom-line-1', tenantId);
+
+      await get('/api/master-data/phase-equipment');
+      expect(mocks.masterDataService.listPhaseEquipment).toHaveBeenCalledWith(tenantId);
+
+      await get('/api/master-data/phase-equipment/equip-1');
+      expect(mocks.masterDataService.getPhaseEquipment).toHaveBeenCalledWith('equip-1', tenantId);
 
       await get('/api/work-orders');
       expect(mocks.workOrderService.listWorkOrders).toHaveBeenCalledWith(tenantId);
@@ -541,6 +660,89 @@ describe('route tenant propagation', () => {
 
       await injectJson('DELETE', '/api/phases/phase-1');
       expect(mocks.phaseService.deletePhase).toHaveBeenCalledWith('phase-1', tenantId);
+
+      await injectJson('POST', '/api/master-data/procedures', {
+        procedureName: 'Intake checklist',
+        procedureShort: 'INTAKE',
+      });
+      expect(mocks.masterDataService.createProcedure).toHaveBeenCalledWith(
+        { procedureName: 'Intake checklist', procedureShort: 'INTAKE' },
+        adminActorId,
+        tenantId,
+      );
+
+      await injectJson('PATCH', '/api/master-data/procedures/procedure-1', { procedureDesc: 'Updated' });
+      expect(mocks.masterDataService.updateProcedure).toHaveBeenCalledWith(
+        'procedure-1',
+        { procedureDesc: 'Updated' },
+        adminActorId,
+        tenantId,
+      );
+
+      await injectJson('DELETE', '/api/master-data/procedures/procedure-1');
+      expect(mocks.masterDataService.deleteProcedure).toHaveBeenCalledWith('procedure-1', tenantId);
+
+      await injectJson('POST', '/api/master-data/boms', { bomName: 'Intake BOM' });
+      expect(mocks.masterDataService.createBom).toHaveBeenCalledWith(
+        { bomName: 'Intake BOM' },
+        adminActorId,
+        tenantId,
+      );
+
+      await injectJson('PATCH', '/api/master-data/boms/bom-1', { keyText: 'BOM' });
+      expect(mocks.masterDataService.updateBom).toHaveBeenCalledWith(
+        'bom-1',
+        { keyText: 'BOM' },
+        adminActorId,
+        tenantId,
+      );
+
+      await injectJson('DELETE', '/api/master-data/boms/bom-1');
+      expect(mocks.masterDataService.deleteBom).toHaveBeenCalledWith('bom-1', tenantId);
+
+      await injectJson('POST', '/api/master-data/bom-lines', {
+        bomId: 'bom-1',
+        description: 'Membrane',
+        quantity: '1.0000',
+        hasSerial: true,
+      });
+      expect(mocks.masterDataService.createBomLine).toHaveBeenCalledWith(
+        { bomId: 'bom-1', description: 'Membrane', quantity: '1.0000', hasSerial: true },
+        adminActorId,
+        tenantId,
+      );
+
+      await injectJson('PATCH', '/api/master-data/bom-lines/bom-line-1', { quantity: '2.0000' });
+      expect(mocks.masterDataService.updateBomLine).toHaveBeenCalledWith(
+        'bom-line-1',
+        { quantity: '2.0000' },
+        adminActorId,
+        tenantId,
+      );
+
+      await injectJson('DELETE', '/api/master-data/bom-lines/bom-line-1');
+      expect(mocks.masterDataService.deleteBomLine).toHaveBeenCalledWith('bom-line-1', adminActorId, tenantId);
+
+      await injectJson('POST', '/api/master-data/phase-equipment', {
+        equipId: 'EQ-1',
+        name: 'Heat sealer',
+      });
+      expect(mocks.masterDataService.createPhaseEquipment).toHaveBeenCalledWith(
+        { equipId: 'EQ-1', name: 'Heat sealer' },
+        adminActorId,
+        tenantId,
+      );
+
+      await injectJson('PATCH', '/api/master-data/phase-equipment/equip-1', { description: 'Updated' });
+      expect(mocks.masterDataService.updatePhaseEquipment).toHaveBeenCalledWith(
+        'equip-1',
+        { description: 'Updated' },
+        adminActorId,
+        tenantId,
+      );
+
+      await injectJson('DELETE', '/api/master-data/phase-equipment/equip-1');
+      expect(mocks.masterDataService.deletePhaseEquipment).toHaveBeenCalledWith('equip-1', tenantId);
 
       await injectJson('POST', '/api/work-orders', { workflowId: 'workflow-1', hetId: 'het-1' });
       expect(mocks.workOrderService.createWorkOrder).toHaveBeenCalledWith(

@@ -69,6 +69,12 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Work Orders'],
+        summary: 'List work orders',
+        description: 'Read active production work orders with workflow summaries for the production board.',
+        operationId: 'listWorkOrders',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
         response: { 200: z.array(workOrderSummarySchema), 401: errorResponse },
       },
     },
@@ -82,6 +88,12 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Work Orders'],
+        summary: 'Get work order',
+        description: 'Read one production work order with its workflow and current phase summary.',
+        operationId: 'getWorkOrder',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
         params: z.object({ id: z.string() }),
         response: { 200: workOrderDetailSchema, 401: errorResponse, 404: errorResponse },
       },
@@ -100,6 +112,12 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('admin', 'owner')],
       schema: {
+        tags: ['Work Orders'],
+        summary: 'Create work order',
+        description: 'Create a new production run at the first phase of the selected workflow. Admin or owner role required.',
+        operationId: 'createWorkOrder',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
         body: createBodySchema,
         response: {
           201: workOrderDetailSchema,
@@ -196,6 +214,12 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Work Orders'],
+        summary: 'Advance work order',
+        description: 'Move a production run to the next workflow phase when lifecycle gates are satisfied.',
+        operationId: 'advanceWorkOrder',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
         params: z.object({ id: z.string() }),
         response: {
           200: workOrderDetailSchema,

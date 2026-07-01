@@ -37,6 +37,12 @@ export const hetRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['HETs'],
+        summary: 'List HETs',
+        description: 'Read non-deleted HET records available to production.',
+        operationId: 'listHets',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
         response: { 200: z.array(hetSchema), 401: errorResponse },
       },
     },
@@ -50,6 +56,12 @@ export const hetRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('admin', 'owner')],
       schema: {
+        tags: ['HETs'],
+        summary: 'Mark HET in use',
+        description: 'Link a HET to the work order currently using it. Admin or owner role required.',
+        operationId: 'useHet',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
         params: z.object({ id: z.string() }),
         body: hetLinkBodySchema,
         response: {
@@ -87,6 +99,12 @@ export const hetRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('admin', 'owner')],
       schema: {
+        tags: ['HETs'],
+        summary: 'Mark HET finished',
+        description: 'Link a HET to the work order that finished consuming or producing it. Admin or owner role required.',
+        operationId: 'finishHet',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
         params: z.object({ id: z.string() }),
         body: hetLinkBodySchema,
         response: {

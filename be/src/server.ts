@@ -5,6 +5,7 @@ import jwt from '@fastify/jwt';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { parseEnv } from './config/env.js';
 import authPlugin from './plugins/auth.js';
+import { registerOpenApi } from './plugins/openapi.js';
 import { authRoutes } from './auth/routes.js';
 import { oauthRoutes } from './auth/oauth.js';
 import { healthRoutes } from './routes/health.js';
@@ -33,6 +34,8 @@ async function buildServer() {
   app.setSerializerCompiler(serializerCompiler);
 
   app.decorate('config', config);
+
+  await registerOpenApi(app);
 
   await app.register(cookie, {
     secret: config.JWT_SECRET,

@@ -198,6 +198,11 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
     '/:provider/authorize',
     {
       schema: {
+        tags: ['Auth'],
+        summary: 'Start OAuth authorization',
+        description: 'Start Google or Microsoft OAuth authorization and redirect to the provider.',
+        operationId: 'authorizeOAuthProvider',
+        'x-route-kind': 'auth',
         params: z.object({ provider: providerParam }),
         response: {
           302: z.any(),
@@ -247,6 +252,11 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
     '/:provider/callback',
     {
       schema: {
+        tags: ['Auth'],
+        summary: 'Handle OAuth callback',
+        description: 'Handle a Google or Microsoft OAuth callback, provision or update the local staff user, and redirect to the frontend.',
+        operationId: 'handleOAuthCallback',
+        'x-route-kind': 'auth',
         params: z.object({ provider: providerParam }),
         querystring: z.object({
           code: z.string().optional(),

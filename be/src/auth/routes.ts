@@ -48,6 +48,11 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
     '/login',
     {
       schema: {
+        tags: ['Auth'],
+        summary: 'Log in',
+        description: 'Authenticate with local email/password credentials and receive a JWT.',
+        operationId: 'login',
+        'x-route-kind': 'auth',
         body: z.object({
           email: z.string().email(),
           password: z.string().min(1),
@@ -90,6 +95,12 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('owner')],
       schema: {
+        tags: ['Auth'],
+        summary: 'Register staff user',
+        description: 'Create a staff user with a local password. Owner role required.',
+        operationId: 'registerStaff',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'auth',
         body: z.object({
           email: z.string().email(),
           password: z.string().min(8),
@@ -131,6 +142,12 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Auth'],
+        summary: 'Get current user',
+        description: 'Read the authenticated staff profile and role.',
+        operationId: 'getCurrentUser',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'auth',
         response: {
           200: userSchema,
           401: errorResponse,
@@ -151,6 +168,12 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Auth'],
+        summary: 'Log out',
+        description: 'Client-side logout acknowledgement for JWT-based sessions.',
+        operationId: 'logout',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'auth',
         response: {
           200: z.object({ success: z.boolean() }),
           401: errorResponse,
@@ -167,6 +190,12 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Auth'],
+        summary: 'List roles',
+        description: 'Read available RBAC roles ordered for display.',
+        operationId: 'listRoles',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
         response: {
           200: z.array(roleSchema),
           401: errorResponse,
@@ -183,6 +212,12 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('owner')],
       schema: {
+        tags: ['Auth'],
+        summary: 'Update role',
+        description: 'Patch role display metadata. Owner role required.',
+        operationId: 'updateRole',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'resource-crud',
         params: z.object({ id: z.string() }),
         body: z.object({
           name: z.string().min(1).optional(),
@@ -213,6 +248,12 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('admin', 'owner')],
       schema: {
+        tags: ['Auth'],
+        summary: 'List staff',
+        description: 'Read staff users with role details. Admin or owner role required.',
+        operationId: 'listStaff',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
         response: {
           200: z.array(userSchema),
           401: errorResponse,
@@ -235,6 +276,12 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('owner')],
       schema: {
+        tags: ['Auth'],
+        summary: 'Update staff role',
+        description: 'Assign a role to a staff user. Owner role required.',
+        operationId: 'updateStaffRole',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'resource-crud',
         params: z.object({ id: z.string() }),
         body: z.object({ roleId: z.string() }),
         response: {
@@ -268,6 +315,12 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('admin', 'owner')],
       schema: {
+        tags: ['Auth'],
+        summary: 'Update staff active state',
+        description: 'Activate or deactivate a staff user. Admin or owner role required.',
+        operationId: 'updateStaffActive',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'resource-crud',
         params: z.object({ id: z.string() }),
         body: z.object({ active: z.boolean() }),
         response: {

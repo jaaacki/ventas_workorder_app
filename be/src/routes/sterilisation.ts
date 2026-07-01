@@ -56,6 +56,12 @@ export const sterilisationRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('admin', 'owner')],
       schema: {
+        tags: ['Sterilisation'],
+        summary: 'Create sterilisation record',
+        description: 'Create an IN/OUT sterilisation or BET record linked to a work order. Admin or owner role required.',
+        operationId: 'createSterilisation',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
         body: createBodySchema,
         response: {
           201: steriliseDetailSchema,
@@ -93,6 +99,12 @@ export const sterilisationRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Sterilisation'],
+        summary: 'List sterilisation records',
+        description: 'Read sterilisation and BET records for a specific work order.',
+        operationId: 'listSterilisations',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
         querystring: z.object({ workOrderId: z.string().min(1) }),
         response: {
           200: z.array(steriliseDetailSchema),
@@ -110,6 +122,12 @@ export const sterilisationRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('admin', 'owner')],
       schema: {
+        tags: ['Sterilisation'],
+        summary: 'Set sterilisation result',
+        description: 'Update the pass/fail result for a sterilisation or BET record. Admin or owner role required.',
+        operationId: 'setSterilisationResult',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
         params: z.object({ id: z.string() }),
         body: patchBodySchema,
         response: {

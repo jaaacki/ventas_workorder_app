@@ -9,6 +9,7 @@ import {
   Factory,
   FlaskConical,
   GitBranch,
+  History,
   PackageSearch,
   Route,
 } from 'lucide-react';
@@ -18,9 +19,11 @@ import { AdminPanel, EmptyState, MetricCard, PageHeader, StatusPill } from '@/co
 import {
   advanceWorkOrder,
   fetchWorkOrder,
+  fetchWorkOrderAuditEvents,
   fetchWorkOrderInventoryTrace,
   finishWorkOrderPhase,
   startWorkOrderPhase,
+  type WorkOrderAuditEvent,
   type WorkOrderDetail,
 } from '@/lib/work-orders-api';
 import { statusTone, workflowLabel } from '@/lib/work-order-ui';
@@ -32,6 +35,36 @@ function formatDate(value?: string | null) {
 
 function workOrderTitle(workOrder: WorkOrderDetail) {
   return workOrder.woNumber || workOrder.id;
+}
+
+function actionLabel(action: string) {
+  return action
+    .replace(/^work_order\./, '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function stateSummary(event: WorkOrderAuditEvent) {
+  const previous = event.previousState;
+  const next = event.newState;
+  if (!previous && next) {
+    return `Created at phase ${next.phaseOrder ?? '-'}`;
+  }
+  if (!previous || !next) return '-';
+
+  const changes = [
+    previous.phaseId !== next.phaseId || previous.phaseOrder !== next.phaseOrder
+      ? `Phase ${previous.phaseOrder ?? '-'} -> ${next.phaseOrder ?? '-'}`
+      : null,
+    previous.prodStart !== next.prodStart
+      ? `Start ${previous.prodStart ? formatDate(previous.prodStart) : '-'} -> ${next.prodStart ? formatDate(next.prodStart) : '-'}`
+      : null,
+    previous.prodEnd !== next.prodEnd
+      ? `End ${previous.prodEnd ? formatDate(previous.prodEnd) : '-'} -> ${next.prodEnd ? formatDate(next.prodEnd) : '-'}`
+      : null,
+  ].filter(Boolean);
+
+  return changes.length ? changes.join(' | ') : 'No visible state delta';
 }
 
 export default function WorkOrderDetailPage() {
@@ -50,10 +83,17 @@ export default function WorkOrderDetailPage() {
     enabled: Boolean(id),
   });
 
+  const auditQuery = useQuery({
+    queryKey: ['work-order-audit-events', id],
+    queryFn: () => fetchWorkOrderAuditEvents(id!),
+    enabled: Boolean(id),
+  });
+
   const updateCachedWorkOrder = (updated: WorkOrderDetail) => {
     queryClient.setQueryData(['work-order', updated.id], updated);
     queryClient.invalidateQueries({ queryKey: ['work-orders'] });
     queryClient.invalidateQueries({ queryKey: ['work-order-inventory-trace', updated.id] });
+    queryClient.invalidateQueries({ queryKey: ['work-order-audit-events', updated.id] });
   };
 
   const startMutation = useMutation({
@@ -154,6 +194,41 @@ export default function WorkOrderDetailPage() {
           starting={startMutation.isPending}
           finishing={finishMutation.isPending}
         />
+      </AdminPanel>
+
+      <AdminPanel title="Audit trail" description="Controlled lifecycle events recorded for this production run.">
+        {auditQuery.isLoading ? (
+          <div className="flex h-32 items-center justify-center">
+            <div className="h-7 w-7 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+          </div>
+        ) : auditQuery.isError || !auditQuery.data ? (
+          <EmptyState icon={<History className="h-6 w-6" />} title="Audit unavailable" description="Audit events could not be loaded for this work order." />
+        ) : auditQuery.data.length ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>When</TableHead>
+                <TableHead>Action</TableHead>
+                <TableHead>Actor</TableHead>
+                <TableHead>State change</TableHead>
+                <TableHead>Source</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {auditQuery.data.map((event) => (
+                <TableRow key={event.id}>
+                  <TableCell>{formatDate(event.createdAt)}</TableCell>
+                  <TableCell>{actionLabel(event.action)}</TableCell>
+                  <TableCell>{event.actorId || '-'}</TableCell>
+                  <TableCell>{stateSummary(event)}</TableCell>
+                  <TableCell>{event.source}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <EmptyState icon={<History className="h-6 w-6" />} title="No audit events" description="No controlled lifecycle events have been recorded for this work order yet." />
+        )}
       </AdminPanel>
 
       <AdminPanel title="Inventory trace" description="Lots, movements, genealogy, and HET/work-order links associated with this production run.">

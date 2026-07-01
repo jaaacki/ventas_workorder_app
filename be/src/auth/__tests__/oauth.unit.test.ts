@@ -4,7 +4,8 @@ vi.mock('../../db/prisma.js', () => ({
   prisma: {},
 }));
 
-import { buildOAuthCallbackUrl, isProviderConfigured, normalizeCertificateThumbprint } from '../oauth.js';
+import { buildOAuthCallbackUrl, getProviderConfig, isProviderConfigured, normalizeCertificateThumbprint } from '../oauth.js';
+import type { Env } from '../../config/env.js';
 
 describe('OAuth callback URL handling', () => {
   it('preserves provider callback params that route validation does not model', () => {
@@ -50,6 +51,32 @@ describe('OAuth provider configuration', () => {
 
   it('requires thumbprint or certificate material with private-key auth', () => {
     expect(isProviderConfigured({ ...baseConfig, privateKeyFile: '/run/secrets/workorder-ms.key' })).toBe(false);
+  });
+});
+
+describe('Microsoft OAuth scopes', () => {
+  const env = {
+    NODE_ENV: 'test',
+    PORT: 3001,
+    LOG_LEVEL: 'info',
+    DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
+    JWT_SECRET: 'test-secret-at-least-16-chars',
+    FRONTEND_URL: 'http://localhost:3000',
+    MS_CLIENT_ID: 'client-id',
+    MS_TENANT: 'ventas-bio',
+    MS_REDIRECT_URI: 'http://localhost:3001/api/auth/oauth/microsoft/callback',
+    MS_CERT_THUMBPRINT: 'A5:D2:31:23:C1:C6:ED:C1:C3:DE:32:35:A8:0C:7F:A6:E3:D9:69:F5',
+    MS_PRIVATE_KEY_FILE: '/run/secrets/workorder-ms.key',
+  } satisfies Env;
+
+  it('does not request Microsoft Graph User.Read by default', () => {
+    expect(getProviderConfig('microsoft', env).scope).toBe('openid email profile');
+  });
+
+  it('allows an explicit Microsoft scope override', () => {
+    expect(getProviderConfig('microsoft', { ...env, MS_SCOPE: 'openid email profile User.Read' }).scope).toBe(
+      'openid email profile User.Read'
+    );
   });
 });
 

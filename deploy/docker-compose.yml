@@ -44,6 +44,7 @@ services:
       MS_CERTIFICATE: ${MS_CERTIFICATE:-}
       MS_CERTIFICATE_FILE: ${MS_CERTIFICATE_FILE:-}
       MS_CERT_THUMBPRINT: ${MS_CERT_THUMBPRINT:-}
+      MS_SCOPE: ${MS_SCOPE:-openid email profile}
       MS_TENANT: ${MS_TENANT:-common}
       MS_REDIRECT_URI: ${MS_REDIRECT_URI:-http://localhost:3001/api/auth/oauth/microsoft/callback}
       BITRIX_WEBHOOK_URL: ${BITRIX_WEBHOOK_URL:-}

@@ -11,6 +11,19 @@ export interface WorkflowSummary {
   _count: { phases: number; workOrders: number };
 }
 
+export interface PhaseCatalogItem {
+  id: string;
+  tenantId: string;
+  phaseName: string | null;
+  phaseShort: string | null;
+  phaseOrder: number | null;
+  description: string | null;
+  bomId: string | null;
+  keyText: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface WorkflowPhaseBinding {
   workflowId: string;
   phaseId: string;
@@ -56,6 +69,11 @@ export async function fetchWorkflow(id: string): Promise<WorkflowDetail> {
   return data;
 }
 
+export async function fetchPhases(): Promise<PhaseCatalogItem[]> {
+  const { data } = await api.get<PhaseCatalogItem[]>('/api/phases');
+  return data;
+}
+
 export async function createWorkflow(payload: {
   name: string;
   code: string;
@@ -68,7 +86,7 @@ export async function createWorkflow(payload: {
 
 export async function updateWorkflow(
   id: string,
-  payload: { name?: string; description?: string | null; active?: boolean },
+  payload: { name?: string; description?: string | null; active?: boolean; phases?: { phaseId: string; sortOrder: number }[] },
 ): Promise<WorkflowDetail> {
   const { data } = await api.patch<WorkflowDetail>(`/api/workflows/${id}`, payload);
   return data;

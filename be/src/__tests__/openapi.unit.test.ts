@@ -30,6 +30,7 @@ const expectedOperations: ExpectedOperation[] = [
   { method: 'post', path: '/api/workflows', operationId: 'createWorkflow', routeKind: 'resource-crud', auth: 'role', requiredRoles: ['admin', 'owner'] },
   { method: 'get', path: '/api/workflows/{id}', operationId: 'getWorkflow', routeKind: 'resource-crud', auth: 'authenticated' },
   { method: 'patch', path: '/api/workflows/{id}', operationId: 'updateWorkflow', routeKind: 'resource-crud', auth: 'role', requiredRoles: ['admin', 'owner'] },
+  { method: 'get', path: '/api/phases', operationId: 'listPhases', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/work-orders', operationId: 'listWorkOrders', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders', operationId: 'createWorkOrder', routeKind: 'lifecycle-action', auth: 'role', requiredRoles: ['admin', 'owner'] },
   { method: 'get', path: '/api/work-orders/{id}', operationId: 'getWorkOrder', routeKind: 'read-model', auth: 'authenticated' },

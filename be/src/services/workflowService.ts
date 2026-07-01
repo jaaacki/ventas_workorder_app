@@ -45,6 +45,34 @@ function phaseCreateMany(phases: WorkflowPhaseInput[]) {
   return phases.map(({ phaseId, sortOrder }) => ({ phaseId, sortOrder }));
 }
 
+function knownRequestError(code: string, message: string) {
+  return new Prisma.PrismaClientKnownRequestError(message, {
+    code,
+    clientVersion: 'unknown',
+  });
+}
+
+function uniquePhaseIds(phases: WorkflowPhaseInput[]) {
+  return [...new Set(phases.map(({ phaseId }) => phaseId))];
+}
+
+async function assertTenantPhasesExist(
+  tx: Pick<Prisma.TransactionClient, 'phase'>,
+  phases: WorkflowPhaseInput[],
+  tenantId: string,
+) {
+  const phaseIds = uniquePhaseIds(phases);
+  if (phaseIds.length === 0) return;
+
+  const tenantPhases = await tx.phase.findMany({
+    where: { tenantId, id: { in: phaseIds } },
+    select: { id: true },
+  });
+  if (tenantPhases.length !== phaseIds.length) {
+    throw knownRequestError('P2003', 'Referenced phase does not exist');
+  }
+}
+
 export async function listWorkflows(options: ListWorkflowsOptions = {}, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
   return prisma.workflow.findMany({
@@ -72,9 +100,11 @@ export async function getWorkflowByCode(code: string, tenantId?: string | null) 
 
 export async function createWorkflow(input: CreateWorkflowInput, actorId: string, tenantId?: string | null) {
   const phases = input.phases ?? [];
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  await assertTenantPhasesExist(prisma, phases, scopedTenantId);
   return prisma.workflow.create({
     data: {
-      tenantId: tenantIdOrDefault(tenantId),
+      tenantId: scopedTenantId,
       name: input.name,
       code: input.code,
       description: input.description ?? null,
@@ -104,6 +134,7 @@ export async function updateWorkflow(id: string, input: UpdateWorkflowInput, act
     }
     // Replace phase bindings atomically when a new set is supplied.
     if (replacePhases !== undefined) {
+      await assertTenantPhasesExist(tx, replacePhases, scopedTenantId);
       await tx.workflowPhase.deleteMany({ where: { workflowId: id } });
     }
     return tx.workflow.update({

@@ -59,6 +59,19 @@ const workflowExample = {
   ],
 };
 
+const phaseExample = {
+  id: 'phase-intake',
+  tenantId: 'ventas',
+  phaseName: 'Intake',
+  phaseShort: 'INT',
+  phaseOrder: 10,
+  description: 'Initial HET intake and preparation.',
+  bomId: 'bom-amgraft-intake',
+  keyText: 'INTAKE',
+  createdAt: '2026-07-01T00:00:00.000Z',
+  updatedAt: '2026-07-01T00:00:00.000Z',
+};
+
 const workOrderExample = {
   id: 'WO-1001',
   woNumber: 'WO-1001',
@@ -181,6 +194,7 @@ const successExamples: Record<string, unknown> = {
   createWorkflow: workflowExample,
   getWorkflow: workflowExample,
   updateWorkflow: { ...workflowExample, description: 'Updated workflow description' },
+  listPhases: [phaseExample],
   listWorkOrders: [workOrderExample],
   createWorkOrder: workOrderExample,
   getWorkOrder: workOrderExample,
@@ -407,6 +421,14 @@ const methodPolicies: Record<string, MethodPolicy> = {
     omittedMethods: [{ method: 'DELETE', reason: 'Use active=false instead of deleting workflow history.' }],
     destructiveDeletes: 'not-exposed',
     notes: 'Admin/owner metadata and phase-binding update path.',
+  },
+  listPhases: {
+    resource: 'Phase',
+    completeness: 'read-model-master-data',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'POST/PATCH/DELETE', reason: 'Phase catalog mutation UI/API is not completed yet; workflows can bind existing tenant phases.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Tenant-scoped phase catalog used by workflow configuration phase binding.',
   },
   listWorkOrders: {
     resource: 'Work order',

@@ -66,7 +66,7 @@ function getProviderConfig(provider: z.infer<typeof providerParam>, env: Env): P
   const tenant = env.MS_TENANT || 'common';
   return {
     issuerUrl: `https://login.microsoftonline.com/${tenant}/v2.0`,
-    scope: 'openid email profile User.Read',
+    scope: 'openid email profile',
     clientId: env.MS_CLIENT_ID,
     clientSecret: env.MS_CLIENT_SECRET,
     privateKey: env.MS_PRIVATE_KEY,
@@ -302,7 +302,14 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
       }
 
       const claims = tokenSet.claims();
-      let email = typeof claims?.email === 'string' ? claims.email.toLowerCase() : undefined;
+      let email =
+        typeof claims?.email === 'string'
+          ? claims.email.toLowerCase()
+          : typeof claims?.preferred_username === 'string'
+            ? claims.preferred_username.toLowerCase()
+            : typeof claims?.upn === 'string'
+              ? claims.upn.toLowerCase()
+              : undefined;
       let name = typeof claims?.name === 'string' ? claims.name : undefined;
       const providerId = typeof claims?.sub === 'string' ? claims.sub : undefined;
 

@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
     getWorkOrder: vi.fn(),
     listWorkOrderAuditEvents: vi.fn(),
     createWorkOrder: vi.fn(),
+    recordWorkOrderSerial: vi.fn(),
     startWorkOrderPhase: vi.fn(),
     finishWorkOrderPhase: vi.fn(),
     advanceWorkOrder: vi.fn(),
@@ -144,6 +145,7 @@ const workOrderDetail = {
   parityGaps: [],
   serialCheckDone: false,
   serialRequiredCount: 0,
+  requiredSerials: [],
   combinedHetCheck: false,
   phaseTimeline: [],
   counts: { serials: 0, equipment: 0, sterilisationRecords: 0 },
@@ -237,6 +239,7 @@ function resetServiceMocks() {
   mocks.workOrderService.getWorkOrder.mockResolvedValue(null);
   mocks.workOrderService.listWorkOrderAuditEvents.mockResolvedValue([]);
   mocks.workOrderService.createWorkOrder.mockResolvedValue(workOrderDetail);
+  mocks.workOrderService.recordWorkOrderSerial.mockResolvedValue(workOrderDetail);
   mocks.workOrderService.startWorkOrderPhase.mockResolvedValue(workOrderDetail);
   mocks.workOrderService.finishWorkOrderPhase.mockResolvedValue(workOrderDetail);
   mocks.workOrderService.advanceWorkOrder.mockResolvedValue(workOrderDetail);
@@ -513,6 +516,19 @@ describe('route tenant propagation', () => {
 
       await injectJson('POST', '/api/work-orders/wo-1/advance', undefined, userToken);
       expect(mocks.workOrderService.advanceWorkOrder).toHaveBeenCalledWith('wo-1', userActorId, tenantId);
+
+      await injectJson(
+        'POST',
+        '/api/work-orders/wo-1/serials',
+        { bomRefId: 'bom-line-1', serialNumber: 'SER-001' },
+        userToken,
+      );
+      expect(mocks.workOrderService.recordWorkOrderSerial).toHaveBeenCalledWith(
+        'wo-1',
+        { bomRefId: 'bom-line-1', serialNumber: 'SER-001' },
+        userActorId,
+        tenantId,
+      );
 
       await injectJson('POST', '/api/sterilisation', {
         workOrderId: 'wo-1',

@@ -1,3 +1,4 @@
+import { useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
@@ -14,6 +15,8 @@ import {
   Route,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AdminPanel, EmptyState, MetricCard, PageHeader, StatusPill } from '@/components/tailadmin';
 import {
@@ -22,9 +25,11 @@ import {
   fetchWorkOrderAuditEvents,
   fetchWorkOrderInventoryTrace,
   finishWorkOrderPhase,
+  recordWorkOrderSerial,
   startWorkOrderPhase,
   type WorkOrderAuditEvent,
   type WorkOrderDetail,
+  type WorkOrderRequiredSerial,
 } from '@/lib/work-orders-api';
 import { statusTone, workflowLabel } from '@/lib/work-order-ui';
 import { WorkOrderWorkspace } from './WorkOrdersPage';
@@ -80,9 +85,118 @@ function stateSummary(event: WorkOrderAuditEvent) {
     previous.prodDurationMinutes !== next.prodDurationMinutes
       ? `Duration ${formatDurationMinutes(previous.prodDurationMinutes)} -> ${formatDurationMinutes(next.prodDurationMinutes)}`
       : null,
+    previous.serialCount !== next.serialCount
+      ? `Serials ${previous.serialCount ?? '-'} -> ${next.serialCount ?? '-'}`
+      : null,
   ].filter(Boolean);
 
   return changes.length ? changes.join(' | ') : 'No visible state delta';
+}
+
+function serialLabel(serial: WorkOrderRequiredSerial) {
+  return serial.description || serial.bomRefId;
+}
+
+function SerialEvidencePanel({
+  workOrder,
+  onSaved,
+}: {
+  workOrder: WorkOrderDetail;
+  onSaved: (updated: WorkOrderDetail) => void;
+}) {
+  const [bomRefId, setBomRefId] = useState('');
+  const [serialNumber, setSerialNumber] = useState('');
+  const missingSerials = useMemo(
+    () => workOrder.requiredSerials.filter((serial) => !serial.serialNumber),
+    [workOrder.requiredSerials],
+  );
+  const selectedBomRefId = bomRefId || missingSerials[0]?.bomRefId || workOrder.requiredSerials[0]?.bomRefId || '';
+
+  const serialMutation = useMutation({
+    mutationFn: () => recordWorkOrderSerial(workOrder.id, { bomRefId: selectedBomRefId, serialNumber: serialNumber.trim() }),
+    onSuccess: (updated) => {
+      onSaved(updated);
+      setBomRefId('');
+      setSerialNumber('');
+      toast.success('Serial recorded');
+    },
+    onError: (e: AxiosError<{ error?: string }>) =>
+      toast.error(e.response?.data?.error || 'Failed to record serial'),
+  });
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedBomRefId || !serialNumber.trim()) return;
+    serialMutation.mutate();
+  };
+
+  return (
+    <AdminPanel title="BOM serial evidence" description="Serial-required BOM lines for the current phase.">
+      {!workOrder.requiredSerials.length ? (
+        <EmptyState icon={<ClipboardList className="h-6 w-6" />} title="No serials required" description="The current phase does not require BOM serial capture." />
+      ) : (
+        <div className="space-y-4">
+          <form onSubmit={submit} className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+            <div className="grid gap-1.5">
+              <Label htmlFor="serial-bom-line">BOM line</Label>
+              <select
+                id="serial-bom-line"
+                value={selectedBomRefId}
+                onChange={(event) => setBomRefId(event.target.value)}
+                className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              >
+                {workOrder.requiredSerials.map((serial) => (
+                  <option key={serial.bomRefId} value={serial.bomRefId}>
+                    {serialLabel(serial)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="serial-number">Serial number</Label>
+              <Input
+                id="serial-number"
+                value={serialNumber}
+                onChange={(event) => setSerialNumber(event.target.value)}
+                placeholder="SN-AMG-1001"
+              />
+            </div>
+            <Button type="submit" disabled={!selectedBomRefId || !serialNumber.trim() || serialMutation.isPending}>
+              Record
+            </Button>
+          </form>
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>BOM line</TableHead>
+                <TableHead>Quantity</TableHead>
+                <TableHead>Serial</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {workOrder.requiredSerials.map((serial) => (
+                <TableRow key={serial.bomRefId}>
+                  <TableCell>
+                    <div className="font-medium text-gray-800 dark:text-white/90">{serialLabel(serial)}</div>
+                    <div className="break-all text-xs text-gray-500">{serial.bomRefId}</div>
+                  </TableCell>
+                  <TableCell>{serial.quantity ?? '-'} {serial.uom || ''}</TableCell>
+                  <TableCell>{serial.serialNumber || '-'}</TableCell>
+                  <TableCell>
+                    <StatusPill tone={serial.serialNumber ? 'success' : 'warning'}>
+                      {serial.serialNumber ? 'Captured' : 'Missing'}
+                    </StatusPill>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </AdminPanel>
+  );
 }
 
 export default function WorkOrderDetailPage() {
@@ -133,6 +247,10 @@ export default function WorkOrderDetailPage() {
     onError: (e: AxiosError<{ error?: string }>) =>
       toast.error(e.response?.data?.error || 'Failed to finish phase'),
   });
+
+  const recordSerialSaved = (updated: WorkOrderDetail) => {
+    updateCachedWorkOrder(updated);
+  };
 
   const advanceMutation = useMutation({
     mutationFn: () => advanceWorkOrder(id!),
@@ -213,6 +331,8 @@ export default function WorkOrderDetailPage() {
           finishing={finishMutation.isPending}
         />
       </AdminPanel>
+
+      <SerialEvidencePanel workOrder={workOrder} onSaved={recordSerialSaved} />
 
       <AdminPanel title="Audit trail" description="Controlled lifecycle events recorded for this production run.">
         {auditQuery.isLoading ? (

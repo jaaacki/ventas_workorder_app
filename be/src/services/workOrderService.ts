@@ -9,6 +9,7 @@ export interface CreateWorkOrderInput {
 
 type WorkOrderAuditAction =
   | 'work_order.created'
+  | 'work_order.serial_recorded'
   | 'work_order.phase_started'
   | 'work_order.phase_finished'
   | 'work_order.phase_advanced';
@@ -23,6 +24,7 @@ interface WorkOrderAuditState extends Prisma.InputJsonObject {
   prodStart: string | null;
   prodEnd: string | null;
   prodDurationMinutes: string | null;
+  serialCount?: number | null;
 }
 
 /**
@@ -37,7 +39,7 @@ const workOrderDetailInclude = {
       phaseName: true,
       phaseShort: true,
       phaseOrder: true,
-      bom: { select: { lines: { where: { deleted: false }, select: { id: true } } } },
+      bom: { select: { lines: { where: { deleted: false }, select: { id: true, description: true, quantity: true, uom: true, hasSerial: true } } } },
     },
   },
   nextPhase: { select: { id: true, phaseName: true, phaseShort: true, phaseOrder: true } },
@@ -112,7 +114,7 @@ function auditState(
   workOrder: Pick<
     WorkOrder,
     'id' | 'tenantId' | 'workflowId' | 'phaseId' | 'phaseOrder' | 'hetId' | 'prodStart' | 'prodEnd' | 'prodDuration'
-  >,
+  > & { woSerials?: unknown[] },
 ): WorkOrderAuditState {
   return {
     id: workOrder.id,
@@ -124,6 +126,7 @@ function auditState(
     prodStart: workOrder.prodStart?.toISOString() ?? null,
     prodEnd: workOrder.prodEnd?.toISOString() ?? null,
     prodDurationMinutes: workOrder.prodDuration?.toString() ?? null,
+    ...(workOrder.woSerials ? { serialCount: workOrder.woSerials.length } : {}),
   };
 }
 
@@ -291,8 +294,12 @@ function getLegacyWorkOrderState(workOrder: OperationalWorkOrder, context: Legac
   const phaseShort = workOrder.nextPhase?.phaseShort ?? workOrder.phase?.phaseShort ?? workOrder.phaseShort;
   const currentPhaseShort = workOrder.phase?.phaseShort ?? workOrder.phaseShort;
   const currentSterilisation = workOrder.steralisationCurrent ?? null;
-  const serialRequiredCount = workOrder.phase?.bom?.lines?.length ?? 0;
-  const serialCheckDone = serialRequiredCount - (workOrder.woSerials?.length ?? 0) === 0;
+  const serialRequiredLines = workOrder.phase?.bom?.lines?.filter((line) => line.hasSerial) ?? [];
+  const serialRequiredCount = serialRequiredLines.length;
+  const capturedSerialBomRefIds = new Set(
+    (workOrder.woSerials ?? []).map((serial) => serial.bomRef?.id).filter(Boolean),
+  );
+  const serialCheckDone = serialRequiredLines.every((line) => capturedSerialBomRefIds.has(line.id));
   const combinedHetCheck = (workOrder.batchHets?.length ?? 0) > 0;
   const hasImageParityGap = true;
   let legacyStateBucket: LegacyStateBucket;
@@ -350,6 +357,16 @@ function getLegacyWorkOrderState(workOrder: OperationalWorkOrder, context: Legac
     parityGaps: hasImageParityGap ? ['workOrder.image is not present in the imported schema; AppSheet image gating cannot be satisfied yet'] : [],
     serialCheckDone,
     serialRequiredCount,
+    requiredSerials: serialRequiredLines.map((line) => {
+      const captured = workOrder.woSerials?.find((serial) => serial.bomRef?.id === line.id);
+      return {
+        bomRefId: line.id,
+        description: line.description,
+        quantity: line.quantity,
+        uom: line.uom,
+        serialNumber: captured?.serialNumber ?? null,
+      };
+    }),
     combinedHetCheck,
   };
 }
@@ -452,6 +469,86 @@ export async function listWorkOrderAuditEvents(id: string, tenantId?: string | n
     previousState: event.previousState as WorkOrderAuditState | null,
     newState: event.newState as WorkOrderAuditState | null,
   }));
+}
+
+export async function recordWorkOrderSerial(
+  id: string,
+  input: { bomRefId: string; serialNumber: string },
+  actorId: string,
+  tenantId?: string | null,
+) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const workOrder = await prisma.workOrder.findFirst({
+    where: { id, tenantId: scopedTenantId },
+    select: {
+      id: true,
+      tenantId: true,
+      workflowId: true,
+      phaseId: true,
+      phaseOrder: true,
+      hetId: true,
+      prodStart: true,
+      prodEnd: true,
+      prodDuration: true,
+      phase: {
+        select: {
+          bom: {
+            select: {
+              lines: {
+                where: { deleted: false },
+                select: { id: true, hasSerial: true },
+              },
+            },
+          },
+        },
+      },
+      woSerials: { select: { id: true } },
+    },
+  });
+
+  if (!workOrder) {
+    throw new Prisma.PrismaClientKnownRequestError('Work order not found', {
+      code: 'P2025',
+      clientVersion: 'unknown',
+    });
+  }
+
+  const requiredBomLine = workOrder.phase?.bom?.lines.find((line) => line.id === input.bomRefId && line.hasSerial);
+  if (!requiredBomLine) {
+    throw new Error('cannot record serial: BOM line is not serial-required for the current phase');
+  }
+
+  const serialId = `${id}:${input.bomRefId}`;
+  const existingSerial = workOrder.woSerials.some((serial) => serial.id === serialId);
+  await prisma.woSerial.upsert({
+    where: { id: serialId },
+    create: {
+      id: serialId,
+      tenantId: scopedTenantId,
+      workOrderId: id,
+      bomRefId: input.bomRefId,
+      serialNumber: input.serialNumber,
+      keyText: serialId,
+      createdById: actorId,
+      updatedById: actorId,
+    },
+    update: {
+      serialNumber: input.serialNumber,
+      updatedById: actorId,
+    },
+  });
+
+  await recordWorkOrderAuditEvent({
+    tenantId: scopedTenantId,
+    workOrderId: id,
+    action: 'work_order.serial_recorded',
+    actorId,
+    source: 'workOrderService.recordWorkOrderSerial',
+    previousState: auditState(workOrder),
+    newState: { ...auditState(workOrder), serialCount: workOrder.woSerials.length + (existingSerial ? 0 : 1) },
+  });
+
+  return getDecoratedWorkOrderOrThrow(id, scopedTenantId);
 }
 
 async function getLegacyContextForWorkOrder(workOrder: OperationalWorkOrder, tenantId: string) {

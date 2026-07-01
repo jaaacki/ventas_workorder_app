@@ -3,10 +3,12 @@ import { z } from 'zod';
 import {
   type Configuration,
   ClientSecretPost,
+  PrivateKeyJwt,
   authorizationCodeGrant,
   buildAuthorizationUrl,
   discovery,
   fetchUserInfo,
+  modifyAssertion,
   randomNonce,
   randomPKCECodeVerifier,
   randomState,
@@ -14,6 +16,8 @@ import {
   skipSubjectCheck,
 } from 'openid-client';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { createHash, webcrypto, X509Certificate } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import type { Env } from '../config/env.js';
 import { prisma } from '../db/prisma.js';
 
@@ -21,16 +25,26 @@ const errorResponse = z.object({ error: z.string() });
 
 const providerParam = z.enum(['google', 'microsoft']);
 
-type ProviderConfig = {
+export type ProviderConfig = {
   issuerUrl: string;
   scope: string;
   clientId: string | undefined;
   clientSecret: string | undefined;
+  privateKey: string | undefined;
+  privateKeyFile: string | undefined;
+  certificate: string | undefined;
+  certificateFile: string | undefined;
+  certificateThumbprint: string | undefined;
   redirectUri: string | undefined;
 };
 
-function isProviderConfigured(config: ProviderConfig): boolean {
-  return Boolean(config.clientId && config.clientSecret && config.redirectUri);
+export function isProviderConfigured(config: ProviderConfig): boolean {
+  const hasSecretAuth = Boolean(config.clientSecret);
+  const hasCertificateAuth = Boolean(
+    (config.privateKey || config.privateKeyFile) &&
+      (config.certificateThumbprint || config.certificate || config.certificateFile)
+  );
+  return Boolean(config.clientId && config.redirectUri && (hasSecretAuth || hasCertificateAuth));
 }
 
 function getProviderConfig(provider: z.infer<typeof providerParam>, env: Env): ProviderConfig {
@@ -40,6 +54,11 @@ function getProviderConfig(provider: z.infer<typeof providerParam>, env: Env): P
       scope: 'openid email profile',
       clientId: env.GOOGLE_CLIENT_ID,
       clientSecret: env.GOOGLE_CLIENT_SECRET,
+      privateKey: undefined,
+      privateKeyFile: undefined,
+      certificate: undefined,
+      certificateFile: undefined,
+      certificateThumbprint: undefined,
       redirectUri: env.GOOGLE_REDIRECT_URI,
     };
   }
@@ -49,8 +68,70 @@ function getProviderConfig(provider: z.infer<typeof providerParam>, env: Env): P
     scope: 'openid email profile User.Read',
     clientId: env.MS_CLIENT_ID,
     clientSecret: env.MS_CLIENT_SECRET,
+    privateKey: env.MS_PRIVATE_KEY,
+    privateKeyFile: env.MS_PRIVATE_KEY_FILE,
+    certificate: env.MS_CERTIFICATE,
+    certificateFile: env.MS_CERTIFICATE_FILE,
+    certificateThumbprint: env.MS_CERT_THUMBPRINT,
     redirectUri: env.MS_REDIRECT_URI,
   };
+}
+
+async function readPemValue(inlineValue: string | undefined, filePath: string | undefined): Promise<string | undefined> {
+  if (inlineValue) return inlineValue.replaceAll('\\n', '\n');
+  if (!filePath) return undefined;
+  return readFile(filePath, 'utf8');
+}
+
+export function normalizeCertificateThumbprint(thumbprint: string): string {
+  const compact = thumbprint.replace(/[\s:]/g, '');
+  if (/^[a-f0-9]{40}$/i.test(compact)) {
+    return Buffer.from(compact, 'hex').toString('base64url');
+  }
+  return thumbprint.trim().replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '');
+}
+
+function thumbprintFromCertificate(certificatePem: string): string {
+  const certificate = new X509Certificate(certificatePem);
+  return createHash('sha1').update(certificate.raw).digest('base64url');
+}
+
+function pkcs8DerFromPem(privateKeyPem: string): Uint8Array<ArrayBuffer> {
+  const match = /-----BEGIN PRIVATE KEY-----([^-]+)-----END PRIVATE KEY-----/s.exec(privateKeyPem);
+  if (!match) {
+    throw new Error('Microsoft OAuth private key must be an unencrypted PKCS#8 PEM');
+  }
+  const buffer = Buffer.from(match[1].replace(/\s/g, ''), 'base64');
+  return new Uint8Array(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength));
+}
+
+async function buildMicrosoftCertificateAuth(config: ProviderConfig) {
+  const privateKeyPem = await readPemValue(config.privateKey, config.privateKeyFile);
+  if (!privateKeyPem) return undefined;
+
+  const certificatePem = await readPemValue(config.certificate, config.certificateFile);
+  const thumbprint = config.certificateThumbprint
+    ? normalizeCertificateThumbprint(config.certificateThumbprint)
+    : certificatePem
+      ? thumbprintFromCertificate(certificatePem)
+      : undefined;
+  if (!thumbprint) {
+    throw new Error('Microsoft OAuth certificate auth requires MS_CERT_THUMBPRINT or certificate PEM');
+  }
+
+  const privateKey = await webcrypto.subtle.importKey(
+    'pkcs8',
+    pkcs8DerFromPem(privateKeyPem),
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  return PrivateKeyJwt(privateKey, {
+    [modifyAssertion]: (header) => {
+      header.x5t = thumbprint;
+    },
+  });
 }
 
 async function getClient(config: ProviderConfig): Promise<Configuration> {
@@ -60,7 +141,12 @@ async function getClient(config: ProviderConfig): Promise<Configuration> {
   const clientId = config.clientId;
   const clientSecret = config.clientSecret;
   const redirectUri = config.redirectUri;
-  if (!clientId || !clientSecret || !redirectUri) {
+  if (!clientId || !redirectUri) {
+    throw new Error('OAuth provider is not configured');
+  }
+
+  const clientAuth = clientSecret ? ClientSecretPost(clientSecret) : await buildMicrosoftCertificateAuth(config);
+  if (!clientAuth) {
     throw new Error('OAuth provider is not configured');
   }
 
@@ -71,7 +157,7 @@ async function getClient(config: ProviderConfig): Promise<Configuration> {
       redirect_uris: [redirectUri],
       response_types: ['code'],
     },
-    ClientSecretPost(clientSecret)
+    clientAuth
   );
 }
 

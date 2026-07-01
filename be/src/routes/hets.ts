@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import type { JwtPayload } from '../plugins/auth.js';
 import * as hetService from '../services/hetService.js';
+import * as inventoryTraceService from '../services/inventoryTraceService.js';
 
 const errorResponse = z.object({ error: z.string() });
 
@@ -22,6 +23,18 @@ const hetSchema = z
 const hetLinkBodySchema = z.object({
   workOrderId: z.string().min(1),
 });
+
+const inventoryTraceSchema = z
+  .object({
+    subject: z.object({ type: z.string(), id: z.string(), label: z.string().nullable().optional() }),
+    lots: z.array(z.object({ id: z.string() }).passthrough()),
+    transactions: z.array(z.object({ id: z.string() }).passthrough()),
+    consumptions: z.array(z.object({ id: z.string() }).passthrough()),
+    genealogy: z.array(z.object({ id: z.string() }).passthrough()),
+    hets: z.array(z.object({ id: z.string() }).passthrough()),
+    workOrders: z.array(z.object({ id: z.string() }).passthrough()),
+  })
+  .passthrough();
 
 function actorIdOf(req: { user: unknown }): string {
   return (req.user as JwtPayload).id;
@@ -49,6 +62,29 @@ export const hetRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req) => {
       return hetService.listHets(tenantIdOf(req));
+    },
+  );
+
+  app.get(
+    '/:id/inventory-trace',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        tags: ['HETs', 'Inventory'],
+        summary: 'Get HET inventory trace',
+        description: 'Read inventory lots, movements, consumptions, genealogy, collection-unit links, and work orders associated with a HET. Example: GET /api/hets/HET-1001/inventory-trace.',
+        operationId: 'getHetInventoryTrace',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
+        params: z.object({ id: z.string() }),
+        response: { 200: inventoryTraceSchema, 401: errorResponse, 404: errorResponse },
+      },
+    },
+    async (req, reply) => {
+      const trace = await inventoryTraceService.getHetInventoryTrace(req.params.id, tenantIdOf(req));
+      if (!trace) return reply.status(404).send({ error: 'HET not found' });
+      return trace;
     },
   );
 

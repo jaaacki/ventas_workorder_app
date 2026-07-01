@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import type { JwtPayload } from '../plugins/auth.js';
 import * as workOrderService from '../services/workOrderService.js';
+import * as inventoryTraceService from '../services/inventoryTraceService.js';
 
 const errorResponse = z.object({ error: z.string() });
 
@@ -55,6 +56,18 @@ const phaseSignoffBodySchema = z.object({
   signatureDataUrl: z.string().min(1).optional(),
 }).optional();
 
+const inventoryTraceSchema = z
+  .object({
+    subject: z.object({ type: z.string(), id: z.string(), label: z.string().nullable().optional() }),
+    lots: z.array(z.object({ id: z.string() }).passthrough()),
+    transactions: z.array(z.object({ id: z.string() }).passthrough()),
+    consumptions: z.array(z.object({ id: z.string() }).passthrough()),
+    genealogy: z.array(z.object({ id: z.string() }).passthrough()),
+    hets: z.array(z.object({ id: z.string() }).passthrough()),
+    workOrders: z.array(z.object({ id: z.string() }).passthrough()),
+  })
+  .passthrough();
+
 function actorIdOf(req: { user: unknown }): string {
   return (req.user as JwtPayload).id;
 }
@@ -106,6 +119,29 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         return reply.status(404).send({ error: 'Work order not found' });
       }
       return workOrder;
+    },
+  );
+
+  app.get(
+    '/:id/inventory-trace',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        tags: ['Work Orders', 'Inventory'],
+        summary: 'Get work order inventory trace',
+        description: 'Read inventory lots, movements, consumptions, genealogy, and HET links associated with a work order. Example: GET /api/work-orders/WO-1001/inventory-trace.',
+        operationId: 'getWorkOrderInventoryTrace',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
+        params: z.object({ id: z.string() }),
+        response: { 200: inventoryTraceSchema, 401: errorResponse, 404: errorResponse },
+      },
+    },
+    async (req, reply) => {
+      const trace = await inventoryTraceService.getWorkOrderInventoryTrace(req.params.id, tenantIdOf(req));
+      if (!trace) return reply.status(404).send({ error: 'Work order not found' });
+      return trace;
     },
   );
 

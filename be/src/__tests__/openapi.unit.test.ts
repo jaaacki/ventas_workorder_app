@@ -33,6 +33,7 @@ const expectedOperations: ExpectedOperation[] = [
   { method: 'get', path: '/api/work-orders', operationId: 'listWorkOrders', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders', operationId: 'createWorkOrder', routeKind: 'lifecycle-action', auth: 'role', requiredRoles: ['admin', 'owner'] },
   { method: 'get', path: '/api/work-orders/{id}', operationId: 'getWorkOrder', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/work-orders/{id}/inventory-trace', operationId: 'getWorkOrderInventoryTrace', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders/{id}/start', operationId: 'startWorkOrderPhase', routeKind: 'lifecycle-action', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders/{id}/finish', operationId: 'finishWorkOrderPhase', routeKind: 'lifecycle-action', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders/{id}/advance', operationId: 'advanceWorkOrder', routeKind: 'lifecycle-action', auth: 'authenticated' },
@@ -42,6 +43,7 @@ const expectedOperations: ExpectedOperation[] = [
   { method: 'post', path: '/api/manufacturing/generate', operationId: 'generateBatchRecord', routeKind: 'lifecycle-action', auth: 'role', requiredRoles: ['admin', 'owner'] },
   { method: 'get', path: '/api/manufacturing/{id}', operationId: 'getBatchRecord', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/hets', operationId: 'listHets', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/hets/{id}/inventory-trace', operationId: 'getHetInventoryTrace', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'post', path: '/api/hets/{id}/use', operationId: 'useHet', routeKind: 'lifecycle-action', auth: 'role', requiredRoles: ['admin', 'owner'] },
   { method: 'post', path: '/api/hets/{id}/finish', operationId: 'finishHet', routeKind: 'lifecycle-action', auth: 'role', requiredRoles: ['admin', 'owner'] },
   { method: 'get', path: '/api/procurement/overview', operationId: 'getProcurementOverview', routeKind: 'read-model', auth: 'authenticated' },
@@ -49,6 +51,7 @@ const expectedOperations: ExpectedOperation[] = [
   { method: 'get', path: '/api/procurement/collection-points', operationId: 'listCollectionPoints', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/procurement/collection-units', operationId: 'listCollectionUnits', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/procurement/collection-units/{id}', operationId: 'getCollectionUnit', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/procurement/collection-units/{id}/inventory-trace', operationId: 'getCollectionUnitInventoryTrace', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/procurement/issuance-orders', operationId: 'listIssuanceOrders', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/procurement/collection-orders', operationId: 'listCollectionOrders', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/procurement/collection-receipts', operationId: 'listCollectionReceipts', routeKind: 'read-model', auth: 'authenticated' },
@@ -167,6 +170,11 @@ describe('OpenAPI contract', () => {
     expect(advanceWorkOrder?.security).toEqual([{ bearerAuth: [] }]);
     expect(advanceWorkOrder?.['x-route-kind']).toBe('lifecycle-action');
 
+    const workOrderTrace = pathItem(doc, '/api/work-orders/{id}/inventory-trace')?.get;
+    expect(workOrderTrace?.tags).toEqual(['Work Orders', 'Inventory']);
+    expect(workOrderTrace?.operationId).toBe('getWorkOrderInventoryTrace');
+    expect(workOrderTrace?.description).toContain('inventory lots');
+
     const listCollectionUnits = pathItem(doc, '/api/procurement/collection-units')?.get;
     expect(listCollectionUnits?.tags).toEqual(['Procurement']);
     expect(listCollectionUnits?.security).toEqual([{ bearerAuth: [] }]);
@@ -176,6 +184,14 @@ describe('OpenAPI contract', () => {
     const procurementReports = pathItem(doc, '/api/procurement/import-reports')?.get;
     expect(procurementReports?.tags).toEqual(['Procurement']);
     expect(procurementReports?.['x-route-kind']).toBe('import-admin');
+
+    const collectionUnitTrace = pathItem(doc, '/api/procurement/collection-units/{id}/inventory-trace')?.get;
+    expect(collectionUnitTrace?.tags).toEqual(['Procurement', 'Inventory']);
+    expect(collectionUnitTrace?.operationId).toBe('getCollectionUnitInventoryTrace');
+
+    const hetTrace = pathItem(doc, '/api/hets/{id}/inventory-trace')?.get;
+    expect(hetTrace?.tags).toEqual(['HETs', 'Inventory']);
+    expect(hetTrace?.operationId).toBe('getHetInventoryTrace');
 
     const listInventoryLots = pathItem(doc, '/api/inventory/lots')?.get;
     expect(listInventoryLots?.tags).toEqual(['Inventory']);

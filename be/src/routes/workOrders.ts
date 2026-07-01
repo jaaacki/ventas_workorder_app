@@ -96,6 +96,13 @@ const workOrderSchema = z.object({
   parityGaps: z.array(z.string()),
   serialCheckDone: z.boolean(),
   serialRequiredCount: z.number(),
+  requiredSerials: z.array(z.object({
+    bomRefId: z.string(),
+    description: z.string().nullable(),
+    quantity: decimalish.nullable(),
+    uom: z.string().nullable(),
+    serialNumber: z.string().nullable(),
+  })),
   combinedHetCheck: z.boolean(),
   phaseTimeline: z.array(workOrderPhaseTimelineSchema),
   counts: z.object({ serials: z.number(), equipment: z.number(), sterilisationRecords: z.number() }),
@@ -114,6 +121,7 @@ const auditStateSchema = z.object({
   prodStart: z.string().nullable(),
   prodEnd: z.string().nullable(),
   prodDurationMinutes: z.string().nullable(),
+  serialCount: z.number().nullable().optional(),
 }).nullable();
 
 const workOrderAuditEventSchema = z.object({
@@ -136,6 +144,11 @@ const createBodySchema = z.object({
 const phaseSignoffBodySchema = z.object({
   signatureDataUrl: z.string().min(1).optional(),
 }).optional();
+
+const serialBodySchema = z.object({
+  bomRefId: z.string().min(1),
+  serialNumber: z.string().trim().min(1),
+});
 
 function actorIdOf(req: { user: unknown }): string {
   return (req.user as JwtPayload).id;
@@ -236,6 +249,57 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         return reply.status(404).send({ error: 'Work order not found' });
       }
       return events;
+    },
+  );
+
+  app.post(
+    '/:id/serials',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        tags: ['Work Orders'],
+        summary: 'Record work order serial',
+        description: 'Capture or replace one serial value for a serial-required BOM line on the work order current phase.',
+        operationId: 'recordWorkOrderSerial',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
+        'x-auth': 'authenticated',
+        params: z.object({ id: z.string() }),
+        body: serialBodySchema,
+        response: {
+          200: workOrderDetailSchema,
+          400: errorResponse,
+          401: errorResponse,
+          404: errorResponse,
+          409: errorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      try {
+        return await workOrderService.recordWorkOrderSerial(
+          req.params.id,
+          {
+            bomRefId: req.body.bomRefId,
+            serialNumber: req.body.serialNumber,
+          },
+          actorIdOf(req),
+          tenantIdOf(req),
+        );
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith('cannot record serial:')) {
+          return reply.status(409).send({ error: err.message });
+        }
+        if (err instanceof Prisma.PrismaClientKnownRequestError) {
+          if (err.code === 'P2025') {
+            return reply.status(404).send({ error: 'Work order not found' });
+          }
+          if (err.code === 'P2003') {
+            return reply.status(400).send({ error: 'Referenced BOM line does not exist' });
+          }
+        }
+        throw err;
+      }
     },
   );
 

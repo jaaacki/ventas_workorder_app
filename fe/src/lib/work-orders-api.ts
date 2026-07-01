@@ -79,6 +79,14 @@ export interface WorkOrderAdvanceRequirement {
   parityGap?: boolean;
 }
 
+export interface WorkOrderRequiredSerial {
+  bomRefId: string;
+  description: string | null;
+  quantity: string | number | null;
+  uom: string | null;
+  serialNumber: string | null;
+}
+
 export interface WorkOrderSummary {
   id: string;
   woNumber: string | null;
@@ -108,6 +116,7 @@ export interface WorkOrderSummary {
   parityGaps: string[];
   serialCheckDone: boolean;
   serialRequiredCount: number;
+  requiredSerials: WorkOrderRequiredSerial[];
   combinedHetCheck: boolean;
   phaseTimeline: WorkOrderPhaseTimelineItem[];
   counts: WorkOrderCounts;
@@ -156,6 +165,7 @@ export interface WorkOrderAuditState {
   prodStart: string | null;
   prodEnd: string | null;
   prodDurationMinutes: string | null;
+  serialCount?: number | null;
 }
 
 export interface WorkOrderAuditEvent {
@@ -215,6 +225,14 @@ export async function startWorkOrderPhase(id: string, signatureDataUrl?: string)
 
 export async function finishWorkOrderPhase(id: string, signatureDataUrl?: string): Promise<WorkOrderDetail> {
   const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/finish`, signatureDataUrl ? { signatureDataUrl } : {});
+  return data;
+}
+
+export async function recordWorkOrderSerial(
+  id: string,
+  payload: { bomRefId: string; serialNumber: string },
+): Promise<WorkOrderDetail> {
+  const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/serials`, payload);
   return data;
 }
 

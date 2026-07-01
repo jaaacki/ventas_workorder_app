@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
     create: vi.fn(),
     findMany: vi.fn(),
   },
+  woSerial: {
+    upsert: vi.fn(),
+  },
   sterilise: {
     findFirst: vi.fn(),
   },
@@ -25,6 +28,7 @@ vi.mock('../../db/prisma.js', () => ({
     workflow: mocks.workflow,
     workOrder: mocks.workOrder,
     workOrderAuditEvent: mocks.workOrderAuditEvent,
+    woSerial: mocks.woSerial,
     sterilise: mocks.sterilise,
   },
 }));
@@ -34,6 +38,7 @@ import {
   listWorkOrders,
   listWorkOrderAuditEvents,
   getWorkOrder,
+  recordWorkOrderSerial,
   startWorkOrderPhase,
   finishWorkOrderPhase,
   advanceWorkOrder,
@@ -147,6 +152,96 @@ describe('workOrderService', () => {
     await expect(listWorkOrderAuditEvents('wo-1', 'tenant-a')).resolves.toBeNull();
 
     expect(mocks.workOrderAuditEvent.findMany).not.toHaveBeenCalled();
+  });
+
+  it('recordWorkOrderSerial upserts a serial for a current-phase required BOM line', async () => {
+    const workOrder = {
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: null,
+      prodEnd: null,
+      prodDuration: null,
+      phase: { bom: { lines: [{ id: 'bom-line-1', hasSerial: true }] } },
+      woSerials: [],
+    };
+    mocks.workOrder.findFirst.mockResolvedValue(workOrder);
+    mocks.woSerial.upsert.mockResolvedValue({
+      id: 'wo-1:bom-line-1',
+      serialNumber: 'SER-001',
+    });
+    mocks.workOrder.findFirstOrThrow.mockResolvedValue({
+      ...workOrder,
+      workflow: { phases: [] },
+      phase: { phaseShort: 'P1', bom: { lines: [{ id: 'bom-line-1', hasSerial: true }] } },
+      sterilises: [],
+      woSerials: [{ id: 'wo-1:bom-line-1' }],
+      phaseEquips: [],
+      batchHets: [],
+    });
+
+    const result = await recordWorkOrderSerial(
+      'wo-1',
+      { bomRefId: 'bom-line-1', serialNumber: 'SER-001' },
+      'actor1',
+      'tenant-a',
+    );
+
+    expect(mocks.workOrder.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'wo-1', tenantId: 'tenant-a' } }),
+    );
+    expect(mocks.woSerial.upsert).toHaveBeenCalledWith({
+      where: { id: 'wo-1:bom-line-1' },
+      create: expect.objectContaining({
+        id: 'wo-1:bom-line-1',
+        tenantId: 'tenant-a',
+        workOrderId: 'wo-1',
+        bomRefId: 'bom-line-1',
+        serialNumber: 'SER-001',
+        createdById: 'actor1',
+        updatedById: 'actor1',
+      }),
+      update: { serialNumber: 'SER-001', updatedById: 'actor1' },
+    });
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tenantId: 'tenant-a',
+          workOrderId: 'wo-1',
+          action: 'work_order.serial_recorded',
+          source: 'workOrderService.recordWorkOrderSerial',
+          previousState: expect.objectContaining({ serialCount: 0 }),
+          newState: expect.objectContaining({ serialCount: 1 }),
+        }),
+      }),
+    );
+    expect(result).toMatchObject({ id: 'wo-1', counts: { serials: 1 } });
+  });
+
+  it('recordWorkOrderSerial rejects BOM lines not required by the current phase', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: null,
+      prodEnd: null,
+      prodDuration: null,
+      phase: { bom: { lines: [{ id: 'other-line', hasSerial: true }] } },
+      woSerials: [],
+    });
+
+    await expect(
+      recordWorkOrderSerial('wo-1', { bomRefId: 'bom-line-1', serialNumber: 'SER-001' }, 'actor1', 'tenant-a'),
+    ).rejects.toThrow('cannot record serial: BOM line is not serial-required for the current phase');
+
+    expect(mocks.woSerial.upsert).not.toHaveBeenCalled();
+    expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
   });
 
   it('createWorkOrder sets the first phase and generates a woNumber starting with WO-', async () => {
@@ -783,11 +878,11 @@ describe('workOrderService', () => {
         prodStart: new Date('2026-06-30T08:00:00Z'),
         prodEnd: new Date('2026-06-30T09:00:00Z'),
         workflow: { phases: [] },
-        phase: { phaseShort: 'P6', bom: { lines: [{ id: 'bom-1' }] } },
+        phase: { phaseShort: 'P6', bom: { lines: [{ id: 'bom-1', hasSerial: true }] } },
         nextPhase: { phaseShort: 'P7' },
         steralisationCurrent: null,
         sterilises: [],
-        woSerials: [{ id: 'serial-1' }],
+        woSerials: [{ id: 'serial-1', bomRef: { id: 'bom-1' } }],
         phaseEquips: [],
         batchHets: [],
       },

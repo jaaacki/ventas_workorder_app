@@ -24,6 +24,54 @@ export interface PhaseCatalogItem {
   updatedAt: string;
 }
 
+export interface ProcedureCatalogItem {
+  id: string;
+  tenantId: string;
+  procedureName: string | null;
+  procedureDesc: string | null;
+  procedureShort: string | null;
+  keyText: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BomCatalogItem {
+  id: string;
+  tenantId: string;
+  bomName: string | null;
+  keyText: string | null;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { lines?: number; phases?: number };
+}
+
+export interface BomLineCatalogItem {
+  id: string;
+  tenantId: string;
+  bomId: string;
+  bomName: string | null;
+  description: string | null;
+  quantity: string | number | null;
+  uom: string | null;
+  hasSerial: boolean;
+  deleted: boolean;
+  keyText: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PhaseEquipmentCatalogItem {
+  id: string;
+  tenantId: string;
+  equipId: string | null;
+  name: string | null;
+  description: string | null;
+  keyText: string | null;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { phases?: number; workOrders?: number };
+}
+
 export interface WorkflowPhaseBinding {
   workflowId: string;
   phaseId: string;
@@ -95,6 +143,117 @@ export async function updatePhase(id: string, payload: PhaseMutationPayload): Pr
 
 export async function deletePhase(id: string): Promise<{ success: true }> {
   const { data } = await api.delete<{ success: true }>(`/api/phases/${id}`);
+  return data;
+}
+
+export type ProcedureMutationPayload = {
+  procedureName?: string | null;
+  procedureDesc?: string | null;
+  procedureShort?: string | null;
+  keyText?: string | null;
+};
+
+export type BomMutationPayload = {
+  bomName?: string | null;
+  keyText?: string | null;
+};
+
+export type BomLineMutationPayload = {
+  bomId?: string;
+  bomName?: string | null;
+  description?: string | null;
+  quantity?: string | number | null;
+  uom?: string | null;
+  hasSerial?: boolean;
+  keyText?: string | null;
+};
+
+export type PhaseEquipmentMutationPayload = {
+  equipId?: string | null;
+  name?: string | null;
+  description?: string | null;
+  keyText?: string | null;
+};
+
+export async function fetchProcedures(): Promise<ProcedureCatalogItem[]> {
+  const { data } = await api.get<ProcedureCatalogItem[]>('/api/master-data/procedures');
+  return data;
+}
+
+export async function createProcedure(payload: ProcedureMutationPayload): Promise<ProcedureCatalogItem> {
+  const { data } = await api.post<ProcedureCatalogItem>('/api/master-data/procedures', payload);
+  return data;
+}
+
+export async function updateProcedure(id: string, payload: ProcedureMutationPayload): Promise<ProcedureCatalogItem> {
+  const { data } = await api.patch<ProcedureCatalogItem>(`/api/master-data/procedures/${id}`, payload);
+  return data;
+}
+
+export async function deleteProcedure(id: string): Promise<{ success: true }> {
+  const { data } = await api.delete<{ success: true }>(`/api/master-data/procedures/${id}`);
+  return data;
+}
+
+export async function fetchBoms(): Promise<BomCatalogItem[]> {
+  const { data } = await api.get<BomCatalogItem[]>('/api/master-data/boms');
+  return data;
+}
+
+export async function createBom(payload: BomMutationPayload): Promise<BomCatalogItem> {
+  const { data } = await api.post<BomCatalogItem>('/api/master-data/boms', payload);
+  return data;
+}
+
+export async function updateBom(id: string, payload: BomMutationPayload): Promise<BomCatalogItem> {
+  const { data } = await api.patch<BomCatalogItem>(`/api/master-data/boms/${id}`, payload);
+  return data;
+}
+
+export async function deleteBom(id: string): Promise<{ success: true }> {
+  const { data } = await api.delete<{ success: true }>(`/api/master-data/boms/${id}`);
+  return data;
+}
+
+export async function fetchBomLines(bomId?: string): Promise<BomLineCatalogItem[]> {
+  const { data } = await api.get<BomLineCatalogItem[]>('/api/master-data/bom-lines', {
+    params: bomId ? { bomId } : undefined,
+  });
+  return data;
+}
+
+export async function createBomLine(payload: BomLineMutationPayload & { bomId: string }): Promise<BomLineCatalogItem> {
+  const { data } = await api.post<BomLineCatalogItem>('/api/master-data/bom-lines', payload);
+  return data;
+}
+
+export async function updateBomLine(id: string, payload: BomLineMutationPayload): Promise<BomLineCatalogItem> {
+  const { data } = await api.patch<BomLineCatalogItem>(`/api/master-data/bom-lines/${id}`, payload);
+  return data;
+}
+
+export async function deleteBomLine(id: string): Promise<{ success: true }> {
+  const { data } = await api.delete<{ success: true }>(`/api/master-data/bom-lines/${id}`);
+  return data;
+}
+
+export async function fetchPhaseEquipment(): Promise<PhaseEquipmentCatalogItem[]> {
+  const { data } = await api.get<PhaseEquipmentCatalogItem[]>('/api/master-data/phase-equipment');
+  return data;
+}
+
+export async function createPhaseEquipment(payload: PhaseEquipmentMutationPayload): Promise<PhaseEquipmentCatalogItem> {
+  const { data } = await api.post<PhaseEquipmentCatalogItem>('/api/master-data/phase-equipment', payload);
+  return data;
+}
+
+export async function updatePhaseEquipment(id: string, payload: PhaseEquipmentMutationPayload): Promise<PhaseEquipmentCatalogItem> {
+  const { data } = await api.patch<PhaseEquipmentCatalogItem>(`/api/master-data/phase-equipment/${id}`, payload);
+  return data;
+}
+
+export async function deletePhaseEquipment(id: string): Promise<{ success: true }> {
+  const { data } = await api.delete<{ success: true }>(`/api/master-data/phase-equipment/${id}`);
   return data;
 }
 

@@ -72,6 +72,54 @@ const phaseExample = {
   updatedAt: '2026-07-01T00:00:00.000Z',
 };
 
+const procedureExample = {
+  id: 'proc-intake-checklist',
+  tenantId: 'ventas',
+  procedureName: 'Intake checklist',
+  procedureDesc: 'Verify HET identity, packaging, and required receiving evidence.',
+  procedureShort: 'INTAKE-CHECK',
+  keyText: 'INTAKE_CHECKLIST',
+  createdAt: '2026-07-01T00:00:00.000Z',
+  updatedAt: '2026-07-01T00:00:00.000Z',
+};
+
+const bomExample = {
+  id: 'bom-amgraft-intake',
+  tenantId: 'ventas',
+  bomName: 'AmGraft intake BOM',
+  keyText: 'AMGRAFT_INTAKE',
+  createdAt: '2026-07-01T00:00:00.000Z',
+  updatedAt: '2026-07-01T00:00:00.000Z',
+  _count: { lines: 2, phases: 1 },
+};
+
+const bomLineExample = {
+  id: 'bom-line-membrane',
+  tenantId: 'ventas',
+  bomId: 'bom-amgraft-intake',
+  bomName: 'AmGraft intake BOM',
+  description: 'AmGraft membrane',
+  quantity: '1.0000',
+  uom: 'ea',
+  hasSerial: true,
+  deleted: false,
+  keyText: 'AMGRAFT_MEMBRANE',
+  createdAt: '2026-07-01T00:00:00.000Z',
+  updatedAt: '2026-07-01T00:00:00.000Z',
+};
+
+const phaseEquipmentExample = {
+  id: 'equip-heat-sealer',
+  tenantId: 'ventas',
+  equipId: 'EQ-SEAL-01',
+  name: 'Heat sealer',
+  description: 'Validated pouch heat sealer',
+  keyText: 'HEAT_SEALER',
+  createdAt: '2026-07-01T00:00:00.000Z',
+  updatedAt: '2026-07-01T00:00:00.000Z',
+  _count: { phases: 2, workOrders: 12 },
+};
+
 const workOrderExample = {
   id: 'WO-1001',
   woNumber: 'WO-1001',
@@ -217,6 +265,26 @@ const successExamples: Record<string, unknown> = {
   getPhase: phaseExample,
   updatePhase: { ...phaseExample, description: 'Updated phase instructions.' },
   deletePhase: { success: true },
+  listProcedures: [procedureExample],
+  createProcedure: procedureExample,
+  getProcedure: procedureExample,
+  updateProcedure: { ...procedureExample, procedureDesc: 'Updated controlled instruction.' },
+  deleteProcedure: { success: true },
+  listBoms: [bomExample],
+  createBom: bomExample,
+  getBom: bomExample,
+  updateBom: { ...bomExample, bomName: 'Updated AmGraft intake BOM' },
+  deleteBom: { success: true },
+  listBomLines: [bomLineExample],
+  createBomLine: bomLineExample,
+  getBomLine: bomLineExample,
+  updateBomLine: { ...bomLineExample, quantity: '2.0000' },
+  deleteBomLine: { success: true },
+  listPhaseEquipment: [phaseEquipmentExample],
+  createPhaseEquipment: phaseEquipmentExample,
+  getPhaseEquipment: phaseEquipmentExample,
+  updatePhaseEquipment: { ...phaseEquipmentExample, description: 'Updated equipment description.' },
+  deletePhaseEquipment: { success: true },
   listWorkOrders: [workOrderExample],
   listQaWorkOrderQueue: {
     counts: { sterilisation: 1, quarantine: 0, release: 1 },
@@ -327,6 +395,14 @@ const requestExamples: Record<string, unknown> = {
   updateWorkflow: { description: 'Updated workflow description', active: true, phases: [{ phaseId: 'phase-intake', sortOrder: 10 }] },
   createPhase: { phaseName: 'Intake', phaseShort: 'INT', phaseOrder: 10, description: 'Initial HET intake and preparation.', keyText: 'INTAKE' },
   updatePhase: { description: 'Updated phase instructions.' },
+  createProcedure: { procedureName: 'Intake checklist', procedureShort: 'INTAKE-CHECK', procedureDesc: 'Verify HET identity and packaging.', keyText: 'INTAKE_CHECKLIST' },
+  updateProcedure: { procedureDesc: 'Updated controlled instruction.' },
+  createBom: { bomName: 'AmGraft intake BOM', keyText: 'AMGRAFT_INTAKE' },
+  updateBom: { bomName: 'Updated AmGraft intake BOM' },
+  createBomLine: { bomId: 'bom-amgraft-intake', description: 'AmGraft membrane', quantity: '1.0000', uom: 'ea', hasSerial: true, keyText: 'AMGRAFT_MEMBRANE' },
+  updateBomLine: { quantity: '2.0000', hasSerial: true },
+  createPhaseEquipment: { equipId: 'EQ-SEAL-01', name: 'Heat sealer', description: 'Validated pouch heat sealer', keyText: 'HEAT_SEALER' },
+  updatePhaseEquipment: { description: 'Updated equipment description.' },
   createWorkOrder: { workflowId: 'wf-amgraft', hetId: 'het-1001' },
   recordWorkOrderEquipment: { phaseEquipId: 'equip-heat-sealer' },
   recordWorkOrderOutputQuantity: { outputQuantity: '1.0000' },
@@ -354,6 +430,8 @@ const parameterExamples: Record<string, unknown> = {
   take: 50,
   inventoryType: 'HET',
   workOrderId: 'WO-1001',
+  bomId: 'bom-amgraft-intake',
+  includeDeleted: 'false',
 };
 
 const errorExamples: Record<string, { summary: string; value: { error: string } }> = {
@@ -530,6 +608,46 @@ const methodPolicies: Record<string, MethodPolicy> = {
     destructiveDeletes: 'not-applicable',
     notes: 'Admin/owner delete path for unused phase master data; referenced phases return conflict.',
   },
+  listBomLines: {
+    resource: 'BOM line',
+    completeness: 'guarded-crud-soft-delete',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'BOM lines use PATCH updates and soft-delete to preserve serial evidence references.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Tenant-scoped active BOM-line list with optional bomId filter and includeDeleted audit visibility.',
+  },
+  createBomLine: {
+    resource: 'BOM line',
+    completeness: 'guarded-crud-soft-delete',
+    allowedMethods: ['POST'],
+    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'BOM lines use PATCH updates and soft-delete to preserve serial evidence references.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Admin/owner creation path for material and serial requirements under a tenant-owned BOM.',
+  },
+  getBomLine: {
+    resource: 'BOM line',
+    completeness: 'guarded-crud-soft-delete',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'BOM lines use PATCH updates and soft-delete to preserve serial evidence references.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Tenant-scoped active BOM-line detail read.',
+  },
+  updateBomLine: {
+    resource: 'BOM line',
+    completeness: 'guarded-crud-soft-delete',
+    allowedMethods: ['PATCH'],
+    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'BOM lines use PATCH updates and soft-delete to preserve serial evidence references.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Admin/owner update path for BOM-line quantities, serial flags, and descriptors.',
+  },
+  deleteBomLine: {
+    resource: 'BOM line',
+    completeness: 'guarded-crud-soft-delete',
+    allowedMethods: ['DELETE'],
+    omittedMethods: [{ method: 'hard DELETE', reason: 'Soft-delete retains references from work-order serial evidence.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Admin/owner soft-delete path for BOM lines.',
+  },
   listWorkOrders: {
     resource: 'Work order',
     completeness: 'lifecycle-not-generic-crud',
@@ -699,6 +817,39 @@ const methodPolicies: Record<string, MethodPolicy> = {
     notes: 'Links a HET to the work order that finished it.',
   },
 };
+
+for (const operationId of ['listProcedures', 'getProcedure', 'createProcedure', 'updateProcedure', 'deleteProcedure']) {
+  methodPolicies[operationId] = {
+    resource: 'Procedure',
+    completeness: 'guarded-crud',
+    allowedMethods: [operationId.startsWith('list') || operationId.startsWith('get') ? 'GET' : operationId.startsWith('create') ? 'POST' : operationId.startsWith('update') ? 'PATCH' : 'DELETE'],
+    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'Procedure updates are PATCH-only and delete is guarded to unused procedure master data.' }],
+    destructiveDeletes: 'not-applicable',
+    notes: 'Tenant-scoped procedure master data for phase-level controlled instructions.',
+  };
+}
+
+for (const operationId of ['listBoms', 'getBom', 'createBom', 'updateBom', 'deleteBom']) {
+  methodPolicies[operationId] = {
+    resource: 'BOM',
+    completeness: 'guarded-crud',
+    allowedMethods: [operationId.startsWith('list') || operationId.startsWith('get') ? 'GET' : operationId.startsWith('create') ? 'POST' : operationId.startsWith('update') ? 'PATCH' : 'DELETE'],
+    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'BOM updates are PATCH-only and delete is guarded while phases or lines reference the BOM.' }],
+    destructiveDeletes: 'not-applicable',
+    notes: 'Tenant-scoped BOM header master data for phase material and serial requirements.',
+  };
+}
+
+for (const operationId of ['listPhaseEquipment', 'getPhaseEquipment', 'createPhaseEquipment', 'updatePhaseEquipment', 'deletePhaseEquipment']) {
+  methodPolicies[operationId] = {
+    resource: 'Phase equipment',
+    completeness: 'guarded-crud',
+    allowedMethods: [operationId.startsWith('list') || operationId.startsWith('get') ? 'GET' : operationId.startsWith('create') ? 'POST' : operationId.startsWith('update') ? 'PATCH' : 'DELETE'],
+    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'Equipment updates are PATCH-only and delete is guarded while phases or work orders reference equipment.' }],
+    destructiveDeletes: 'not-applicable',
+    notes: 'Tenant-scoped equipment master data for phase allowed-equipment checks.',
+  };
+}
 
 const readOnlyTracePolicy = {
   completeness: 'read-only-trace',

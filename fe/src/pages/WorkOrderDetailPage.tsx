@@ -25,6 +25,7 @@ import {
   fetchWorkOrderAuditEvents,
   fetchWorkOrderInventoryTrace,
   finishWorkOrderPhase,
+  recordWorkOrderOutputQuantity,
   recordWorkOrderSerial,
   startWorkOrderPhase,
   type WorkOrderAuditEvent,
@@ -46,6 +47,13 @@ function formatDurationMinutes(value?: string | number | null) {
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = Math.round(minutes % 60);
   return remainingMinutes ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+}
+
+function formatQuantity(value?: string | number | null) {
+  if (value == null || value === '') return '-';
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return String(value);
+  return numeric.toLocaleString(undefined, { maximumFractionDigits: 4 });
 }
 
 function workOrderTitle(workOrder: WorkOrderDetail) {
@@ -85,12 +93,67 @@ function stateSummary(event: WorkOrderAuditEvent) {
     previous.prodDurationMinutes !== next.prodDurationMinutes
       ? `Duration ${formatDurationMinutes(previous.prodDurationMinutes)} -> ${formatDurationMinutes(next.prodDurationMinutes)}`
       : null,
+    previous.outputQuantity !== next.outputQuantity
+      ? `Output ${formatQuantity(previous.outputQuantity)} -> ${formatQuantity(next.outputQuantity)}`
+      : null,
     previous.serialCount !== next.serialCount
       ? `Serials ${previous.serialCount ?? '-'} -> ${next.serialCount ?? '-'}`
       : null,
   ].filter(Boolean);
 
   return changes.length ? changes.join(' | ') : 'No visible state delta';
+}
+
+function OutputEvidencePanel({
+  workOrder,
+  onSaved,
+}: {
+  workOrder: WorkOrderDetail;
+  onSaved: (updated: WorkOrderDetail) => void;
+}) {
+  const [outputQuantity, setOutputQuantity] = useState(workOrder.outputQuantity ? String(workOrder.outputQuantity) : '');
+
+  const outputMutation = useMutation({
+    mutationFn: () => recordWorkOrderOutputQuantity(workOrder.id, { outputQuantity: outputQuantity.trim() }),
+    onSuccess: (updated) => {
+      onSaved(updated);
+      setOutputQuantity(updated.outputQuantity ? String(updated.outputQuantity) : '');
+      toast.success('Output quantity recorded');
+    },
+    onError: (e: AxiosError<{ error?: string }>) =>
+      toast.error(e.response?.data?.error || 'Failed to record output quantity'),
+  });
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!outputQuantity.trim()) return;
+    outputMutation.mutate();
+  };
+
+  return (
+    <AdminPanel title="Output evidence" description="Produced quantity captured for this work order.">
+      <div className="grid gap-4 lg:grid-cols-[220px_1fr] lg:items-end">
+        <MetricCard icon={<Factory className="h-5 w-5" />} label="Output quantity" value={formatQuantity(workOrder.outputQuantity)} />
+        <form onSubmit={submit} className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+          <div className="grid gap-1.5">
+            <Label htmlFor="output-quantity">Quantity produced</Label>
+            <Input
+              id="output-quantity"
+              type="number"
+              min="0.0001"
+              step="0.0001"
+              value={outputQuantity}
+              onChange={(event) => setOutputQuantity(event.target.value)}
+              placeholder="1.0000"
+            />
+          </div>
+          <Button type="submit" disabled={!outputQuantity.trim() || outputMutation.isPending}>
+            Record
+          </Button>
+        </form>
+      </div>
+    </AdminPanel>
+  );
 }
 
 function serialLabel(serial: WorkOrderRequiredSerial) {
@@ -252,6 +315,10 @@ export default function WorkOrderDetailPage() {
     updateCachedWorkOrder(updated);
   };
 
+  const recordOutputSaved = (updated: WorkOrderDetail) => {
+    updateCachedWorkOrder(updated);
+  };
+
   const advanceMutation = useMutation({
     mutationFn: () => advanceWorkOrder(id!),
     onSuccess: (updated) => {
@@ -331,6 +398,8 @@ export default function WorkOrderDetailPage() {
           finishing={finishMutation.isPending}
         />
       </AdminPanel>
+
+      <OutputEvidencePanel key={workOrder.id} workOrder={workOrder} onSaved={recordOutputSaved} />
 
       <SerialEvidencePanel workOrder={workOrder} onSaved={recordSerialSaved} />
 

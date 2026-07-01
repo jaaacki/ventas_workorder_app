@@ -97,6 +97,7 @@ export interface WorkOrderSummary {
   prodStart: string | null;
   prodEnd: string | null;
   prodDuration: string | number | null;
+  outputQuantity: string | number | null;
   workflow: WorkOrderWorkflowRef | null;
   phase: WorkOrderPhaseRef | null;
   het: WorkOrderHetRef | null;
@@ -165,6 +166,7 @@ export interface WorkOrderAuditState {
   prodStart: string | null;
   prodEnd: string | null;
   prodDurationMinutes: string | null;
+  outputQuantity: string | null;
   serialCount?: number | null;
 }
 
@@ -225,6 +227,14 @@ export async function startWorkOrderPhase(id: string, signatureDataUrl?: string)
 
 export async function finishWorkOrderPhase(id: string, signatureDataUrl?: string): Promise<WorkOrderDetail> {
   const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/finish`, signatureDataUrl ? { signatureDataUrl } : {});
+  return data;
+}
+
+export async function recordWorkOrderOutputQuantity(
+  id: string,
+  payload: { outputQuantity: string },
+): Promise<WorkOrderDetail> {
+  const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/output-quantity`, payload);
   return data;
 }
 

@@ -4,6 +4,7 @@ import {
   createWorkOrder,
   advanceWorkOrder,
   getWorkOrder,
+  recordWorkOrderOutputQuantity,
   recordWorkOrderSerial,
   startWorkOrderPhase,
   finishWorkOrderPhase,
@@ -133,6 +134,8 @@ describe('AmGraft production run (integration)', () => {
     const finishedPreparation = await finishWorkOrderPhase(wo.id, ctx.actorId);
     expect(finishedPreparation.prodDuration).not.toBeNull();
     expect(Number(finishedPreparation.prodDuration)).toBeGreaterThanOrEqual(0);
+    const withOutput = await recordWorkOrderOutputQuantity(wo.id, { outputQuantity: '1.0000' }, ctx.actorId);
+    expect(Number(withOutput.outputQuantity)).toBe(1);
     let cur = await advanceWorkOrder(wo.id, ctx.actorId);
     expect(cur.phaseOrder).toBe(1);
     expect(cur.phase?.phaseName).toBe('Production');

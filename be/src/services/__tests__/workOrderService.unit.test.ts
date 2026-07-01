@@ -38,6 +38,7 @@ import {
   listWorkOrders,
   listWorkOrderAuditEvents,
   getWorkOrder,
+  recordWorkOrderOutputQuantity,
   recordWorkOrderSerial,
   startWorkOrderPhase,
   finishWorkOrderPhase,
@@ -219,6 +220,78 @@ describe('workOrderService', () => {
       }),
     );
     expect(result).toMatchObject({ id: 'wo-1', counts: { serials: 1 } });
+  });
+
+  it('recordWorkOrderOutputQuantity stores positive output evidence and writes an audit event', async () => {
+    const workOrder = {
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: null,
+      prodEnd: null,
+      prodDuration: null,
+      outputQuantity: null,
+    };
+    const updated = {
+      ...workOrder,
+      outputQuantity: { toString: () => '2.5000' },
+    };
+    mocks.workOrder.findFirst.mockResolvedValue(workOrder);
+    mocks.workOrder.update.mockResolvedValue(updated);
+    mocks.workOrder.findFirstOrThrow.mockResolvedValue({
+      ...updated,
+      workflow: { phases: [] },
+      phase: { phaseShort: 'P1', bom: { lines: [] } },
+      sterilises: [],
+      woSerials: [],
+      phaseEquips: [],
+      batchHets: [],
+    });
+
+    const result = await recordWorkOrderOutputQuantity(
+      'wo-1',
+      { outputQuantity: '2.5000' },
+      'actor1',
+      'tenant-a',
+    );
+
+    expect(mocks.workOrder.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'wo-1', tenantId: 'tenant-a' } }),
+    );
+    expect(mocks.workOrder.update).toHaveBeenCalledWith({
+      where: { id: 'wo-1' },
+      data: {
+        outputQuantity: expect.objectContaining({ toString: expect.any(Function) }),
+        updatedById: 'actor1',
+      },
+    });
+    expect(mocks.workOrder.update.mock.calls[0][0].data.outputQuantity.toString()).toBe('2.5');
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tenantId: 'tenant-a',
+          workOrderId: 'wo-1',
+          action: 'work_order.output_quantity_recorded',
+          source: 'workOrderService.recordWorkOrderOutputQuantity',
+          previousState: expect.objectContaining({ outputQuantity: null }),
+          newState: expect.objectContaining({ outputQuantity: '2.5000' }),
+        }),
+      }),
+    );
+    expect(result).toMatchObject({ id: 'wo-1', outputQuantity: updated.outputQuantity });
+  });
+
+  it('recordWorkOrderOutputQuantity rejects zero or negative quantities', async () => {
+    await expect(
+      recordWorkOrderOutputQuantity('wo-1', { outputQuantity: '0' }, 'actor1', 'tenant-a'),
+    ).rejects.toThrow('cannot record output quantity: quantity must be greater than zero');
+
+    expect(mocks.workOrder.findFirst).not.toHaveBeenCalled();
+    expect(mocks.workOrder.update).not.toHaveBeenCalled();
+    expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
   });
 
   it('recordWorkOrderSerial rejects BOM lines not required by the current phase', async () => {
@@ -465,6 +538,7 @@ describe('workOrderService', () => {
         prodStart: true,
         prodEnd: true,
         prodDuration: true,
+        outputQuantity: true,
       },
     });
     expect(mocks.workOrder.findFirstOrThrow).toHaveBeenCalledWith(

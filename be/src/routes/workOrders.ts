@@ -62,6 +62,7 @@ const workOrderSchema = z.object({
   endSignPath: z.string().nullable(),
   endSignById: z.string().nullable(),
   prodDuration: decimalish.nullable(),
+  outputQuantity: decimalish.nullable(),
   manuId: z.string().nullable(),
   manuNumber: z.string().nullable(),
   woNumber: z.string().nullable(),
@@ -121,6 +122,7 @@ const auditStateSchema = z.object({
   prodStart: z.string().nullable(),
   prodEnd: z.string().nullable(),
   prodDurationMinutes: z.string().nullable(),
+  outputQuantity: z.string().nullable(),
   serialCount: z.number().nullable().optional(),
 }).nullable();
 
@@ -148,6 +150,10 @@ const phaseSignoffBodySchema = z.object({
 const serialBodySchema = z.object({
   bomRefId: z.string().min(1),
   serialNumber: z.string().trim().min(1),
+});
+
+const outputQuantityBodySchema = z.object({
+  outputQuantity: z.union([z.number().positive(), z.string().trim().min(1)]),
 });
 
 function actorIdOf(req: { user: unknown }): string {
@@ -249,6 +255,52 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         return reply.status(404).send({ error: 'Work order not found' });
       }
       return events;
+    },
+  );
+
+  app.post(
+    '/:id/output-quantity',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        tags: ['Work Orders'],
+        summary: 'Record work order output quantity',
+        description: 'Capture or replace the produced output quantity for a work order phase as controlled production evidence.',
+        operationId: 'recordWorkOrderOutputQuantity',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
+        'x-auth': 'authenticated',
+        params: z.object({ id: z.string() }),
+        body: outputQuantityBodySchema,
+        response: {
+          200: workOrderDetailSchema,
+          400: errorResponse,
+          401: errorResponse,
+          404: errorResponse,
+          409: errorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      try {
+        return await workOrderService.recordWorkOrderOutputQuantity(
+          req.params.id,
+          { outputQuantity: req.body.outputQuantity },
+          actorIdOf(req),
+          tenantIdOf(req),
+        );
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith('cannot record output quantity:')) {
+          return reply.status(409).send({ error: err.message });
+        }
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+          return reply.status(404).send({ error: 'Work order not found' });
+        }
+        if (err instanceof Error && err.name === 'Error' && err.message.includes('Invalid argument')) {
+          return reply.status(400).send({ error: 'Invalid output quantity' });
+        }
+        throw err;
+      }
     },
   );
 

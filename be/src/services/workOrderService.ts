@@ -9,6 +9,7 @@ export interface CreateWorkOrderInput {
 
 type WorkOrderAuditAction =
   | 'work_order.created'
+  | 'work_order.output_quantity_recorded'
   | 'work_order.serial_recorded'
   | 'work_order.phase_started'
   | 'work_order.phase_finished'
@@ -24,6 +25,7 @@ interface WorkOrderAuditState extends Prisma.InputJsonObject {
   prodStart: string | null;
   prodEnd: string | null;
   prodDurationMinutes: string | null;
+  outputQuantity: string | null;
   serialCount?: number | null;
 }
 
@@ -113,7 +115,7 @@ const workOrderAuditSelect = {
 function auditState(
   workOrder: Pick<
     WorkOrder,
-    'id' | 'tenantId' | 'workflowId' | 'phaseId' | 'phaseOrder' | 'hetId' | 'prodStart' | 'prodEnd' | 'prodDuration'
+    'id' | 'tenantId' | 'workflowId' | 'phaseId' | 'phaseOrder' | 'hetId' | 'prodStart' | 'prodEnd' | 'prodDuration' | 'outputQuantity'
   > & { woSerials?: unknown[] },
 ): WorkOrderAuditState {
   return {
@@ -126,6 +128,7 @@ function auditState(
     prodStart: workOrder.prodStart?.toISOString() ?? null,
     prodEnd: workOrder.prodEnd?.toISOString() ?? null,
     prodDurationMinutes: workOrder.prodDuration?.toString() ?? null,
+    outputQuantity: workOrder.outputQuantity?.toString() ?? null,
     ...(workOrder.woSerials ? { serialCount: workOrder.woSerials.length } : {}),
   };
 }
@@ -490,6 +493,7 @@ export async function recordWorkOrderSerial(
       prodStart: true,
       prodEnd: true,
       prodDuration: true,
+      outputQuantity: true,
       phase: {
         select: {
           bom: {
@@ -551,6 +555,62 @@ export async function recordWorkOrderSerial(
   return getDecoratedWorkOrderOrThrow(id, scopedTenantId);
 }
 
+export async function recordWorkOrderOutputQuantity(
+  id: string,
+  input: { outputQuantity: string | number },
+  actorId: string,
+  tenantId?: string | null,
+) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const outputQuantity = new Prisma.Decimal(input.outputQuantity);
+  if (!outputQuantity.isFinite() || outputQuantity.lte(0)) {
+    throw new Error('cannot record output quantity: quantity must be greater than zero');
+  }
+
+  const workOrder = await prisma.workOrder.findFirst({
+    where: { id, tenantId: scopedTenantId },
+    select: {
+      id: true,
+      tenantId: true,
+      workflowId: true,
+      phaseId: true,
+      phaseOrder: true,
+      hetId: true,
+      prodStart: true,
+      prodEnd: true,
+      prodDuration: true,
+      outputQuantity: true,
+    },
+  });
+
+  if (!workOrder) {
+    throw new Prisma.PrismaClientKnownRequestError('Work order not found', {
+      code: 'P2025',
+      clientVersion: 'unknown',
+    });
+  }
+
+  const updated = await prisma.workOrder.update({
+    where: { id },
+    data: {
+      outputQuantity,
+      updatedById: actorId,
+    },
+  });
+
+  await recordWorkOrderAuditEvent({
+    tenantId: scopedTenantId,
+    workOrderId: id,
+    action: 'work_order.output_quantity_recorded',
+    actorId,
+    source: 'workOrderService.recordWorkOrderOutputQuantity',
+    previousState: auditState(workOrder),
+    newState: auditState(updated),
+  });
+
+  return getDecoratedWorkOrderOrThrow(id, scopedTenantId);
+}
+
 async function getLegacyContextForWorkOrder(workOrder: OperationalWorkOrder, tenantId: string) {
   const hetIds = legacyHetKeys(workOrder);
   if (!hetIds.length) return buildLegacyWorkOrderContext([workOrder]);
@@ -585,6 +645,7 @@ export async function startWorkOrderPhase(id: string, actorId: string, signature
       prodStart: true,
       prodEnd: true,
       prodDuration: true,
+      outputQuantity: true,
     },
   });
 
@@ -637,6 +698,7 @@ export async function finishWorkOrderPhase(id: string, actorId: string, signatur
       prodStart: true,
       prodEnd: true,
       prodDuration: true,
+      outputQuantity: true,
     },
   });
 

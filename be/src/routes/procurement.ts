@@ -2,6 +2,7 @@ import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import type { JwtPayload } from '../plugins/auth.js';
 import * as procurementService from '../services/procurementService.js';
+import * as inventoryTraceService from '../services/inventoryTraceService.js';
 
 const errorResponse = z.object({ error: z.string() });
 const dateish = z.union([z.date(), z.string()]);
@@ -145,6 +146,18 @@ const importReportSchema = z
   })
   .passthrough();
 
+const inventoryTraceSchema = z
+  .object({
+    subject: z.object({ type: z.string(), id: z.string(), label: z.string().nullable().optional() }),
+    lots: z.array(z.object({ id: z.string() }).passthrough()),
+    transactions: z.array(z.object({ id: z.string() }).passthrough()),
+    consumptions: z.array(z.object({ id: z.string() }).passthrough()),
+    genealogy: z.array(z.object({ id: z.string() }).passthrough()),
+    hets: z.array(z.object({ id: z.string() }).passthrough()),
+    workOrders: z.array(z.object({ id: z.string() }).passthrough()),
+  })
+  .passthrough();
+
 function tenantIdOf(req: { user: unknown }): string {
   return (req.user as JwtPayload).tenantId;
 }
@@ -256,6 +269,29 @@ export const procurementRoutes: FastifyPluginAsyncZod = async function (app) {
       const unit = await procurementService.getCollectionUnit(req.params.id, tenantIdOf(req));
       if (!unit) return reply.status(404).send({ error: 'Collection unit not found' });
       return unit;
+    },
+  );
+
+  app.get(
+    '/collection-units/:id/inventory-trace',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        tags: ['Procurement', 'Inventory'],
+        summary: 'Get collection unit inventory trace',
+        description: 'Read inventory lots, movements, consumptions, genealogy, HETs, and work orders associated with a collection unit. Example: GET /api/procurement/collection-units/CU-1001/inventory-trace.',
+        operationId: 'getCollectionUnitInventoryTrace',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
+        params: z.object({ id: z.string() }),
+        response: { 200: inventoryTraceSchema, 401: errorResponse, 404: errorResponse },
+      },
+    },
+    async (req, reply) => {
+      const trace = await inventoryTraceService.getCollectionUnitInventoryTrace(req.params.id, tenantIdOf(req));
+      if (!trace) return reply.status(404).send({ error: 'Collection unit not found' });
+      return trace;
     },
   );
 

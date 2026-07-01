@@ -24,6 +24,10 @@ function actorIdOf(req: { user: unknown }): string {
   return (req.user as JwtPayload).id;
 }
 
+function tenantIdOf(req: { user: unknown }): string {
+  return (req.user as JwtPayload).tenantId;
+}
+
 export const manufacturingRoutes: FastifyPluginAsyncZod = async function (app) {
   app.post(
     '/generate',
@@ -45,6 +49,7 @@ export const manufacturingRoutes: FastifyPluginAsyncZod = async function (app) {
         const created = await manufacturingService.generateBatchRecord(
           req.body.workOrderId,
           actorIdOf(req),
+          tenantIdOf(req),
         );
         return reply.status(201).send(created);
       } catch (err) {
@@ -75,7 +80,7 @@ export const manufacturingRoutes: FastifyPluginAsyncZod = async function (app) {
       },
     },
     async (req, reply) => {
-      const manufacturer = await manufacturingService.getBatchRecord(req.params.id);
+      const manufacturer = await manufacturingService.getBatchRecord(req.params.id, tenantIdOf(req));
       if (!manufacturer) {
         return reply.status(404).send({ error: 'Manufacturer not found' });
       }

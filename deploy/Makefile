@@ -1,7 +1,9 @@
-.PHONY: up down build logs shell-be shell-fe db-migrate db-seed db-reset db-export db-import db-snapshot db-restore db-import-cycle db-archive-pre-cutover db-import-cutover db-restore-cutover db-verify-cutover
+.PHONY: up down build logs shell-be shell-fe db-migrate db-seed db-reset db-export db-export-inventory db-import db-import-procurement db-import-inventory db-snapshot db-restore db-import-cycle db-archive-pre-cutover db-import-cutover db-restore-cutover db-verify-cutover
 
 SNAPSHOT_DIR := $(CURDIR)/data/snapshots
 CUTOVER_DIR  := $(CURDIR)/data/cutover-archives
+PROCUREMENT_DIR := /app/data/legacy
+INVENTORY_DIR := /app/data/inventory
 PG_USER := workorder
 PG_DB   := workorder
 
@@ -32,6 +34,12 @@ db-seed:
 db-import:
 	docker compose -f docker-compose.yml exec be npm run db:import
 
+db-import-procurement:
+	docker compose -f docker-compose.yml exec be npm run db:import:procurement -- --source-dir=$(PROCUREMENT_DIR)
+
+db-import-inventory:
+	docker compose -f docker-compose.yml exec be npm run db:import:inventory -- --source-dir=$(INVENTORY_DIR)
+
 db-reset:
 	docker compose -f docker-compose.yml exec be npx prisma migrate reset --force --skip-seed
 
@@ -40,6 +48,9 @@ db-reset:
 # and BOM_WO_SHEET_ID in be/.env.
 db-export:
 	docker compose -f docker-compose.yml exec be npm run db:export
+
+db-export-inventory:
+	docker compose -f docker-compose.yml exec be npm run db:export:inventory -- --output-dir=$(INVENTORY_DIR)
 
 db-reset:
 	docker compose -f docker-compose.yml exec be npx prisma migrate reset --force --skip-seed

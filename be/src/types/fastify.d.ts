@@ -10,7 +10,7 @@ declare module 'fastify' {
 
   interface FastifyReply {
     jwtSign(
-      payload: { id: string; role: string; email: string; name?: string | null },
+      payload: { id: string; role: string; email: string; tenantId: string; name?: string | null },
       options?: Record<string, unknown>
     ): Promise<string>;
     setCookie(name: string, value: string, options?: Record<string, unknown>): FastifyReply;
@@ -18,8 +18,8 @@ declare module 'fastify' {
   }
 
   interface FastifyRequest {
-    jwtVerify<T extends object = { id: string; role: string; email: string; name?: string | null }>(): Promise<T>;
-    user: { id: string; role: string; email: string; name?: string | null };
+    jwtVerify<T extends object = { id: string; role: string; email: string; tenantId: string; name?: string | null }>(): Promise<T>;
+    user: { id: string; role: string; email: string; tenantId: string; name?: string | null };
     cookies: { [cookieName: string]: string | undefined };
     unsignCookie(value: string): { valid: boolean; value: string | null; renew?: boolean };
   }

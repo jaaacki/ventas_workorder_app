@@ -10,7 +10,7 @@ const workflowRefSchema = z.object({
   id: z.string(),
   name: z.string(),
   code: z.string(),
-});
+}).passthrough();
 
 const phaseRefSchema = z.object({
   id: z.string(),
@@ -51,8 +51,16 @@ const createBodySchema = z.object({
   hetId: z.string().optional(),
 });
 
+const phaseSignoffBodySchema = z.object({
+  signatureDataUrl: z.string().min(1).optional(),
+}).optional();
+
 function actorIdOf(req: { user: unknown }): string {
   return (req.user as JwtPayload).id;
+}
+
+function tenantIdOf(req: { user: unknown }): string {
+  return (req.user as JwtPayload).tenantId;
 }
 
 export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
@@ -64,8 +72,8 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         response: { 200: z.array(workOrderSummarySchema), 401: errorResponse },
       },
     },
-    async () => {
-      return workOrderService.listWorkOrders();
+    async (req) => {
+      return workOrderService.listWorkOrders(tenantIdOf(req));
     },
   );
 
@@ -79,7 +87,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
       },
     },
     async (req, reply) => {
-      const workOrder = await workOrderService.getWorkOrder(req.params.id);
+      const workOrder = await workOrderService.getWorkOrder(req.params.id, tenantIdOf(req));
       if (!workOrder) {
         return reply.status(404).send({ error: 'Work order not found' });
       }
@@ -104,7 +112,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req, reply) => {
       try {
-        const created = await workOrderService.createWorkOrder(req.body, actorIdOf(req));
+        const created = await workOrderService.createWorkOrder(req.body, actorIdOf(req), tenantIdOf(req));
         return reply.status(201).send(created);
       } catch (err) {
         if (err instanceof Error && err.message === 'workflow has no phases configured') {
@@ -117,6 +125,66 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
           if (err.code === 'P2003') {
             return reply.status(400).send({ error: 'Referenced workflow or het does not exist' });
           }
+        }
+        throw err;
+      }
+    },
+  );
+
+  app.post(
+    '/:id/start',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        params: z.object({ id: z.string() }),
+        body: phaseSignoffBodySchema,
+        response: {
+          200: workOrderDetailSchema,
+          401: errorResponse,
+          404: errorResponse,
+          409: errorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      try {
+        return await workOrderService.startWorkOrderPhase(req.params.id, actorIdOf(req), req.body?.signatureDataUrl, tenantIdOf(req));
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith('cannot start:')) {
+          return reply.status(409).send({ error: err.message });
+        }
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+          return reply.status(404).send({ error: 'Work order not found' });
+        }
+        throw err;
+      }
+    },
+  );
+
+  app.post(
+    '/:id/finish',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        params: z.object({ id: z.string() }),
+        body: phaseSignoffBodySchema,
+        response: {
+          200: workOrderDetailSchema,
+          401: errorResponse,
+          404: errorResponse,
+          409: errorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      try {
+        return await workOrderService.finishWorkOrderPhase(req.params.id, actorIdOf(req), req.body?.signatureDataUrl, tenantIdOf(req));
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith('cannot finish:')) {
+          return reply.status(409).send({ error: err.message });
+        }
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+          return reply.status(404).send({ error: 'Work order not found' });
         }
         throw err;
       }
@@ -139,12 +207,15 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req, reply) => {
       try {
-        return await workOrderService.advanceWorkOrder(req.params.id, actorIdOf(req));
+        return await workOrderService.advanceWorkOrder(req.params.id, actorIdOf(req), tenantIdOf(req));
       } catch (err) {
         if (err instanceof Error && err.message === 'work order is at its final phase') {
           return reply.status(409).send({ error: 'work order is at its final phase' });
         }
         if (err instanceof Error && err.message.startsWith('sterilisation/BET gate')) {
+          return reply.status(409).send({ error: err.message });
+        }
+        if (err instanceof Error && err.message.startsWith('cannot advance:')) {
           return reply.status(409).send({ error: err.message });
         }
         if (err instanceof Prisma.PrismaClientKnownRequestError) {

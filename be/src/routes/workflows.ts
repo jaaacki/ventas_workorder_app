@@ -67,6 +67,10 @@ function actorIdOf(req: { user: unknown }): string {
   return (req.user as JwtPayload).id;
 }
 
+function tenantIdOf(req: { user: unknown }): string {
+  return (req.user as JwtPayload).tenantId;
+}
+
 export const workflowRoutes: FastifyPluginAsyncZod = async function (app) {
   app.get(
     '/',
@@ -79,7 +83,7 @@ export const workflowRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req) => {
       const activeOnly = req.query.active === 'true';
-      return workflowService.listWorkflows({ activeOnly });
+      return workflowService.listWorkflows({ activeOnly }, tenantIdOf(req));
     },
   );
 
@@ -93,7 +97,7 @@ export const workflowRoutes: FastifyPluginAsyncZod = async function (app) {
       },
     },
     async (req, reply) => {
-      const workflow = await workflowService.getWorkflow(req.params.id);
+      const workflow = await workflowService.getWorkflow(req.params.id, tenantIdOf(req));
       if (!workflow) {
         return reply.status(404).send({ error: 'Workflow not found' });
       }
@@ -118,7 +122,7 @@ export const workflowRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req, reply) => {
       try {
-        const created = await workflowService.createWorkflow(req.body, actorIdOf(req));
+        const created = await workflowService.createWorkflow(req.body, actorIdOf(req), tenantIdOf(req));
         return reply.status(201).send(created);
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError) {
@@ -153,7 +157,7 @@ export const workflowRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req, reply) => {
       try {
-        const updated = await workflowService.updateWorkflow(req.params.id, req.body, actorIdOf(req));
+        const updated = await workflowService.updateWorkflow(req.params.id, req.body, actorIdOf(req), tenantIdOf(req));
         return updated;
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError) {

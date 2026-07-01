@@ -1,7 +1,6 @@
-# Local Woodpecker CI — main branch production handoff.
+# Local Woodpecker CI — main branch staging deploy on home-syno.
 # Agents must not run project test/build commands on the host.
-# Runs the same integration checks as dev.yml. Remote production deployment
-# is handled outside this repo unless otherwise configured.
+# Runs integration checks, then deploys the checked commit to workorder-stg.
 when:
   event: push
   branch: [main]
@@ -77,6 +76,26 @@ steps:
       - npm run -w fe build
     depends_on:
       - main-shared-build
+
+  main-deploy-staging:
+    image: docker:27-cli
+    commands:
+      - cd /volume2/homes/noonoon/docker/workorder-stg
+      - DEPLOY_SHA="${CI_COMMIT_SHA:-${WOODPECKER_COMMIT_SHA:-}}"
+      - test -n "$DEPLOY_SHA"
+      - git config --global --add safe.directory /volume2/homes/noonoon/docker/workorder-stg
+      - rm -f compose.stg.yml
+      - git remote set-url origin https://github.com/jaaacki/ventas_workorder_app.git
+      - git fetch origin main
+      - git reset --hard "$DEPLOY_SHA"
+      - chown -R 1026:100 /volume2/homes/noonoon/docker/workorder-stg/.git
+      - git status --short --branch
+      - DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 docker compose -f compose.stg.yml build be fe be-migrate
+      - sh deploy/staging-postdeploy.sh
+    depends_on:
+      - main-be-checks
+      - main-be-integration-test
+      - main-fe-checks
 
 services:
   postgres:

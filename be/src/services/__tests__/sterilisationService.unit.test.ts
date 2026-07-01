@@ -1,14 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { Prisma } from '@prisma/client';
 
 const mocks = vi.hoisted(() => ({
   sterilise: {
     create: vi.fn(),
+    findFirst: vi.fn(),
     findMany: vi.fn(),
     update: vi.fn(),
   },
+  het: {
+    count: vi.fn(),
+  },
   workOrder: {
-    findUnique: vi.fn(),
+    findFirst: vi.fn(),
     update: vi.fn(),
   },
 }));
@@ -18,6 +21,7 @@ vi.mock('../../db/prisma.js', () => {
   // mocks to the callback as the transaction client `tx`.
   const prisma = {
     sterilise: mocks.sterilise,
+    het: mocks.het,
     workOrder: mocks.workOrder,
     $transaction: vi.fn(async (fn: (tx: typeof prisma) => unknown) => fn(prisma)),
   };
@@ -36,7 +40,8 @@ beforeEach(() => {
 
 describe('sterilisationService', () => {
   it('createSterilisation creates a row, links hets and sets work order steralisationCurrentId', async () => {
-    mocks.workOrder.findUnique.mockResolvedValue({ id: 'wo-1' });
+    mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo-1', tenantId: 'ventas' });
+    mocks.het.count.mockResolvedValue(2);
     mocks.sterilise.create.mockResolvedValue({ id: 'ster-1', workOrderId: 'wo-1' });
     mocks.workOrder.update.mockResolvedValue({ id: 'wo-1' });
 
@@ -51,13 +56,17 @@ describe('sterilisationService', () => {
       'actor1',
     );
 
-    expect(mocks.workOrder.findUnique).toHaveBeenCalledWith({
-      where: { id: 'wo-1' },
-      select: { id: true },
+    expect(mocks.workOrder.findFirst).toHaveBeenCalledWith({
+      where: { id: 'wo-1', tenantId: 'ventas' },
+      select: { id: true, tenantId: true },
+    });
+    expect(mocks.het.count).toHaveBeenCalledWith({
+      where: { id: { in: ['het-1', 'het-2'] }, tenantId: 'ventas', deleted: false },
     });
 
     const createCall = mocks.sterilise.create.mock.calls[0][0];
     expect(createCall.data.workOrderId).toBe('wo-1');
+    expect(createCall.data.tenantId).toBe('ventas');
     expect(createCall.data.direction).toBe('OUT');
     expect(createCall.data.result).toBe(true);
     expect(createCall.data.signById).toBe('staff-1');
@@ -81,7 +90,7 @@ describe('sterilisationService', () => {
   });
 
   it('createSterilisation throws P2025 when the work order is missing', async () => {
-    mocks.workOrder.findUnique.mockResolvedValue(null);
+    mocks.workOrder.findFirst.mockResolvedValue(null);
 
     await expect(
       createSterilisation({ workOrderId: 'missing', direction: 'IN' }, 'actor1'),
@@ -92,7 +101,7 @@ describe('sterilisationService', () => {
   });
 
   it('createSterilisation omits optional fields and batchHets when not provided', async () => {
-    mocks.workOrder.findUnique.mockResolvedValue({ id: 'wo-1' });
+    mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo-1', tenantId: 'ventas' });
     mocks.sterilise.create.mockResolvedValue({ id: 'ster-2' });
     mocks.workOrder.update.mockResolvedValue({ id: 'wo-1' });
 
@@ -113,7 +122,7 @@ describe('sterilisationService', () => {
     const result = await listSterilisations('wo-1');
 
     expect(mocks.sterilise.findMany).toHaveBeenCalledWith({
-      where: { workOrderId: 'wo-1' },
+      where: { workOrderId: 'wo-1', tenantId: 'ventas' },
       include: { batchHets: { include: { het: { select: { id: true, hetNumber: true } } } } },
       orderBy: { createdAt: 'desc' },
     });
@@ -121,10 +130,15 @@ describe('sterilisationService', () => {
   });
 
   it('setSterilisationResult updates the result', async () => {
+    mocks.sterilise.findFirst.mockResolvedValue({ id: 'ster-1' });
     mocks.sterilise.update.mockResolvedValue({ id: 'ster-1', result: false });
 
     const result = await setSterilisationResult('ster-1', false, 'actor1');
 
+    expect(mocks.sterilise.findFirst).toHaveBeenCalledWith({
+      where: { id: 'ster-1', tenantId: 'ventas' },
+      select: { id: true },
+    });
     expect(mocks.sterilise.update).toHaveBeenCalledWith({
       where: { id: 'ster-1' },
       data: { result: false, updatedById: 'actor1' },
@@ -134,12 +148,7 @@ describe('sterilisationService', () => {
   });
 
   it('setSterilisationResult throws a P2025-shaped error when missing', async () => {
-    mocks.sterilise.update.mockRejectedValue(
-      new Prisma.PrismaClientKnownRequestError('Record not found', {
-        code: 'P2025',
-        clientVersion: 'unknown',
-      }),
-    );
+    mocks.sterilise.findFirst.mockResolvedValue(null);
 
     await expect(setSterilisationResult('missing', true, 'actor1')).rejects.toMatchObject({
       code: 'P2025',

@@ -20,6 +20,7 @@ import { createHash, webcrypto, X509Certificate } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import type { Env } from '../config/env.js';
 import { prisma } from '../db/prisma.js';
+import { DEFAULT_TENANT_ID, tenantIdOrDefault } from '../services/tenant.js';
 
 const errorResponse = z.object({ error: z.string() });
 
@@ -301,7 +302,14 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
       }
 
       const claims = tokenSet.claims();
-      let email = typeof claims?.email === 'string' ? claims.email.toLowerCase() : undefined;
+      let email =
+        typeof claims?.email === 'string'
+          ? claims.email.toLowerCase()
+          : typeof claims?.preferred_username === 'string'
+            ? claims.preferred_username.toLowerCase()
+            : typeof claims?.upn === 'string'
+              ? claims.upn.toLowerCase()
+              : undefined;
       let name = typeof claims?.name === 'string' ? claims.name : undefined;
       const providerId = typeof claims?.sub === 'string' ? claims.sub : undefined;
 
@@ -335,6 +343,7 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
           data: {
             email,
             name,
+            tenantId: DEFAULT_TENANT_ID,
             roleId: role.id,
             [idField]: providerId,
             active: true,
@@ -356,6 +365,7 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
         id: staff.id,
         role: staff.role?.key || 'user',
         email: staff.email,
+        tenantId: tenantIdOrDefault(staff.tenantId),
         name: staff.name,
       });
 

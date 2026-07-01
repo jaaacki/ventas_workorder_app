@@ -24,7 +24,7 @@ describe('OAuth callback URL handling', () => {
 describe('OAuth provider configuration', () => {
   const baseConfig = {
     issuerUrl: 'https://login.microsoftonline.com/common/v2.0',
-    scope: 'openid email profile User.Read',
+    scope: 'openid email profile',
     clientId: 'client-id',
     clientSecret: undefined,
     privateKey: undefined,

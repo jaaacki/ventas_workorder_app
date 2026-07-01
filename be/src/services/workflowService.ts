@@ -1,5 +1,6 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
+import { tenantIdOrDefault } from './tenant.js';
 
 export interface WorkflowPhaseInput {
   phaseId: string;
@@ -44,9 +45,10 @@ function phaseCreateMany(phases: WorkflowPhaseInput[]) {
   return phases.map(({ phaseId, sortOrder }) => ({ phaseId, sortOrder }));
 }
 
-export async function listWorkflows(options: ListWorkflowsOptions = {}) {
+export async function listWorkflows(options: ListWorkflowsOptions = {}, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
   return prisma.workflow.findMany({
-    where: options.activeOnly ? { active: true } : undefined,
+    where: { tenantId: scopedTenantId, ...(options.activeOnly ? { active: true } : {}) },
     orderBy: { name: 'asc' },
     include: {
       _count: { select: { phases: true, workOrders: true } },
@@ -54,24 +56,25 @@ export async function listWorkflows(options: ListWorkflowsOptions = {}) {
   });
 }
 
-export async function getWorkflow(id: string) {
-  return prisma.workflow.findUnique({
-    where: { id },
+export async function getWorkflow(id: string, tenantId?: string | null) {
+  return prisma.workflow.findFirst({
+    where: { id, tenantId: tenantIdOrDefault(tenantId) },
     include: workflowDetailInclude,
   });
 }
 
-export async function getWorkflowByCode(code: string) {
-  return prisma.workflow.findUnique({
-    where: { code },
+export async function getWorkflowByCode(code: string, tenantId?: string | null) {
+  return prisma.workflow.findFirst({
+    where: { code, tenantId: tenantIdOrDefault(tenantId) },
     include: workflowDetailInclude,
   });
 }
 
-export async function createWorkflow(input: CreateWorkflowInput, actorId: string) {
+export async function createWorkflow(input: CreateWorkflowInput, actorId: string, tenantId?: string | null) {
   const phases = input.phases ?? [];
   return prisma.workflow.create({
     data: {
+      tenantId: tenantIdOrDefault(tenantId),
       name: input.name,
       code: input.code,
       description: input.description ?? null,
@@ -85,9 +88,20 @@ export async function createWorkflow(input: CreateWorkflowInput, actorId: string
   });
 }
 
-export async function updateWorkflow(id: string, input: UpdateWorkflowInput, actorId: string) {
+export async function updateWorkflow(id: string, input: UpdateWorkflowInput, actorId: string, tenantId?: string | null) {
   const replacePhases = input.phases;
+  const scopedTenantId = tenantIdOrDefault(tenantId);
   return prisma.$transaction(async (tx) => {
+    const workflow = await tx.workflow.findFirst({
+      where: { id, tenantId: scopedTenantId },
+      select: { id: true },
+    });
+    if (!workflow) {
+      throw new Prisma.PrismaClientKnownRequestError('Workflow not found', {
+        code: 'P2025',
+        clientVersion: 'unknown',
+      });
+    }
     // Replace phase bindings atomically when a new set is supplied.
     if (replacePhases !== undefined) {
       await tx.workflowPhase.deleteMany({ where: { workflowId: id } });

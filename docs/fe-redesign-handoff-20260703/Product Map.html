@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ventas WorkOrder — Product Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FBFAF8;
+    --card:#FFFFFF;
+    --ink:#1B1B1F;
+    --muted:#63636B;
+    --faint:#9A9AA2;
+    --line:#E7E4DE;
+    --line-strong:#D8D4CC;
+    --indigo:#4F46E5;
+    --indigo-soft:#EEEEFE;
+    --indigo-ink:#3B34B8;
+    --green:#2E7D57;
+    --green-soft:#E6F1EB;
+    --amber:#B26B1E;
+    --amber-soft:#F6EEDF;
+    --shadow:0 1px 2px rgba(27,27,31,.04), 0 8px 24px rgba(27,27,31,.05);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,sans-serif;
+    font-size:16px;line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+  .wrap{max-width:1120px;margin:0 auto;padding:0 40px}
+  .mono{font-family:"IBM Plex Mono",monospace}
+  .eyebrow{
+    font-family:"IBM Plex Mono",monospace;
+    font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);
+  }
+  h1,h2,h3,h4{font-family:"Space Grotesk",sans-serif;font-weight:600;line-height:1.12;letter-spacing:-.02em}
+  section{padding:88px 0;border-top:1px solid var(--line)}
+  .section-head{max-width:720px;margin-bottom:52px}
+  .section-head h2{font-size:34px;margin:14px 0 16px}
+  .section-head p{color:var(--muted);font-size:17px;max-width:640px}
+
+  /* ---------- Masthead ---------- */
+  header.top{padding:26px 0}
+  .brand{display:flex;align-items:center;gap:12px}
+  .logo{width:36px;height:36px;border-radius:9px;background:var(--indigo);display:grid;place-items:center;color:#fff;font-family:"Space Grotesk";font-weight:700;font-size:18px}
+  .brand .n{font-family:"Space Grotesk";font-weight:600;font-size:16px}
+  .brand .t{margin-left:auto;font-size:13px;color:var(--faint);font-family:"IBM Plex Mono"}
+
+  /* ---------- Hero / thesis ---------- */
+  .hero{background:var(--ink);color:var(--paper);border-top:none}
+  .hero .wrap{padding-top:96px;padding-bottom:104px}
+  .hero .eyebrow{color:#8C8AF0}
+  .hero h1{font-size:56px;line-height:1.02;margin:20px 0 28px;max-width:940px;letter-spacing:-.03em}
+  .hero h1 em{font-style:normal;color:#9C97FF}
+  .hero .lede{font-size:19px;line-height:1.62;color:#C9C7CE;max-width:680px}
+  .hero .defs{display:flex;flex-wrap:wrap;gap:14px;margin-top:44px}
+  .def{border:1px solid #38383F;border-radius:12px;padding:16px 18px;flex:1 1 220px;background:#212127}
+  .def .k{font-family:"IBM Plex Mono";font-size:12px;letter-spacing:.08em;color:#8C8AF0;margin-bottom:6px}
+  .def .v{font-size:14px;color:#D6D4DB;line-height:1.5}
+  .def .v b{color:#fff;font-weight:600}
+
+  /* ---------- Journey spine ---------- */
+  .spine{display:grid;grid-template-columns:repeat(5,1fr);gap:0;position:relative;margin-top:8px}
+  .stage{padding:0 20px;position:relative}
+  .stage:not(:last-child)::after{content:"";position:absolute;top:19px;right:-1px;width:2px;height:0}
+  .rail{position:relative;height:40px;margin-bottom:22px}
+  .rail .track{position:absolute;top:19px;left:0;right:0;height:2px;background:var(--line-strong)}
+  .stage:first-child .rail .track{left:19px}
+  .stage:last-child .rail .track{right:19px}
+  .dot{position:absolute;top:9px;left:0;width:40px;height:40px;border-radius:50%;background:var(--card);border:2px solid var(--indigo);display:grid;place-items:center;font-family:"Space Grotesk";font-weight:600;font-size:15px;color:var(--indigo)}
+  .stage h3{font-size:20px;margin-bottom:8px}
+  .stage .verb{font-family:"IBM Plex Mono";font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:4px}
+  .stage p{font-size:14px;color:var(--muted);line-height:1.55;margin-bottom:14px}
+  .owner{display:inline-flex;align-items:center;gap:6px;font-family:"IBM Plex Mono";font-size:11px;letter-spacing:.04em;color:var(--indigo-ink);background:var(--indigo-soft);border-radius:999px;padding:4px 10px;margin-bottom:12px}
+  .tracks{border-top:1px dashed var(--line-strong);padding-top:12px}
+  .tracks .lbl{font-family:"IBM Plex Mono";font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:6px}
+  .tracks .val{font-size:13px;color:var(--ink);line-height:1.5}
+  .thread-note{margin-top:44px;border:1px solid var(--line);background:var(--card);border-radius:14px;padding:22px 24px;display:flex;gap:18px;align-items:flex-start;box-shadow:var(--shadow)}
+  .thread-note .tag{font-family:"IBM Plex Mono";font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--green);background:var(--green-soft);padding:6px 11px;border-radius:999px;white-space:nowrap;font-weight:500}
+  .thread-note p{font-size:15px;color:var(--muted);line-height:1.6}
+  .thread-note p b{color:var(--ink);font-weight:600}
+
+  /* ---------- Domain model ---------- */
+  .dm-band{background:#F4F2ED}
+  .dm-group{margin-bottom:40px}
+  .dm-group > .lbl{font-family:"IBM Plex Mono";font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:16px;display:flex;align-items:center;gap:10px}
+  .dm-group > .lbl::after{content:"";flex:1;height:1px;background:var(--line-strong)}
+  .ent-grid{display:grid;gap:14px}
+  .spine-row{grid-template-columns:repeat(4,1fr)}
+  .support-row{grid-template-columns:repeat(3,1fr)}
+  .ent{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:18px 18px 16px;box-shadow:var(--shadow);position:relative}
+  .ent.core{border-color:#C9C6F5}
+  .ent .name{font-family:"Space Grotesk";font-weight:600;font-size:17px;display:flex;align-items:center;gap:8px;margin-bottom:3px}
+  .ent .code{font-family:"IBM Plex Mono";font-size:11px;color:var(--faint);margin-bottom:10px}
+  .ent p{font-size:13.5px;color:var(--muted);line-height:1.5}
+  .ent .rel{margin-top:11px;font-family:"IBM Plex Mono";font-size:11px;color:var(--indigo-ink);line-height:1.5}
+  .flowline{display:flex;align-items:center;justify-content:center;gap:12px;margin:0 0 18px;font-family:"IBM Plex Mono";font-size:12px;color:var(--faint);flex-wrap:wrap}
+  .flowline b{color:var(--ink);font-weight:600}
+  .flowline .arw{color:var(--indigo)}
+
+  /* ---------- Personas ---------- */
+  .persona-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .persona{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:24px;box-shadow:var(--shadow);display:flex;flex-direction:column}
+  .persona .role{font-family:"IBM Plex Mono";font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-bottom:14px}
+  .persona .q{font-family:"Space Grotesk";font-weight:600;font-size:21px;line-height:1.2;letter-spacing:-.01em;margin-bottom:16px}
+  .persona .q .quote{color:var(--indigo)}
+  .persona .lives{margin-top:auto;padding-top:14px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+  .persona .lives b{color:var(--ink);font-weight:600;font-family:"IBM Plex Mono";font-size:12px}
+  .persona.primary{background:var(--indigo);border-color:var(--indigo)}
+  .persona.primary .role{color:#B9B6FF}
+  .persona.primary .q{color:#fff}
+  .persona.primary .q .quote{color:#D6D4FF}
+  .persona.primary .lives{border-top-color:#5F57E8;color:#C9C6F5}
+  .persona.primary .lives b{color:#fff}
+
+  /* ---------- Broken now ---------- */
+  .broken-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 40px}
+  .flaw{display:flex;gap:16px;padding:20px 0;border-bottom:1px solid var(--line)}
+  .flaw .num{font-family:"IBM Plex Mono";font-size:13px;color:var(--amber);flex-shrink:0;padding-top:2px}
+  .flaw h4{font-size:16px;margin-bottom:5px}
+  .flaw p{font-size:14px;color:var(--muted);line-height:1.55}
+  .flaw code{font-family:"IBM Plex Mono";font-size:12.5px;background:var(--amber-soft);color:var(--amber);padding:1px 6px;border-radius:5px}
+
+  /* ---------- IA ---------- */
+  .ia-band{background:var(--ink);color:var(--paper)}
+  .ia-band .section-head h2{color:#fff}
+  .ia-band .section-head p{color:#BFBDC6}
+  .ia-band .eyebrow{color:#8C8AF0}
+  .ia-layout{display:grid;grid-template-columns:300px 1fr;gap:40px;align-items:start}
+  .navmock{background:#212127;border:1px solid #34343B;border-radius:16px;padding:22px 16px;position:sticky;top:24px}
+  .navmock .nb{display:flex;align-items:center;gap:10px;padding:0 8px 18px;border-bottom:1px solid #34343B;margin-bottom:14px}
+  .navmock .nb .logo{width:30px;height:30px;font-size:15px;border-radius:8px}
+  .navmock .nb span{font-family:"Space Grotesk";font-weight:600;font-size:14px;color:#fff}
+  .navgroup{margin-bottom:6px}
+  .navgroup .gl{font-family:"IBM Plex Mono";font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#6E6E77;padding:12px 10px 6px}
+  .navitem{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;font-size:14px;color:#C9C7CE}
+  .navitem.on{background:var(--indigo);color:#fff}
+  .navitem .ic{width:16px;height:16px;border-radius:5px;border:1.5px solid currentColor;opacity:.6;flex-shrink:0}
+  .navitem.on .ic{opacity:.9;border-color:#fff}
+  .navitem .sub{margin-left:auto;font-family:"IBM Plex Mono";font-size:10px;color:#8C8AF0}
+  .navitem.on .sub{color:#D6D4FF}
+
+  .maptable{display:flex;flex-direction:column;gap:0}
+  .maprow{display:grid;grid-template-columns:1fr 26px 1.2fr;gap:20px;align-items:baseline;padding:18px 0;border-bottom:1px solid #34343B}
+  .maprow:first-child{padding-top:0}
+  .from{font-family:"IBM Plex Mono";font-size:13px;color:#8E8E97}
+  .from s{text-decoration-color:#5A5A62}
+  .to-arrow{color:#6E6E77;font-family:"IBM Plex Mono";text-align:center}
+  .to .t{font-family:"Space Grotesk";font-weight:600;font-size:15px;color:#fff;margin-bottom:3px}
+  .to .why{font-size:13px;color:#A9A7B1;line-height:1.5}
+  .to .why em{color:#C9C6F5;font-style:normal}
+
+  .principles{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:56px}
+  .principle{border:1px solid #34343B;border-radius:14px;padding:22px;background:#212127}
+  .principle .pn{font-family:"IBM Plex Mono";font-size:12px;color:#8C8AF0;margin-bottom:10px}
+  .principle h4{color:#fff;font-size:16px;margin-bottom:8px}
+  .principle p{font-size:13.5px;color:#A9A7B1;line-height:1.55}
+
+  footer{padding:60px 0;text-align:center;color:var(--faint);font-family:"IBM Plex Mono";font-size:12px;border-top:1px solid var(--line)}
+
+  @media(max-width:980px){
+    .wrap{padding:0 24px}
+    .hero h1{font-size:40px}
+    .spine{grid-template-columns:1fr 1fr}
+    .spine .rail{display:none}
+    .stage{padding:20px 0;border-bottom:1px solid var(--line)}
+    .spine-row,.support-row,.persona-grid,.broken-grid,.principles{grid-template-columns:1fr 1fr}
+    .ia-layout{grid-template-columns:1fr}
+    .navmock{position:static}
+  }
+  @media(max-width:620px){
+    .spine,.spine-row,.support-row,.persona-grid,.broken-grid,.principles{grid-template-columns:1fr}
+    .maprow{grid-template-columns:1fr;gap:6px}
+    .to-arrow{display:none}
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap brand">
+    <div class="logo">V</div>
+    <div class="n">Ventas WorkOrder</div>
+    <div class="t">Product Map · v1 · Jul 2026</div>
+  </div>
+</header>
+
+<!-- HERO / THESIS -->
+<section class="hero">
+  <div class="wrap">
+    <div class="eyebrow">The product, in one thought</div>
+    <h1>Ventas turns <em>human extracted teeth</em> into released biomaterial. This system is the single thread of traceability and control across that journey.</h1>
+    <p class="lede">Every screen today is a slice of one continuous flow — dentin arrives from a partner clinic, moves through a defined production workflow, passes a safety gate, and ships as finished goods. The current UI cut that thread into disconnected, database-shaped pages. This map re-joins it.</p>
+    <div class="defs">
+      <div class="def"><div class="k">HET</div><div class="v"><b>Human Extracted Teeth</b> — a sealed container of dentin collected from a partner dental clinic. The raw material.</div></div>
+      <div class="def"><div class="k">WORK ORDER</div><div class="v"><b>One atomic unit of work</b> in a workflow — a batch moving down a factory line, phase by phase.</div></div>
+        <div class="def"><div class="k">WORKFLOW / LINE</div><div class="v"><b>One of several product lines</b> — each with its own ordered phase recipe. Every work order runs inside exactly one.</div></div>
+      <div class="def"><div class="k">BET</div><div class="v"><b>Bacterial Endotoxin Test</b> — the sterility/safety evidence that gates release. Nothing ships unproven.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- MATERIAL JOURNEY -->
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">The spine · material journey</div>
+      <h2>One flow, five stages, one traceable thread</h2>
+      <p>Read left to right — this is the life of the material, and the true backbone of the product. Each stage is owned by a different role, but they hand off along the same unbroken chain of custody.</p>
+    </div>
+
+    <div class="spine">
+      <div class="stage">
+        <div class="rail"><div class="track"></div><div class="dot">1</div></div>
+        <div class="verb">Clinic → us</div>
+        <h3>Collect</h3>
+        <p>Partner clinics extract teeth, seal them into HET containers, and log delivery. Chain of custody starts here.</p>
+        <div class="owner">Procurement / Supply</div>
+        <div class="tracks"><div class="lbl">System tracks</div><div class="val">Collection units, issuance &amp; return, source clinic</div></div>
+      </div>
+      <div class="stage">
+        <div class="rail"><div class="track"></div><div class="dot">2</div></div>
+        <div class="verb">Intake</div>
+        <h3>Receive</h3>
+        <p>HET arrives, is inspected, and registered as a raw-material lot with its origin recorded — the root of its genealogy.</p>
+        <div class="owner">Inventory / Warehouse</div>
+        <div class="tracks"><div class="lbl">System tracks</div><div class="val">Lot created, SKU, location, quarantine-on-arrival</div></div>
+      </div>
+      <div class="stage">
+        <div class="rail"><div class="track"></div><div class="dot">3</div></div>
+        <div class="verb">Factory line</div>
+        <h3>Process</h3>
+        <p>A work order drives the lot through the workflow's phases — prep, clean, sterilise, freeze, lyophilise, mill, pack. Lots split and merge.</p>
+        <div class="owner">Operators + Manager</div>
+        <div class="tracks"><div class="lbl">System tracks</div><div class="val">Current &amp; next phase, procedures, equipment, BOM, genealogy</div></div>
+      </div>
+      <div class="stage">
+        <div class="rail"><div class="track"></div><div class="dot">4</div></div>
+        <div class="verb">Prove it's safe</div>
+        <h3>Gate</h3>
+        <p>Sterilisation &amp; BET evidence is reviewed. Material sits in quarantine and cannot advance until QA signs it off.</p>
+        <div class="owner">QA Reviewer</div>
+        <div class="tracks"><div class="lbl">System tracks</div><div class="val">Gate status, evidence, quarantine, blocked-next-phase</div></div>
+      </div>
+      <div class="stage">
+        <div class="rail"><div class="track"></div><div class="dot">5</div></div>
+        <div class="verb">Us → world</div>
+        <h3>Release</h3>
+        <p>QA releases the batch. It becomes finished goods, ready to ship — with its full genealogy retained for audit.</p>
+        <div class="owner">QA + Owner</div>
+        <div class="tracks"><div class="lbl">System tracks</div><div class="val">Finished-goods status, release record, full lineage</div></div>
+      </div>
+    </div>
+
+    <div class="thread-note">
+      <div class="tag">The connective tissue</div>
+      <p><b>Genealogy is the thread that ties all five stages together.</b> Every lot remembers its parents and children — so a finished good traces back to the exact clinic-collected tooth, and any recall or investigation can walk the chain in either direction. The current UI treats genealogy as a buried detail field; it should be a first-class way to navigate the whole system.</p>
+    </div>
+  </div>
+</section>
+
+<!-- DOMAIN MODEL -->
+<section class="dm-band">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Domain model</div>
+      <h2>The nouns, and how they connect</h2>
+      <p>Strip away the legacy fields and the schema noise, and the product is a small, legible set of entities. Four form the spine the material actually travels down; the rest are definitions and context that support it.</p>
+    </div>
+
+    <div class="dm-group">
+      <div class="lbl">The spine — what the material becomes</div>
+      <div class="flowline">
+        <b>HET</b><span class="arw">→</span><b>Lot</b><span class="arw">→</span><b>Work Order</b><span class="arw">→</span><b>Finished Goods</b>
+      </div>
+      <div class="ent-grid spine-row">
+        <div class="ent core"><div class="name">HET</div><div class="code">human_extracted_teeth</div><p>The physical raw material — a container of dentin from a clinic.</p><div class="rel">→ becomes a raw-material Lot</div></div>
+        <div class="ent core"><div class="name">Lot</div><div class="code">inventory_lot</div><p>A tracked quantity with SKU, location, status and a parent/child lineage.</p><div class="rel">→ consumed &amp; produced by Work Orders</div></div>
+        <div class="ent core"><div class="name">Work Order</div><div class="code">work_order</div><p>One unit of work running a lot through a workflow's phases.</p><div class="rel">→ advances phase by phase to a gate</div></div>
+        <div class="ent core"><div class="name">Finished Goods</div><div class="code">released_lot</div><p>A released, ship-ready lot that still carries its full genealogy.</p><div class="rel">→ closes the thread; audit-ready</div></div>
+      </div>
+    </div>
+
+    <div class="dm-group">
+      <div class="lbl">Supporting definitions &amp; context</div>
+      <div class="ent-grid support-row">
+        <div class="ent"><div class="name">Collection Unit</div><div class="code">CLI-…</div><p>The procurement record linking a source clinic to the HETs it sent.</p><div class="rel">context for stage 1 · Collect</div></div>
+        <div class="ent"><div class="name">Workflow &amp; Phase</div><div class="code">phase_catalog</div><p>The ordered recipe of steps a factory line follows — the map the WO walks.</p><div class="rel">defines stage 3 · Process</div></div>
+        <div class="ent"><div class="name">BOM &amp; Equipment</div><div class="code">phase_requirements</div><p>What each phase consumes and the machines it needs.</p><div class="rel">per-phase inputs</div></div>
+        <div class="ent"><div class="name">SKU &amp; Location</div><div class="code">catalog · site</div><p>What a lot is and where it physically sits.</p><div class="rel">describes every Lot</div></div>
+        <div class="ent"><div class="name">QA Gate</div><div class="code">bet · sterilisation · quarantine</div><p>The checkpoint that holds and clears material for the next phase or release.</p><div class="rel">governs stages 4 – 5</div></div>
+        <div class="ent"><div class="name">Genealogy</div><div class="code">lot_edges</div><p>Parent/child links between lots — the traceability spine end to end.</p><div class="rel">threads all stages</div></div>
+      </div>
+    </div>
+
+    <div class="thread-note" style="border-color:#C9C6F5">
+      <div class="tag" style="color:var(--indigo-ink);background:var(--indigo-soft)">Workflow = context</div>
+      <p><b>The floor runs several workflows (product lines) in parallel</b> — A-Graft and four others — each defining its own ordered phases, BOM and equipment. A work order lives in exactly one. So workflow isn't just another entity in the model: it's the lens the whole app is scoped by. Pick a line and the board, the operator queue and the QA gates all filter to it; a manager can widen to all lines at once.</p>
+    </div>
+  </div>
+</section>
+
+<!-- PERSONAS -->
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">People &amp; jobs</div>
+      <h2>Six people, six questions</h2>
+      <p>Each role opens the app to answer one thing. Design the home and the primary screens around these questions — not around the tables the data happens to live in. The two most frequent questions are what the whole product should optimise for.</p>
+    </div>
+
+    <div class="persona-grid">
+      <div class="persona primary">
+        <div class="role">Production Operator</div>
+        <div class="q"><span class="quote">“</span>What do I work on next?<span class="quote">”</span></div>
+        <div class="lives">Lives in <b>My queue</b> — the next phase tasks assigned to them</div>
+      </div>
+      <div class="persona primary">
+        <div class="role">QA Reviewer / Releaser</div>
+        <div class="q"><span class="quote">“</span>What can I release today?<span class="quote">”</span></div>
+        <div class="lives">Lives in <b>Release queue</b> — gates ready to sign off</div>
+      </div>
+      <div class="persona">
+        <div class="role">Production Manager</div>
+        <div class="q">What's blocked, and what's flowing?</div>
+        <div class="lives">Lives in <b>Production board</b> — all WOs by phase</div>
+      </div>
+      <div class="persona">
+        <div class="role">Procurement / Supply</div>
+        <div class="q">What's coming in from clinics?</div>
+        <div class="lives">Lives in <b>Collections</b> — issuance &amp; returns</div>
+      </div>
+      <div class="persona">
+        <div class="role">Inventory / Warehouse</div>
+        <div class="q">Where is everything, and where did it come from?</div>
+        <div class="lives">Lives in <b>Inventory + Traceability</b></div>
+      </div>
+      <div class="persona">
+        <div class="role">Admin / Owner</div>
+        <div class="q">Is it configured right, and who has access?</div>
+        <div class="lives">Lives in <b>Setup</b> — workflows, users, roles</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BROKEN NOW -->
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Diagnosis</div>
+      <h2>Why it doesn't flow today</h2>
+      <p>The UI grew a page at a time as the backend shipped features. The result mirrors the database, not the work. Four symptoms, all fixable.</p>
+    </div>
+    <div class="broken-grid">
+      <div class="flaw"><div class="num">01</div><div><h4>Navigation mirrors tables, not jobs</h4><p>The menu mixes a workflow (Production), one role's queue (QA), two domains (Procurement, Inventory) and admin — flattened side by side. Nothing signals that they're one flow.</p></div></div>
+      <div class="flaw"><div class="num">02</div><div><h4>Schema leaks onto every screen</h4><p>Detail pages surface raw keys — <code>unit:HET-…</code>, <code>supply:CLI-…</code>, <code>Legacy serial</code>, <code>Inferred from legacy deliver</code>. Users read foreign keys instead of meaning.</p></div></div>
+      <div class="flaw"><div class="num">03</div><div><h4>No real dashboarding</h4><p>The home is a wall of counts. It never answers the two questions that actually matter — <em>what do I work on next</em> and <em>what can I release today</em> — for the person looking at it.</p></div></div>
+      <div class="flaw"><div class="num">04</div><div><h4>The thread is invisible</h4><p>Collection, production, QA and inventory are deeply connected in reality, but the UI never lets you walk from a finished good back to its clinic-collected tooth. Genealogy is buried.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- PROPOSED IA -->
+<section class="ia-band">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">The proposal</div>
+      <h2>A clean information architecture</h2>
+      <p>Re-group everything around the flow and the jobs. Five areas that read like the material journey, a role-aware home that answers the two questions on open, and legacy fields demoted to a collapsible “source record.” A workflow switcher at the top scopes the whole app to one product line.</p>
+    </div>
+
+    <div class="ia-layout">
+      <aside class="navmock" aria-label="Proposed navigation">
+        <div class="nb"><div class="logo">V</div><span>Ventas WorkOrder</span></div>
+        <div style="margin:0 8px 14px;padding:9px 11px;border:1px solid #34343B;border-radius:9px;display:flex;align-items:center;gap:8px;background:#1A1A1F">
+          <span style="font-family:'IBM Plex Mono';font-size:10px;letter-spacing:.1em;color:#6E6E77">LINE</span>
+          <span style="font-family:'Space Grotesk';font-weight:600;font-size:13px;color:#fff">A-Graft</span>
+          <span style="margin-left:auto;color:#8C8AF0">▾</span>
+        </div>
+
+        <div class="navgroup">
+          <div class="navitem on"><span class="ic"></span>Today</div>
+        </div>
+        <div class="navgroup">
+          <div class="gl">Production</div>
+          <div class="navitem"><span class="ic"></span>Board</div>
+          <div class="navitem"><span class="ic"></span>My queue</div>
+        </div>
+        <div class="navgroup">
+          <div class="gl">Quality</div>
+          <div class="navitem"><span class="ic"></span>Release queue</div>
+          <div class="navitem"><span class="ic"></span>Quarantine</div>
+        </div>
+        <div class="navgroup">
+          <div class="gl">Material</div>
+          <div class="navitem"><span class="ic"></span>Collections</div>
+          <div class="navitem"><span class="ic"></span>Inventory</div>
+          <div class="navitem"><span class="ic"></span>Traceability</div>
+        </div>
+        <div class="navgroup">
+          <div class="gl">Setup</div>
+          <div class="navitem"><span class="ic"></span>Workflows &amp; phases</div>
+          <div class="navitem"><span class="ic"></span>BOM &amp; equipment</div>
+          <div class="navitem"><span class="ic"></span>Users &amp; roles</div>
+        </div>
+      </aside>
+
+      <div class="maptable">
+        <div class="maprow">
+          <div class="from"><s>Dashboard</s></div>
+          <div class="to-arrow">→</div>
+          <div class="to"><div class="t">Today</div><div class="why">Role-aware home. Operator sees next tasks, QA sees the release queue, manager sees blockers. <em>Answers both primary questions on open.</em></div></div>
+        </div>
+        <div class="maprow">
+          <div class="from"><s>Production</s></div>
+          <div class="to-arrow">→</div>
+          <div class="to"><div class="t">Production ▸ Board + My queue</div><div class="why">Split the <em>manage</em> job (board of all WOs by phase) from the <em>do</em> job (an operator's own next tasks).</div></div>
+        </div>
+        <div class="maprow">
+          <div class="from"><s>QA queue</s></div>
+          <div class="to-arrow">→</div>
+          <div class="to"><div class="t">Quality ▸ Release queue + Quarantine</div><div class="why">Name it by the job — releasing — and separate the held-material view from the ready-to-sign view.</div></div>
+        </div>
+        <div class="maprow">
+          <div class="from"><s>Procurement</s></div>
+          <div class="to-arrow">→</div>
+          <div class="to"><div class="t">Material ▸ Collections</div><div class="why">It's material intake from clinics. Call it what it is, and file it under Material where the flow begins.</div></div>
+        </div>
+        <div class="maprow">
+          <div class="from"><s>Inventory</s></div>
+          <div class="to-arrow">→</div>
+          <div class="to"><div class="t">Material ▸ Inventory + Traceability</div><div class="why">Promote genealogy to a first-class explorer — <em>the connective thread becomes navigable.</em></div></div>
+        </div>
+        <div class="maprow">
+          <div class="from"><s>Configuration</s></div>
+          <div class="to-arrow">→</div>
+          <div class="to"><div class="t">Setup ▸ Workflows / BOM &amp; equipment</div><div class="why">Break the single mega-page into the two things it actually configures.</div></div>
+        </div>
+        <div class="maprow">
+          <div class="from"><s>Users · Roles</s></div>
+          <div class="to-arrow">→</div>
+          <div class="to"><div class="t">Setup ▸ Users &amp; roles</div><div class="why">Both are access administration — one home, together.</div></div>
+        </div>
+        <div class="maprow">
+          <div class="from"><s>Legacy fields<br>(everywhere)</s></div>
+          <div class="to-arrow">→</div>
+          <div class="to"><div class="t">Collapsed “Source record”</div><div class="why">AppSheet &amp; spreadsheet migration data moves into one expandable panel on detail pages — present for audit, gone from the primary view.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="principles">
+      <div class="principle"><div class="pn">Principle 01</div><h4>Follow the material</h4><p>Screens read in the order the dentin actually moves: Collect → Process → Gate → Release. The IA is the journey.</p></div>
+      <div class="principle"><div class="pn">Principle 02</div><h4>Answer the question, then show the record</h4><p>Every screen opens with the job's answer up top. The underlying data — and any legacy fields — sit below or behind a disclosure.</p></div>
+      <div class="principle"><div class="pn">Principle 03</div><h4>Make the thread walkable</h4><p>From any lot, WO or finished good you can trace parents and children in one click. Traceability is navigation, not a footnote.</p></div>
+      <div class="principle"><div class="pn">Principle 04</div><h4>Scope to one line</h4><p>A workflow switcher sits above everything. Boards, queues and gates default to the active product line, with an “all lines” view for managers.</p></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Ventas WorkOrder · Product Map · a shared foundation for the redesign · Jul 2026
+</footer>
+
+</body>
+</html>

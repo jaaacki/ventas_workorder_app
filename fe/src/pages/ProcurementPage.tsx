@@ -188,6 +188,13 @@ export default function ProcurementPage() {
         </div>
       )}
 
+      <div className="flex items-start gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800 dark:border-warning-500/30 dark:bg-warning-500/10 dark:text-warning-200">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>
+          Procurement is currently a read-only operational ledger backed by import/read APIs. Create, update, and delete controls are intentionally not shown until procurement write endpoints exist.
+        </span>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard icon={<Building2 className="h-6 w-6" />} label="Supply entities" value={metrics?.supplyEntities ?? '-'} detail={`${metrics?.collectionPoints ?? '-'} points`} />
         <MetricCard icon={<Boxes className="h-6 w-6" />} label="Collection units" value={metrics?.unitsOperational ?? '-'} detail={`${metrics?.unitsTotal ?? '-'} total`} />

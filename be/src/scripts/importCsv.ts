@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import csv from 'csv-parser';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { DEFAULT_TENANT_ID } from '../services/tenant.js';
+import { buildStaffEmailMap, parseDurationToMinutes, resolveSignerId } from './legacyWorkOrderEvidence.js';
 
 export type Row = Record<string, string | undefined>;
 
@@ -93,6 +95,9 @@ const fieldMappers: Record<string, (v: string | undefined) => unknown> = {
   boolean: booleanValue,
   date: dateValue,
   list: listValue,
+  // AppSheet duration strings are `H:MM:SS`; the column stores minutes. Without
+  // this the legacy value parsed as a decimal (NaN) and cycle-time landed NULL.
+  duration: parseDurationToMinutes,
 };
 
 export interface TableConfig {
@@ -334,7 +339,15 @@ export const tableConfigs: TableConfig[] = [
       phaseShort: { field: 'phaseShort', type: 'text' },
       prodStart: { field: 'prodStart', type: 'date' },
       prodEnd: { field: 'prodEnd', type: 'date' },
-      prodDuration: { field: 'prodDuration', type: 'decimal' },
+      // `prodDuration` is the per-phase cycle-time KPI (minutes). The legacy
+      // value is an `H:MM:SS` string — see the `duration` mapper.
+      prodDuration: { field: 'prodDuration', type: 'duration' },
+      // NOTE: legacy `startSign` / `endSign` / `image` are Drive path references
+      // (`workOrder_Images/…`), but these columns store base64 data URLs (the
+      // app's native evidence format). Mapping the raw path would render broken
+      // and falsely report evidence as captured, so image bytes are inlined by
+      // `backfillWorkOrderEvidence.ts --with-images` instead. Signer emails are
+      // resolved to staff ids in `afterImport` below.
       manuId: { field: 'manuId', type: 'text' },
       manuNumber: { field: 'manuNumber', type: 'text' },
       woNumber: { field: 'woNumber', type: 'text' },
@@ -358,6 +371,47 @@ export const tableConfigs: TableConfig[] = [
         sourceFk: 'workOrderId',
         targetFk: 'phaseEquipId',
       },
+    },
+    // Legacy `startSignBy` / `endSignBy` are signer emails; the schema stores
+    // `startSignById` / `endSignById` as staff ids. Resolve them against the
+    // staff table (imported earlier in the same run) so the phase sign-off
+    // audit trail survives import.
+    afterImport: async (ctx) => {
+      const emailMap = await buildStaffEmailMap(ctx.prisma);
+      let start = 0;
+      let end = 0;
+      const unresolved = new Set<string>();
+      for (const row of ctx.rows) {
+        const id = (row.woId || '').trim();
+        if (!id) continue;
+        const data: { startSignById?: string; endSignById?: string } = {};
+        const startId = resolveSignerId(row.startSignBy, emailMap);
+        const endId = resolveSignerId(row.endSignBy, emailMap);
+        if (startId) data.startSignById = startId;
+        else if (row.startSignBy?.trim()) unresolved.add(row.startSignBy.trim().toLowerCase());
+        if (endId) data.endSignById = endId;
+        else if (row.endSignBy?.trim()) unresolved.add(row.endSignBy.trim().toLowerCase());
+        if (!data.startSignById && !data.endSignById) continue;
+        if (!ctx.dryRun) {
+          try {
+            await ctx.prisma.workOrder.update({
+              where: { id },
+              data: data as Prisma.WorkOrderUncheckedUpdateInput,
+            });
+          } catch {
+            // Row may not exist if its upsert was skipped; nothing to resolve.
+            continue;
+          }
+        }
+        if (data.startSignById) start += 1;
+        if (data.endSignById) end += 1;
+      }
+      ctx.report.warnings.push({
+        entity: 'workOrder',
+        reason: `signer resolution: start=${start} end=${end}${
+          unresolved.size ? ` unresolved=${[...unresolved].join('|')}` : ''
+        }`,
+      });
     },
   },
   {

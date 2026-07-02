@@ -49,8 +49,24 @@ import {
   type WorkflowSummary,
 } from '@/lib/workflows-api';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AdminPanel, EmptyState, MetricCard, PageHeader, StatusPill } from '@/components/tailadmin';
 import { toast } from 'sonner';
@@ -73,42 +89,86 @@ function errorMessage(e: AxiosError<{ error?: string }>, fallback: string) {
   return e.response?.data?.error || fallback;
 }
 
+function ConfirmDeleteDialog({
+  open,
+  title,
+  description,
+  busy,
+  onOpenChange,
+  onConfirm,
+}: {
+  open: boolean;
+  title: string;
+  description: string;
+  busy: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button type="button" variant="destructive" disabled={busy} onClick={onConfirm}>
+            <Trash2 className="h-4 w-4" />
+            Delete
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function WorkflowCard({
   workflow,
   selected,
   onSelect,
+  onEdit,
 }: {
   workflow: WorkflowSummary;
   selected: boolean;
   onSelect: () => void;
+  onEdit: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onSelect}
+    <div
       className={`rounded-lg border p-4 text-left transition ${
         selected
           ? 'border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-500/10'
           : 'border-gray-100 bg-gray-50 hover:border-brand-200 dark:border-gray-800 dark:bg-white/[0.03]'
       }`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <span className="flex items-center gap-2 font-medium text-gray-800 dark:text-white/90">
-            <WorkflowIcon className="h-4 w-4 text-brand-500" />
-            {workflow.name}
-          </span>
-          <p className="mt-1 text-xs font-medium uppercase text-gray-400">{workflow.code}</p>
+      <button type="button" onClick={onSelect} className="block w-full text-left">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <span className="flex items-center gap-2 font-medium text-gray-800 dark:text-white/90">
+              <WorkflowIcon className="h-4 w-4 text-brand-500" />
+              {workflow.name}
+            </span>
+            <p className="mt-1 text-xs font-medium uppercase text-gray-400">{workflow.code}</p>
+          </div>
+          <StatusPill tone={workflow.active ? 'success' : 'neutral'}>{workflow.active ? 'Active' : 'Inactive'}</StatusPill>
         </div>
-        <StatusPill tone={workflow.active ? 'success' : 'neutral'}>{workflow.active ? 'Active' : 'Inactive'}</StatusPill>
-      </div>
-      <div className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-        <div className="min-h-5">{workflow.description || 'No description'}</div>
-        <div className="mt-3 text-xs">
-          {workflow._count.phases} phase(s) - {workflow._count.workOrders} work order(s)
+        <div className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+          <div className="min-h-5">{workflow.description || 'No description'}</div>
+          <div className="mt-3 text-xs">
+            {workflow._count.phases} phase(s) - {workflow._count.workOrders} work order(s)
+          </div>
         </div>
+      </button>
+      <div className="mt-4 flex justify-end">
+        <Button type="button" variant="outline" size="sm" onClick={onEdit}>
+          <Edit3 className="h-4 w-4" />
+          Edit
+        </Button>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -509,6 +569,8 @@ function PhaseRequirementsPanel({
 
 function PhaseCatalogPanel({ phases, isLoading }: { phases: PhaseCatalogItem[]; isLoading: boolean }) {
   const queryClient = useQueryClient();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [phaseToDelete, setPhaseToDelete] = useState<PhaseCatalogItem | null>(null);
   const [editingPhaseId, setEditingPhaseId] = useState<string | null>(null);
   const [phaseName, setPhaseName] = useState('');
   const [phaseShort, setPhaseShort] = useState('');
@@ -539,6 +601,7 @@ function PhaseCatalogPanel({ phases, isLoading }: { phases: PhaseCatalogItem[]; 
       queryClient.invalidateQueries({ queryKey: ['phases'] });
       toast.success('Phase created');
       resetForm();
+      setSheetOpen(false);
     },
     onError: (e: AxiosError<{ error?: string }>) => toast.error(e.response?.data?.error || 'Failed to create phase'),
   });
@@ -550,6 +613,7 @@ function PhaseCatalogPanel({ phases, isLoading }: { phases: PhaseCatalogItem[]; 
       queryClient.invalidateQueries({ queryKey: ['workflow'] });
       toast.success('Phase updated');
       resetForm();
+      setSheetOpen(false);
     },
     onError: (e: AxiosError<{ error?: string }>) => toast.error(e.response?.data?.error || 'Failed to update phase'),
   });
@@ -562,6 +626,7 @@ function PhaseCatalogPanel({ phases, isLoading }: { phases: PhaseCatalogItem[]; 
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
       toast.success('Phase deleted');
       resetForm();
+      setPhaseToDelete(null);
     },
     onError: (e: AxiosError<{ error?: string }>) => toast.error(e.response?.data?.error || 'Failed to delete phase'),
   });
@@ -573,6 +638,7 @@ function PhaseCatalogPanel({ phases, isLoading }: { phases: PhaseCatalogItem[]; 
     setPhaseOrder(phase.phaseOrder == null ? '' : String(phase.phaseOrder));
     setDescription(phase.description || '');
     setKeyText(phase.keyText || '');
+    setSheetOpen(true);
   };
 
   const submitPhase = (event: FormEvent) => {
@@ -589,41 +655,75 @@ function PhaseCatalogPanel({ phases, isLoading }: { phases: PhaseCatalogItem[]; 
   const busy = createPhaseMutation.isPending || updatePhaseMutation.isPending || deletePhaseMutation.isPending;
 
   return (
-    <AdminPanel title="Phase catalog" description="Tenant phase master data available for workflow binding.">
-      <form onSubmit={submitPhase} className="grid gap-3 lg:grid-cols-[1fr_140px_120px_1.5fr_1fr_auto] lg:items-end">
-        <div className="grid gap-1.5">
-          <Label htmlFor="phase-name">Name</Label>
-          <Input id="phase-name" value={phaseName} onChange={(event) => setPhaseName(event.target.value)} placeholder="Intake" />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="phase-short">Short</Label>
-          <Input id="phase-short" value={phaseShort} onChange={(event) => setPhaseShort(event.target.value)} placeholder="INT" />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="phase-order">Order</Label>
-          <Input id="phase-order" type="number" value={phaseOrder} onChange={(event) => setPhaseOrder(event.target.value)} placeholder="10" />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="phase-description">Description</Label>
-          <Input id="phase-description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="optional" />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="phase-key">Key</Label>
-          <Input id="phase-key" value={keyText} onChange={(event) => setKeyText(event.target.value)} placeholder="optional" />
-        </div>
-        <div className="flex gap-2">
-          <Button type="submit" disabled={busy || (!phaseName.trim() && !phaseShort.trim())}>
-            {editingPhaseId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-            {editingPhaseId ? 'Save' : 'Create'}
-          </Button>
-          {editingPhaseId ? (
-            <Button type="button" variant="outline" onClick={resetForm} disabled={busy}>
-              Cancel
-            </Button>
-          ) : null}
-        </div>
-      </form>
-
+    <AdminPanel
+      title="Phase catalog"
+      description="Tenant phase master data available for workflow binding."
+      action={
+        <Button
+          type="button"
+          onClick={() => {
+            resetForm();
+            setSheetOpen(true);
+          }}
+        >
+          <Plus className="h-4 w-4" />
+          New phase
+        </Button>
+      }
+    >
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
+          <form onSubmit={submitPhase} className="flex min-h-full flex-col">
+            <SheetHeader>
+              <SheetTitle>{editingPhaseId ? 'Edit phase' : 'Create phase'}</SheetTitle>
+              <SheetDescription>Maintain the catalog fields used when workflows bind ordered phases.</SheetDescription>
+            </SheetHeader>
+            <div className="grid gap-4 p-4">
+              <div className="grid gap-1.5">
+                <Label htmlFor="phase-name">Name</Label>
+                <Input id="phase-name" value={phaseName} onChange={(event) => setPhaseName(event.target.value)} placeholder="Intake" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="phase-short">Short</Label>
+                <Input id="phase-short" value={phaseShort} onChange={(event) => setPhaseShort(event.target.value)} placeholder="INT" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="phase-order">Order</Label>
+                <Input id="phase-order" type="number" value={phaseOrder} onChange={(event) => setPhaseOrder(event.target.value)} placeholder="10" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="phase-description">Description</Label>
+                <Input id="phase-description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="optional" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="phase-key">Key</Label>
+                <Input id="phase-key" value={keyText} onChange={(event) => setKeyText(event.target.value)} placeholder="optional" />
+              </div>
+            </div>
+            <SheetFooter>
+              <Button type="submit" disabled={busy || (!phaseName.trim() && !phaseShort.trim())}>
+                {editingPhaseId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                {editingPhaseId ? 'Save phase' : 'Create phase'}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setSheetOpen(false)} disabled={busy}>
+                Cancel
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
+      <ConfirmDeleteDialog
+        open={Boolean(phaseToDelete)}
+        title="Delete phase?"
+        description={phaseToDelete ? `Delete ${phaseLabel(phaseToDelete)} from the phase catalog.` : ''}
+        busy={busy}
+        onOpenChange={(open) => {
+          if (!open) setPhaseToDelete(null);
+        }}
+        onConfirm={() => {
+          if (phaseToDelete) deletePhaseMutation.mutate(phaseToDelete.id);
+        }}
+      />
       <div className="mt-5">
         {isLoading ? (
           <div className="flex h-32 items-center justify-center">
@@ -657,17 +757,7 @@ function PhaseCatalogPanel({ phases, isLoading }: { phases: PhaseCatalogItem[]; 
                       <Button type="button" variant="outline" size="icon" onClick={() => startEdit(phase)} disabled={busy}>
                         <Edit3 className="h-4 w-4" />
                       </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        disabled={busy}
-                        onClick={() => {
-                          if (window.confirm(`Delete ${phaseLabel(phase)}?`)) {
-                            deletePhaseMutation.mutate(phase.id);
-                          }
-                        }}
-                      >
+                      <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => setPhaseToDelete(phase)}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -696,6 +786,14 @@ function WorkflowMasterDataPanel({
   isLoading: boolean;
 }) {
   const queryClient = useQueryClient();
+  const [procedureSheetOpen, setProcedureSheetOpen] = useState(false);
+  const [bomSheetOpen, setBomSheetOpen] = useState(false);
+  const [bomLineSheetOpen, setBomLineSheetOpen] = useState(false);
+  const [equipmentSheetOpen, setEquipmentSheetOpen] = useState(false);
+  const [procedureToDelete, setProcedureToDelete] = useState<ProcedureCatalogItem | null>(null);
+  const [bomToDelete, setBomToDelete] = useState<BomCatalogItem | null>(null);
+  const [bomLineToDelete, setBomLineToDelete] = useState<BomLineCatalogItem | null>(null);
+  const [equipmentToDelete, setEquipmentToDelete] = useState<PhaseEquipmentCatalogItem | null>(null);
   const [procedureEditingId, setProcedureEditingId] = useState<string | null>(null);
   const [procedureName, setProcedureName] = useState('');
   const [procedureShort, setProcedureShort] = useState('');
@@ -781,6 +879,7 @@ function WorkflowMasterDataPanel({
       queryClient.invalidateQueries({ queryKey: ['procedures'] });
       toast.success('Procedure created');
       resetProcedure();
+      setProcedureSheetOpen(false);
     },
     onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to create procedure')),
   });
@@ -791,6 +890,7 @@ function WorkflowMasterDataPanel({
       queryClient.invalidateQueries({ queryKey: ['procedures'] });
       toast.success('Procedure updated');
       resetProcedure();
+      setProcedureSheetOpen(false);
     },
     onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to update procedure')),
   });
@@ -801,6 +901,7 @@ function WorkflowMasterDataPanel({
       queryClient.invalidateQueries({ queryKey: ['procedures'] });
       toast.success('Procedure deleted');
       resetProcedure();
+      setProcedureToDelete(null);
     },
     onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to delete procedure')),
   });
@@ -811,6 +912,7 @@ function WorkflowMasterDataPanel({
       invalidateMasterData();
       toast.success('BOM created');
       resetBom();
+      setBomSheetOpen(false);
     },
     onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to create BOM')),
   });
@@ -821,6 +923,7 @@ function WorkflowMasterDataPanel({
       invalidateMasterData();
       toast.success('BOM updated');
       resetBom();
+      setBomSheetOpen(false);
     },
     onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to update BOM')),
   });
@@ -831,6 +934,7 @@ function WorkflowMasterDataPanel({
       invalidateMasterData();
       toast.success('BOM deleted');
       resetBom();
+      setBomToDelete(null);
     },
     onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to delete BOM')),
   });
@@ -841,6 +945,7 @@ function WorkflowMasterDataPanel({
       invalidateMasterData();
       toast.success('BOM line created');
       resetBomLine();
+      setBomLineSheetOpen(false);
     },
     onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to create BOM line')),
   });
@@ -851,6 +956,7 @@ function WorkflowMasterDataPanel({
       invalidateMasterData();
       toast.success('BOM line updated');
       resetBomLine();
+      setBomLineSheetOpen(false);
     },
     onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to update BOM line')),
   });
@@ -861,6 +967,7 @@ function WorkflowMasterDataPanel({
       invalidateMasterData();
       toast.success('BOM line deleted');
       resetBomLine();
+      setBomLineToDelete(null);
     },
     onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to delete BOM line')),
   });
@@ -871,6 +978,7 @@ function WorkflowMasterDataPanel({
       queryClient.invalidateQueries({ queryKey: ['phase-equipment'] });
       toast.success('Equipment created');
       resetEquipment();
+      setEquipmentSheetOpen(false);
     },
     onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to create equipment')),
   });
@@ -881,6 +989,7 @@ function WorkflowMasterDataPanel({
       queryClient.invalidateQueries({ queryKey: ['phase-equipment'] });
       toast.success('Equipment updated');
       resetEquipment();
+      setEquipmentSheetOpen(false);
     },
     onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to update equipment')),
   });
@@ -891,6 +1000,7 @@ function WorkflowMasterDataPanel({
       queryClient.invalidateQueries({ queryKey: ['phase-equipment'] });
       toast.success('Equipment deleted');
       resetEquipment();
+      setEquipmentToDelete(null);
     },
     onError: (e: AxiosError<{ error?: string }>) => toast.error(errorMessage(e, 'Failed to delete equipment')),
   });
@@ -941,6 +1051,59 @@ function WorkflowMasterDataPanel({
     updateEquipmentMutation.isPending ||
     deleteEquipmentMutation.isPending;
 
+  const startProcedureCreate = () => {
+    resetProcedure();
+    setProcedureSheetOpen(true);
+  };
+
+  const startProcedureEdit = (procedure: ProcedureCatalogItem) => {
+    setProcedureEditingId(procedure.id);
+    setProcedureName(procedure.procedureName || '');
+    setProcedureShort(procedure.procedureShort || '');
+    setProcedureDesc(procedure.procedureDesc || '');
+    setProcedureSheetOpen(true);
+  };
+
+  const startBomCreate = () => {
+    resetBom();
+    setBomSheetOpen(true);
+  };
+
+  const startBomEdit = (bom: BomCatalogItem) => {
+    setBomEditingId(bom.id);
+    setBomName(bom.bomName || '');
+    setBomKeyText(bom.keyText || '');
+    setBomSheetOpen(true);
+  };
+
+  const startEquipmentCreate = () => {
+    resetEquipment();
+    setEquipmentSheetOpen(true);
+  };
+
+  const startEquipmentEdit = (equipment: PhaseEquipmentCatalogItem) => {
+    setEquipmentEditingId(equipment.id);
+    setEquipmentId(equipment.equipId || '');
+    setEquipmentName(equipment.name || '');
+    setEquipmentDescription(equipment.description || '');
+    setEquipmentSheetOpen(true);
+  };
+
+  const startBomLineCreate = () => {
+    resetBomLine();
+    setBomLineSheetOpen(true);
+  };
+
+  const startBomLineEdit = (line: BomLineCatalogItem) => {
+    setBomLineEditingId(line.id);
+    setBomLineBomId(line.bomId);
+    setBomLineDescription(line.description || '');
+    setBomLineQuantity(line.quantity == null ? '' : String(line.quantity));
+    setBomLineUom(line.uom || '');
+    setBomLineHasSerial(line.hasSerial);
+    setBomLineSheetOpen(true);
+  };
+
   return (
     <AdminPanel title="Workflow master data" description="Administer procedure, BOM, BOM-line, and equipment catalogs used by phase setup.">
       {isLoading ? (
@@ -949,27 +1112,58 @@ function WorkflowMasterDataPanel({
         </div>
       ) : (
         <div className="space-y-6">
-          <form onSubmit={submitProcedure} className="grid gap-3 lg:grid-cols-[1fr_160px_1.5fr_auto] lg:items-end">
-            <div className="grid gap-1.5">
-              <Label htmlFor="procedure-name">Procedure</Label>
-              <Input id="procedure-name" value={procedureName} onChange={(event) => setProcedureName(event.target.value)} placeholder="Intake checklist" />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="procedure-short">Short</Label>
-              <Input id="procedure-short" value={procedureShort} onChange={(event) => setProcedureShort(event.target.value)} placeholder="INTAKE" />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="procedure-desc">Description</Label>
-              <Input id="procedure-desc" value={procedureDesc} onChange={(event) => setProcedureDesc(event.target.value)} placeholder="optional" />
-            </div>
-            <div className="flex gap-2">
-              <Button type="submit" disabled={busy || (!procedureName.trim() && !procedureShort.trim())}>
-                {procedureEditingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                {procedureEditingId ? 'Save' : 'Create'}
-              </Button>
-              {procedureEditingId ? <Button type="button" variant="outline" onClick={resetProcedure} disabled={busy}>Cancel</Button> : null}
-            </div>
-          </form>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={startProcedureCreate}>
+              <Plus className="h-4 w-4" />
+              New procedure
+            </Button>
+            <Button type="button" variant="outline" onClick={startBomCreate}>
+              <Plus className="h-4 w-4" />
+              New BOM
+            </Button>
+            <Button type="button" variant="outline" onClick={startEquipmentCreate}>
+              <Plus className="h-4 w-4" />
+              New equipment
+            </Button>
+            <Button type="button" variant="outline" onClick={startBomLineCreate} disabled={!boms.length}>
+              <Plus className="h-4 w-4" />
+              New BOM line
+            </Button>
+          </div>
+
+          <Sheet open={procedureSheetOpen} onOpenChange={setProcedureSheetOpen}>
+            <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
+              <form onSubmit={submitProcedure} className="flex min-h-full flex-col">
+                <SheetHeader>
+                  <SheetTitle>{procedureEditingId ? 'Edit procedure' : 'Create procedure'}</SheetTitle>
+                  <SheetDescription>Maintain procedure catalog entries used by phase requirements.</SheetDescription>
+                </SheetHeader>
+                <div className="grid gap-4 p-4">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="procedure-sheet-name">Procedure</Label>
+                    <Input id="procedure-sheet-name" value={procedureName} onChange={(event) => setProcedureName(event.target.value)} placeholder="Intake checklist" />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="procedure-sheet-short">Short</Label>
+                    <Input id="procedure-sheet-short" value={procedureShort} onChange={(event) => setProcedureShort(event.target.value)} placeholder="INTAKE" />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="procedure-sheet-desc">Description</Label>
+                    <Input id="procedure-sheet-desc" value={procedureDesc} onChange={(event) => setProcedureDesc(event.target.value)} placeholder="optional" />
+                  </div>
+                </div>
+                <SheetFooter>
+                  <Button type="submit" disabled={busy || (!procedureName.trim() && !procedureShort.trim())}>
+                    {procedureEditingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                    {procedureEditingId ? 'Save procedure' : 'Create procedure'}
+                  </Button>
+                  <Button type="button" variant="outline" disabled={busy} onClick={() => setProcedureSheetOpen(false)}>
+                    Cancel
+                  </Button>
+                </SheetFooter>
+              </form>
+            </SheetContent>
+          </Sheet>
 
           {procedures.length ? (
             <Table>
@@ -990,17 +1184,10 @@ function WorkflowMasterDataPanel({
                     <TableCell className="whitespace-normal">{procedure.procedureDesc || '-'}</TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-2">
-                        <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => {
-                          setProcedureEditingId(procedure.id);
-                          setProcedureName(procedure.procedureName || '');
-                          setProcedureShort(procedure.procedureShort || '');
-                          setProcedureDesc(procedure.procedureDesc || '');
-                        }}>
+                        <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => startProcedureEdit(procedure)}>
                           <Edit3 className="h-4 w-4" />
                         </Button>
-                        <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => {
-                          if (window.confirm(`Delete ${catalogLabel(procedure, procedure.procedureName, procedure.procedureShort)}?`)) deleteProcedureMutation.mutate(procedure.id);
-                        }}>
+                        <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => setProcedureToDelete(procedure)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -1013,23 +1200,35 @@ function WorkflowMasterDataPanel({
 
           <div className="grid gap-6 xl:grid-cols-2">
             <div className="space-y-4">
-              <form onSubmit={submitBom} className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="bom-name">BOM</Label>
-                  <Input id="bom-name" value={bomName} onChange={(event) => setBomName(event.target.value)} placeholder="AmGraft intake BOM" />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="bom-key">Key</Label>
-                  <Input id="bom-key" value={bomKeyText} onChange={(event) => setBomKeyText(event.target.value)} placeholder="optional" />
-                </div>
-                <div className="flex gap-2">
-                  <Button type="submit" disabled={busy || !bomName.trim()}>
-                    {bomEditingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                    {bomEditingId ? 'Save' : 'Create'}
-                  </Button>
-                  {bomEditingId ? <Button type="button" variant="outline" onClick={resetBom} disabled={busy}>Cancel</Button> : null}
-                </div>
-              </form>
+              <Sheet open={bomSheetOpen} onOpenChange={setBomSheetOpen}>
+                <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
+                  <form onSubmit={submitBom} className="flex min-h-full flex-col">
+                    <SheetHeader>
+                      <SheetTitle>{bomEditingId ? 'Edit BOM' : 'Create BOM'}</SheetTitle>
+                      <SheetDescription>Maintain BOM headers used by phase and line setup.</SheetDescription>
+                    </SheetHeader>
+                    <div className="grid gap-4 p-4">
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="bom-sheet-name">BOM</Label>
+                        <Input id="bom-sheet-name" value={bomName} onChange={(event) => setBomName(event.target.value)} placeholder="AmGraft intake BOM" />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="bom-sheet-key">Key</Label>
+                        <Input id="bom-sheet-key" value={bomKeyText} onChange={(event) => setBomKeyText(event.target.value)} placeholder="optional" />
+                      </div>
+                    </div>
+                    <SheetFooter>
+                      <Button type="submit" disabled={busy || !bomName.trim()}>
+                        {bomEditingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                        {bomEditingId ? 'Save BOM' : 'Create BOM'}
+                      </Button>
+                      <Button type="button" variant="outline" disabled={busy} onClick={() => setBomSheetOpen(false)}>
+                        Cancel
+                      </Button>
+                    </SheetFooter>
+                  </form>
+                </SheetContent>
+              </Sheet>
 
               <Table>
                 <TableHeader>
@@ -1049,16 +1248,10 @@ function WorkflowMasterDataPanel({
                       <TableCell>{bom._count?.lines ?? bomLines.filter((line) => line.bomId === bom.id).length}</TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
-                          <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => {
-                            setBomEditingId(bom.id);
-                            setBomName(bom.bomName || '');
-                            setBomKeyText(bom.keyText || '');
-                          }}>
+                          <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => startBomEdit(bom)}>
                             <Edit3 className="h-4 w-4" />
                           </Button>
-                          <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => {
-                            if (window.confirm(`Delete ${catalogLabel(bom, bom.bomName, bom.keyText)}?`)) deleteBomMutation.mutate(bom.id);
-                          }}>
+                          <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => setBomToDelete(bom)}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
@@ -1070,27 +1263,39 @@ function WorkflowMasterDataPanel({
             </div>
 
             <div className="space-y-4">
-              <form onSubmit={submitEquipment} className="grid gap-3 md:grid-cols-[150px_1fr_1fr_auto] md:items-end">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="equipment-id">Equipment ID</Label>
-                  <Input id="equipment-id" value={equipmentId} onChange={(event) => setEquipmentId(event.target.value)} placeholder="EQ-1" />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="equipment-name">Equipment</Label>
-                  <Input id="equipment-name" value={equipmentName} onChange={(event) => setEquipmentName(event.target.value)} placeholder="Heat sealer" />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="equipment-description">Description</Label>
-                  <Input id="equipment-description" value={equipmentDescription} onChange={(event) => setEquipmentDescription(event.target.value)} placeholder="optional" />
-                </div>
-                <div className="flex gap-2">
-                  <Button type="submit" disabled={busy || (!equipmentName.trim() && !equipmentId.trim())}>
-                    {equipmentEditingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                    {equipmentEditingId ? 'Save' : 'Create'}
-                  </Button>
-                  {equipmentEditingId ? <Button type="button" variant="outline" onClick={resetEquipment} disabled={busy}>Cancel</Button> : null}
-                </div>
-              </form>
+              <Sheet open={equipmentSheetOpen} onOpenChange={setEquipmentSheetOpen}>
+                <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
+                  <form onSubmit={submitEquipment} className="flex min-h-full flex-col">
+                    <SheetHeader>
+                      <SheetTitle>{equipmentEditingId ? 'Edit equipment' : 'Create equipment'}</SheetTitle>
+                      <SheetDescription>Maintain equipment catalog entries that can be bound to phases.</SheetDescription>
+                    </SheetHeader>
+                    <div className="grid gap-4 p-4">
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="equipment-sheet-id">Equipment ID</Label>
+                        <Input id="equipment-sheet-id" value={equipmentId} onChange={(event) => setEquipmentId(event.target.value)} placeholder="EQ-1" />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="equipment-sheet-name">Equipment</Label>
+                        <Input id="equipment-sheet-name" value={equipmentName} onChange={(event) => setEquipmentName(event.target.value)} placeholder="Heat sealer" />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="equipment-sheet-description">Description</Label>
+                        <Input id="equipment-sheet-description" value={equipmentDescription} onChange={(event) => setEquipmentDescription(event.target.value)} placeholder="optional" />
+                      </div>
+                    </div>
+                    <SheetFooter>
+                      <Button type="submit" disabled={busy || (!equipmentName.trim() && !equipmentId.trim())}>
+                        {equipmentEditingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                        {equipmentEditingId ? 'Save equipment' : 'Create equipment'}
+                      </Button>
+                      <Button type="button" variant="outline" disabled={busy} onClick={() => setEquipmentSheetOpen(false)}>
+                        Cancel
+                      </Button>
+                    </SheetFooter>
+                  </form>
+                </SheetContent>
+              </Sheet>
 
               <Table>
                 <TableHeader>
@@ -1110,17 +1315,10 @@ function WorkflowMasterDataPanel({
                       <TableCell className="whitespace-normal">{equipment.description || '-'}</TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
-                          <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => {
-                            setEquipmentEditingId(equipment.id);
-                            setEquipmentId(equipment.equipId || '');
-                            setEquipmentName(equipment.name || '');
-                            setEquipmentDescription(equipment.description || '');
-                          }}>
+                          <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => startEquipmentEdit(equipment)}>
                             <Edit3 className="h-4 w-4" />
                           </Button>
-                          <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => {
-                            if (window.confirm(`Delete ${catalogLabel(equipment, equipment.name, equipment.equipId)}?`)) deleteEquipmentMutation.mutate(equipment.id);
-                          }}>
+                          <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => setEquipmentToDelete(equipment)}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
@@ -1132,45 +1330,106 @@ function WorkflowMasterDataPanel({
             </div>
           </div>
 
-          <form onSubmit={submitBomLine} className="grid gap-3 lg:grid-cols-[1fr_1.5fr_120px_100px_auto_auto] lg:items-end">
-            <div className="grid gap-1.5">
-              <Label htmlFor="bom-line-bom">BOM</Label>
-              <select
-                id="bom-line-bom"
-                value={bomLineBomId}
-                onChange={(event) => setBomLineBomId(event.target.value)}
-                className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-              >
-                <option value="">Select BOM</option>
-                {boms.map((bom) => (
-                  <option key={bom.id} value={bom.id}>{catalogLabel(bom, bom.bomName, bom.keyText)}</option>
-                ))}
-              </select>
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="bom-line-description">Line</Label>
-              <Input id="bom-line-description" value={bomLineDescription} onChange={(event) => setBomLineDescription(event.target.value)} placeholder="AmGraft membrane" />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="bom-line-quantity">Quantity</Label>
-              <Input id="bom-line-quantity" type="number" step="0.0001" value={bomLineQuantity} onChange={(event) => setBomLineQuantity(event.target.value)} placeholder="1" />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="bom-line-uom">UOM</Label>
-              <Input id="bom-line-uom" value={bomLineUom} onChange={(event) => setBomLineUom(event.target.value)} placeholder="ea" />
-            </div>
-            <label className="flex h-11 items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-              <input type="checkbox" checked={bomLineHasSerial} onChange={(event) => setBomLineHasSerial(event.target.checked)} />
-              Serial
-            </label>
-            <div className="flex gap-2">
-              <Button type="submit" disabled={busy || !bomLineBomId || !bomLineDescription.trim()}>
-                {bomLineEditingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                {bomLineEditingId ? 'Save' : 'Create'}
-              </Button>
-              {bomLineEditingId ? <Button type="button" variant="outline" onClick={resetBomLine} disabled={busy}>Cancel</Button> : null}
-            </div>
-          </form>
+          <Sheet open={bomLineSheetOpen} onOpenChange={setBomLineSheetOpen}>
+            <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
+              <form onSubmit={submitBomLine} className="flex min-h-full flex-col">
+                <SheetHeader>
+                  <SheetTitle>{bomLineEditingId ? 'Edit BOM line' : 'Create BOM line'}</SheetTitle>
+                  <SheetDescription>Maintain material, quantity, UOM, and serial requirements for a BOM.</SheetDescription>
+                </SheetHeader>
+                <div className="grid gap-4 p-4">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="bom-line-sheet-bom">BOM</Label>
+                    <select
+                      id="bom-line-sheet-bom"
+                      value={bomLineBomId}
+                      onChange={(event) => setBomLineBomId(event.target.value)}
+                      className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                    >
+                      <option value="">Select BOM</option>
+                      {boms.map((bom) => (
+                        <option key={bom.id} value={bom.id}>{catalogLabel(bom, bom.bomName, bom.keyText)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="bom-line-sheet-description">Line</Label>
+                    <Input id="bom-line-sheet-description" value={bomLineDescription} onChange={(event) => setBomLineDescription(event.target.value)} placeholder="AmGraft membrane" />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="bom-line-sheet-quantity">Quantity</Label>
+                    <Input id="bom-line-sheet-quantity" type="number" step="0.0001" value={bomLineQuantity} onChange={(event) => setBomLineQuantity(event.target.value)} placeholder="1" />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="bom-line-sheet-uom">UOM</Label>
+                    <Input id="bom-line-sheet-uom" value={bomLineUom} onChange={(event) => setBomLineUom(event.target.value)} placeholder="ea" />
+                  </div>
+                  <label className="flex h-11 items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    <input type="checkbox" checked={bomLineHasSerial} onChange={(event) => setBomLineHasSerial(event.target.checked)} />
+                    Serial
+                  </label>
+                </div>
+                <SheetFooter>
+                  <Button type="submit" disabled={busy || !bomLineBomId || !bomLineDescription.trim()}>
+                    {bomLineEditingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                    {bomLineEditingId ? 'Save BOM line' : 'Create BOM line'}
+                  </Button>
+                  <Button type="button" variant="outline" disabled={busy} onClick={() => setBomLineSheetOpen(false)}>
+                    Cancel
+                  </Button>
+                </SheetFooter>
+              </form>
+            </SheetContent>
+          </Sheet>
+
+          <ConfirmDeleteDialog
+            open={Boolean(procedureToDelete)}
+            title="Delete procedure?"
+            description={procedureToDelete ? `Delete ${catalogLabel(procedureToDelete, procedureToDelete.procedureName, procedureToDelete.procedureShort)} from the procedure catalog.` : ''}
+            busy={busy}
+            onOpenChange={(open) => {
+              if (!open) setProcedureToDelete(null);
+            }}
+            onConfirm={() => {
+              if (procedureToDelete) deleteProcedureMutation.mutate(procedureToDelete.id);
+            }}
+          />
+          <ConfirmDeleteDialog
+            open={Boolean(bomToDelete)}
+            title="Delete BOM?"
+            description={bomToDelete ? `Delete ${catalogLabel(bomToDelete, bomToDelete.bomName, bomToDelete.keyText)} and its dependent setup if the API allows it.` : ''}
+            busy={busy}
+            onOpenChange={(open) => {
+              if (!open) setBomToDelete(null);
+            }}
+            onConfirm={() => {
+              if (bomToDelete) deleteBomMutation.mutate(bomToDelete.id);
+            }}
+          />
+          <ConfirmDeleteDialog
+            open={Boolean(equipmentToDelete)}
+            title="Delete equipment?"
+            description={equipmentToDelete ? `Delete ${catalogLabel(equipmentToDelete, equipmentToDelete.name, equipmentToDelete.equipId)} from the equipment catalog.` : ''}
+            busy={busy}
+            onOpenChange={(open) => {
+              if (!open) setEquipmentToDelete(null);
+            }}
+            onConfirm={() => {
+              if (equipmentToDelete) deleteEquipmentMutation.mutate(equipmentToDelete.id);
+            }}
+          />
+          <ConfirmDeleteDialog
+            open={Boolean(bomLineToDelete)}
+            title="Delete BOM line?"
+            description={bomLineToDelete ? `Delete ${bomLineToDelete.description || bomLineToDelete.id} from its BOM.` : ''}
+            busy={busy}
+            onOpenChange={(open) => {
+              if (!open) setBomLineToDelete(null);
+            }}
+            onConfirm={() => {
+              if (bomLineToDelete) deleteBomLineMutation.mutate(bomLineToDelete.id);
+            }}
+          />
 
           {bomLines.length ? (
             <Table>
@@ -1195,19 +1454,10 @@ function WorkflowMasterDataPanel({
                     <TableCell>{line.hasSerial ? 'Yes' : 'No'}</TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-2">
-                        <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => {
-                          setBomLineEditingId(line.id);
-                          setBomLineBomId(line.bomId);
-                          setBomLineDescription(line.description || '');
-                          setBomLineQuantity(line.quantity == null ? '' : String(line.quantity));
-                          setBomLineUom(line.uom || '');
-                          setBomLineHasSerial(line.hasSerial);
-                        }}>
+                        <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => startBomLineEdit(line)}>
                           <Edit3 className="h-4 w-4" />
                         </Button>
-                        <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => {
-                          if (window.confirm(`Delete ${line.description || line.id}?`)) deleteBomLineMutation.mutate(line.id);
-                        }}>
+                        <Button type="button" variant="outline" size="icon" disabled={busy} onClick={() => setBomLineToDelete(line)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -1252,9 +1502,12 @@ export default function WorkflowsPage() {
     queryFn: fetchPhaseEquipment,
   });
 
+  const [workflowSheetOpen, setWorkflowSheetOpen] = useState(false);
+  const [editingWorkflowId, setEditingWorkflowId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [description, setDescription] = useState('');
+  const [active, setActive] = useState(true);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
   const effectiveSelectedWorkflowId = selectedWorkflowId ?? workflows?.[0]?.id ?? null;
 
@@ -1274,20 +1527,72 @@ export default function WorkflowsPage() {
       setName('');
       setCode('');
       setDescription('');
+      setActive(true);
+      setWorkflowSheetOpen(false);
     },
     onError: (e: AxiosError<{ error?: string }>) =>
       toast.error(e.response?.data?.error || 'Failed to create workflow'),
   });
 
+  const updateWorkflowMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: { name: string; description: string | null; active: boolean } }) =>
+      updateWorkflow(id, payload),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ['workflows'] });
+      queryClient.setQueryData(['workflow', updated.id], updated);
+      setSelectedWorkflowId(updated.id);
+      toast.success('Workflow updated');
+      setEditingWorkflowId(null);
+      setName('');
+      setCode('');
+      setDescription('');
+      setActive(true);
+      setWorkflowSheetOpen(false);
+    },
+    onError: (e: AxiosError<{ error?: string }>) =>
+      toast.error(e.response?.data?.error || 'Failed to update workflow'),
+  });
+
+  const startWorkflowCreate = () => {
+    setEditingWorkflowId(null);
+    setName('');
+    setCode('');
+    setDescription('');
+    setActive(true);
+    setWorkflowSheetOpen(true);
+  };
+
+  const startWorkflowEdit = (workflow: WorkflowSummary) => {
+    setEditingWorkflowId(workflow.id);
+    setName(workflow.name);
+    setCode(workflow.code);
+    setDescription(workflow.description || '');
+    setActive(workflow.active);
+    setWorkflowSheetOpen(true);
+  };
+
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !code.trim()) return;
-    createMutation.mutate({
-      name: name.trim(),
-      code: code.trim().toUpperCase(),
-      description: description.trim() || null,
-    });
+    if (!name.trim() || (!editingWorkflowId && !code.trim())) return;
+    if (editingWorkflowId) {
+      updateWorkflowMutation.mutate({
+        id: editingWorkflowId,
+        payload: {
+          name: name.trim(),
+          description: description.trim() || null,
+          active,
+        },
+      });
+    } else {
+      createMutation.mutate({
+        name: name.trim(),
+        code: code.trim().toUpperCase(),
+        description: description.trim() || null,
+      });
+    }
   };
+
+  const workflowBusy = createMutation.isPending || updateWorkflowMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -1301,54 +1606,56 @@ export default function WorkflowsPage() {
         <MetricCard icon={<Boxes className="h-6 w-6" />} label="Total phases" value={workflows?.reduce((sum, w) => sum + w._count.phases, 0) ?? 0} />
       </div>
 
+      <Sheet open={workflowSheetOpen} onOpenChange={setWorkflowSheetOpen}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
+          <form onSubmit={submit} className="flex min-h-full flex-col">
+            <SheetHeader>
+              <SheetTitle>{editingWorkflowId ? 'Edit workflow' : 'Create workflow'}</SheetTitle>
+              <SheetDescription>Create or update workflow metadata without leaving the selected row context.</SheetDescription>
+            </SheetHeader>
+            <div className="grid gap-4 p-4">
+              <div className="grid gap-1.5">
+                <Label htmlFor="wf-sheet-name">Name</Label>
+                <Input id="wf-sheet-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="AmGraft" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="wf-sheet-code">Code</Label>
+                <Input id="wf-sheet-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="AMG" disabled={Boolean(editingWorkflowId)} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="wf-sheet-desc">Description</Label>
+                <Input id="wf-sheet-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="optional" />
+              </div>
+              {editingWorkflowId ? (
+                <label className="flex h-11 items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} />
+                  Active
+                </label>
+              ) : null}
+            </div>
+            <SheetFooter>
+              <Button type="submit" disabled={workflowBusy || !name.trim() || (!editingWorkflowId && !code.trim())}>
+                {editingWorkflowId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                {editingWorkflowId ? 'Save workflow' : 'Create workflow'}
+              </Button>
+              <Button type="button" variant="outline" disabled={workflowBusy} onClick={() => setWorkflowSheetOpen(false)}>
+                Cancel
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
+
       <AdminPanel
-        title="New workflow"
-        description="Create a product workflow, then bind ordered phases from the tenant phase catalog."
+        title="Configured workflows"
+        description="Select a workflow to inspect phase bindings, or edit metadata from its row."
         action={
-          <span className="hidden items-center gap-2 text-sm text-gray-500 sm:flex">
-            <Plus className="h-4 w-4" /> New workflow
-          </span>
+          <Button type="button" onClick={startWorkflowCreate}>
+            <Plus className="h-4 w-4" />
+            New workflow
+          </Button>
         }
       >
-          <form
-            onSubmit={submit}
-            className="grid gap-4 lg:grid-cols-[1fr_160px_2fr_auto] lg:items-end"
-          >
-            <div className="grid gap-1.5">
-              <Label htmlFor="wf-name">Name</Label>
-              <Input
-                id="wf-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="AmGraft®"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="wf-code">Code</Label>
-              <Input
-                id="wf-code"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="AMG"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="wf-desc">Description</Label>
-              <Input
-                id="wf-desc"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="optional"
-              />
-            </div>
-            <Button type="submit" disabled={createMutation.isPending || !name.trim() || !code.trim()}>
-              <Plus className="h-4 w-4" />
-              Create
-            </Button>
-          </form>
-      </AdminPanel>
-
-      <AdminPanel title="Configured workflows" description="Select a workflow to inspect and edit its ordered phase bindings.">
         {isLoading ? (
           <div className="flex h-40 items-center justify-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
@@ -1363,6 +1670,7 @@ export default function WorkflowsPage() {
                 workflow={w}
                 selected={effectiveSelectedWorkflowId === w.id}
                 onSelect={() => setSelectedWorkflowId(w.id)}
+                onEdit={() => startWorkflowEdit(w)}
               />
             ))}
           </div>

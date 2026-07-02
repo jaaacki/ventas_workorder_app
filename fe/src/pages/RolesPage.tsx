@@ -1,23 +1,29 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchRoles, updateRole } from '@/lib/auth-api';
+import { fetchRoles, updateRole, type Role } from '@/lib/auth-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { AdminPanel, MetricCard, PageHeader, StatusPill } from '@/components/tailadmin';
 import { toast } from 'sonner';
-import { LockKeyhole, Shield } from 'lucide-react';
+import { Edit3, LockKeyhole, Save, Shield } from 'lucide-react';
 
 export default function RolesPage() {
   const queryClient = useQueryClient();
   const { data: roles, isLoading } = useQuery({ queryKey: ['roles'], queryFn: fetchRoles });
-  const [editing, setEditing] = useState<Record<string, { name: string; description: string }>>({});
+  const [editingRole, setEditingRole] = useState<Role | null>(null);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
 
   const mutation = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: { name: string; description: string } }) => updateRole(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['roles'] });
       toast.success('Role updated');
+      setEditingRole(null);
+      setName('');
+      setDescription('');
     },
     onError: () => toast.error('Failed to update role'),
   });
@@ -32,18 +38,10 @@ export default function RolesPage() {
     );
   }
 
-  const startEdit = (role: NonNullable<typeof roles>[number]) => {
-    setEditing((prev) => ({
-      ...prev,
-      [role.id]: {
-        name: role.name,
-        description: role.description || '',
-      },
-    }));
-  };
-
-  const updateField = (id: string, field: 'name' | 'description', value: string) => {
-    setEditing((prev) => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+  const startEdit = (role: Role) => {
+    setEditingRole(role);
+    setName(role.name);
+    setDescription(role.description || '');
   };
 
   return (
@@ -54,6 +52,52 @@ export default function RolesPage() {
         <MetricCard icon={<LockKeyhole className="h-6 w-6" />} label="Built-in roles" value={roles?.filter((role) => role.builtIn).length ?? 0} />
       </div>
       <AdminPanel title="Role configuration">
+        <Sheet
+          open={Boolean(editingRole)}
+          onOpenChange={(open) => {
+            if (!open) setEditingRole(null);
+          }}
+        >
+          <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
+            <div className="flex min-h-full flex-col">
+              <SheetHeader>
+                <SheetTitle>Edit role</SheetTitle>
+                <SheetDescription>Update the role label and description shown across staff access.</SheetDescription>
+              </SheetHeader>
+              <div className="grid gap-4 p-4">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="role-edit-name">Role name</Label>
+                  <Input id="role-edit-name" value={name} onChange={(event) => setName(event.target.value)} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="role-edit-desc">Description</Label>
+                  <Input id="role-edit-desc" value={description} onChange={(event) => setDescription(event.target.value)} />
+                </div>
+              </div>
+              <SheetFooter>
+                <Button
+                  disabled={!editingRole || mutation.isPending || !name.trim()}
+                  onClick={() => {
+                    if (!editingRole) return;
+                    mutation.mutate({
+                      id: editingRole.id,
+                      payload: {
+                        name: name.trim(),
+                        description: description.trim(),
+                      },
+                    });
+                  }}
+                >
+                  <Save className="h-4 w-4" />
+                  Save role
+                </Button>
+                <Button type="button" variant="outline" disabled={mutation.isPending} onClick={() => setEditingRole(null)}>
+                  Cancel
+                </Button>
+              </SheetFooter>
+            </div>
+          </SheetContent>
+        </Sheet>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {roles?.map((role) => (
             <div key={role.id} className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-white/[0.03]">
@@ -65,38 +109,10 @@ export default function RolesPage() {
                 <p className="mt-1 text-xs font-medium uppercase tracking-wide text-gray-400">{role.key}</p>
               </div>
               <div className="mt-4 space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor={`name-${role.id}`}>Role name</Label>
-                  <Input
-                    id={`name-${role.id}`}
-                    value={editing[role.id]?.name ?? role.name}
-                    onChange={(e) => updateField(role.id, 'name', e.target.value)}
-                    onFocus={() => startEdit(role)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`desc-${role.id}`}>Description</Label>
-                  <Input
-                    id={`desc-${role.id}`}
-                    value={editing[role.id]?.description ?? (role.description || '')}
-                    onChange={(e) => updateField(role.id, 'description', e.target.value)}
-                    onFocus={() => startEdit(role)}
-                  />
-                </div>
-                <Button
-                  className="w-full"
-                  disabled={!editing[role.id] || mutation.isPending}
-                  onClick={() =>
-                    mutation.mutate({
-                      id: role.id,
-                      payload: {
-                        name: editing[role.id].name,
-                        description: editing[role.id].description,
-                      },
-                    })
-                  }
-                >
-                  Save changes
+                <p className="min-h-10 text-sm text-gray-500 dark:text-gray-400">{role.description || 'No description'}</p>
+                <Button className="w-full" variant="outline" disabled={mutation.isPending} onClick={() => startEdit(role)}>
+                  <Edit3 className="h-4 w-4" />
+                  Edit role
                 </Button>
               </div>
             </div>

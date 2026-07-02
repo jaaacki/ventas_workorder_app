@@ -5,22 +5,26 @@ import type { AxiosError } from 'axios';
 import { toast } from 'sonner';
 import {
   ArrowLeft,
+  ArrowRight,
   Boxes,
+  ChevronDown,
   ClipboardList,
   Factory,
-  FlaskConical,
   GitBranch,
   History,
   ImageUp,
   PackageSearch,
-  Route,
   ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AdminPanel, EmptyState, MetricCard, PageHeader, StatusPill } from '@/components/tailadmin';
+import { humanStatus, hasValue, toneToBadgeVariant } from '@/lib/format';
+import type { InventoryGenealogyEdge } from '@/lib/inventory-api';
 import {
   advanceWorkOrder,
   fetchWorkOrder,
@@ -38,8 +42,93 @@ import {
   type WorkOrderDetail,
   type WorkOrderRequiredSerial,
 } from '@/lib/work-orders-api';
-import { statusTone, workflowLabel } from '@/lib/work-order-ui';
+import { workflowLabel } from '@/lib/work-order-ui';
 import { WorkOrderWorkspace } from './WorkOrdersPage';
+
+function SummaryStrip({ workOrder }: { workOrder: WorkOrderDetail }) {
+  const rows = [
+    { label: 'Status', value: humanStatus(workOrder.operationalStatus).label },
+    { label: 'Product line', value: workOrder.workflow?.name },
+    { label: 'HET / batch', value: workOrder.het?.hetNumber },
+    { label: 'Received from', value: workOrder.het?.clinicName },
+    { label: 'Current phase', value: workOrder.currentPhaseLabel },
+    { label: 'Started', value: workOrder.prodStart ? formatDate(workOrder.prodStart) : null },
+    { label: 'Cycle time', value: hasValue(workOrder.prodDuration) ? formatDurationMinutes(workOrder.prodDuration) : null },
+    { label: 'Output', value: hasValue(workOrder.outputQuantity) ? formatQuantity(workOrder.outputQuantity) : null },
+  ].filter((row) => hasValue(row.value));
+
+  return (
+    <Card>
+      <CardContent className="grid grid-cols-2 gap-x-6 gap-y-4 py-5 sm:grid-cols-3 xl:grid-cols-4">
+        {rows.map((row) => (
+          <div key={row.label} className="min-w-0">
+            <div className="text-xs text-muted-foreground">{row.label}</div>
+            <div className="mt-1 truncate text-sm font-medium text-foreground">{row.value}</div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function LotLink({ id, label }: { id?: string | null; label: string }) {
+  if (!id) return <span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">{label}</span>;
+  return (
+    <Link
+      to={`/dashboard/inventory/lots/${encodeURIComponent(id)}`}
+      className="rounded-md bg-muted px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+    >
+      {label}
+    </Link>
+  );
+}
+
+function GenealogyCard({
+  genealogy,
+  lots,
+}: {
+  genealogy: InventoryGenealogyEdge[];
+  lots: Array<{ id: string; lotNumber: string | null }>;
+}) {
+  if (!genealogy.length && !lots.length) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <GitBranch className="h-4 w-4 text-muted-foreground" />
+          Genealogy
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {lots.length > 0 && (
+          <div>
+            <div className="mb-2 text-xs text-muted-foreground">Lots in this run</div>
+            <div className="flex flex-wrap gap-2">
+              {lots.map((lot) => (
+                <LotLink key={lot.id} id={lot.id} label={lot.lotNumber || lot.id} />
+              ))}
+            </div>
+          </div>
+        )}
+        {genealogy.length > 0 && (
+          <div>
+            <div className="mb-2 text-xs text-muted-foreground">Parent → child links</div>
+            <ul className="space-y-1.5">
+              {genealogy.map((edge) => (
+                <li key={edge.id} className="flex flex-wrap items-center gap-2">
+                  <LotLink id={edge.parentInventoryLotId} label={edge.parentInventoryLot?.lotNumber || edge.parentInventoryLotId || 'Unknown'} />
+                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+                  <LotLink id={edge.childInventoryLotId} label={edge.childInventoryLot?.lotNumber || edge.childInventoryLotId || 'Unknown'} />
+                  <span className="text-xs text-muted-foreground">{edge.relationshipType}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 const MAX_PHOTO_EVIDENCE_BYTES = 5 * 1024 * 1024;
 
@@ -66,11 +155,6 @@ function formatQuantity(value?: string | number | null) {
 
 function workOrderTitle(workOrder: WorkOrderDetail) {
   return workOrder.woNumber || workOrder.id;
-}
-
-function lifecycleDetail(workOrder: WorkOrderDetail) {
-  const duration = formatDurationMinutes(workOrder.prodDuration);
-  return duration === '-' ? workOrder.operationalStatus : `${workOrder.operationalStatus} - ${duration}`;
 }
 
 function actionLabel(action: string) {
@@ -663,7 +747,7 @@ export default function WorkOrderDetailPage() {
     <div className="space-y-6">
       <PageHeader
         title={workOrderTitle(workOrder)}
-        description={`${workflowLabel(workOrder)} - ${workOrder.currentPhaseLabel} - ${workOrder.legacyProductionState}`}
+        description={`${workflowLabel(workOrder)} · ${workOrder.currentPhaseLabel}`}
         action={
           <>
             <Button asChild variant="outline">
@@ -672,19 +756,15 @@ export default function WorkOrderDetailPage() {
                 Board
               </Link>
             </Button>
-            <StatusPill tone={statusTone(workOrder.legacyStateBucket)}>
-              {workOrder.legacyStateBucket.replace(/^\d+\.\s*/, '')}
-            </StatusPill>
+            {(() => {
+              const status = humanStatus(workOrder.operationalStatus);
+              return <Badge variant={toneToBadgeVariant(status.tone)}>{status.label}</Badge>;
+            })()}
           </>
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard icon={<Factory className="h-6 w-6" />} label="Current phase" value={workOrder.currentPhaseLabel} detail={`Order ${workOrder.phaseOrder ?? '-'}`} />
-        <MetricCard icon={<Boxes className="h-6 w-6" />} label="HET / batch" value={workOrder.het?.hetNumber || workOrder.hetId || 'Unassigned'} />
-        <MetricCard icon={<FlaskConical className="h-6 w-6" />} label="Sterilisation/BET" value={workOrder.counts.sterilisationRecords} />
-        <MetricCard icon={<Route className="h-6 w-6" />} label="Lifecycle" value={workOrder.lifecycleState} detail={lifecycleDetail(workOrder)} />
-      </div>
+      <SummaryStrip workOrder={workOrder} />
 
       <AdminPanel title="Production execution" description="Controlled phase actions, readiness gates, evidence counts, and workflow timeline for this production run.">
         <WorkOrderWorkspace
@@ -698,6 +778,8 @@ export default function WorkOrderDetailPage() {
         />
       </AdminPanel>
 
+      <GenealogyCard genealogy={trace?.genealogy ?? []} lots={trace?.lots ?? []} />
+
       <OutputEvidencePanel key={workOrder.id} workOrder={workOrder} onSaved={recordOutputSaved} />
 
       <PhotoEvidencePanel workOrder={workOrder} onSaved={recordPhotoSaved} />
@@ -708,6 +790,12 @@ export default function WorkOrderDetailPage() {
 
       <SerialEvidencePanel workOrder={workOrder} onSaved={recordSerialSaved} />
 
+      <details className="group rounded-2xl border border-border bg-card">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-semibold text-foreground">
+          <span>Source record — audit trail &amp; inventory movements</span>
+          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="space-y-6 border-t border-border p-5">
       <AdminPanel title="Audit trail" description="Controlled lifecycle events recorded for this production run.">
         {auditQuery.isLoading ? (
           <div className="flex h-32 items-center justify-center">
@@ -822,6 +910,8 @@ export default function WorkOrderDetailPage() {
           </div>
         )}
       </AdminPanel>
+        </div>
+      </details>
     </div>
   );
 }

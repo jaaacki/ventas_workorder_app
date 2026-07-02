@@ -77,27 +77,36 @@ body {
 
   --color-background: var(--background);
 
-  --color-brand-25: #f2f7ff;
+  /* Ventas Scarlet — the brand voice. Utilities: bg-brand / text-brand / border-brand.
+     Reserved for the logo mark, the selected-nav indicator, and nothing else. */
+  --color-brand: var(--brand);
 
-  --color-brand-50: #ecf3ff;
+  --color-brand-foreground: var(--brand-foreground);
 
-  --color-brand-100: #dde9ff;
+  /* Neutral graphite ramp (replaces the old blue). Ink is the workhorse via --primary;
+     this ramp keeps any remaining bg-brand-500 / text-brand-600 usages neutral in both
+     light and dark, never blue and never scarlet. */
+  --color-brand-25: #f7f7f8;
 
-  --color-brand-300: #9cb9ff;
+  --color-brand-50: #f0f0f2;
 
-  --color-brand-400: #7592ff;
+  --color-brand-100: #e3e3e7;
 
-  --color-brand-500: #465fff;
+  --color-brand-300: #b6b6bd;
 
-  --color-brand-600: #3641f5;
+  --color-brand-400: #83838c;
 
-  --color-brand-700: #2a31d8;
+  --color-brand-500: #5b5b64;
 
-  --color-brand-800: #252dae;
+  --color-brand-600: #44444c;
 
-  --color-brand-900: #262e89;
+  --color-brand-700: #33333a;
 
-  --color-brand-950: #161950;
+  --color-brand-800: #26262b;
+
+  --color-brand-900: #1b1b1f;
+
+  --color-brand-950: #111114;
 
   --color-success-50: #ecfdf3;
 
@@ -146,9 +155,13 @@ body {
 
   --popover-foreground: #1d2939;
 
-  --primary: #465fff;
+  --primary: #16161a;
 
-  --primary-foreground: #ffffff;
+  --primary-foreground: #f4f3f1;
+
+  --brand: #e5330e;
+
+  --brand-foreground: #ffffff;
 
   --secondary: #f2f4f7;
 
@@ -158,17 +171,17 @@ body {
 
   --muted-foreground: #667085;
 
-  --accent: #f2f7ff;
+  --accent: #f3f3f4;
 
-  --accent-foreground: #3641f5;
+  --accent-foreground: #16161a;
 
-  --destructive: #d92d20;
+  --destructive: #e5330e;
 
   --border: #eaecf0;
 
   --input: #d0d5dd;
 
-  --ring: #9cb9ff;
+  --ring: #16161a;
 
   --chart-1: oklch(0.87 0 0);
 
@@ -213,9 +226,13 @@ body {
 
   --popover-foreground: oklch(0.985 0 0);
 
-  --primary: oklch(0.922 0 0);
+  --primary: #f4f3f1;
 
-  --primary-foreground: oklch(0.205 0 0);
+  --primary-foreground: #16161a;
+
+  --brand: #ff4a1c;
+
+  --brand-foreground: #ffffff;
 
   --secondary: oklch(0.269 0 0);
 
@@ -229,7 +246,7 @@ body {
 
   --accent-foreground: oklch(0.985 0 0);
 
-  --destructive: oklch(0.704 0.191 22.216);
+  --destructive: #ff4a1c;
 
   --border: oklch(1 0 0 / 10%);
 

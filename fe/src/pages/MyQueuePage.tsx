@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { fetchWorkOrders, type WorkOrderSummary } from '@/lib/work-orders-api';
+import { fetchWorkOrders } from '@/lib/work-orders-api';
 import { useWorkflowContext } from '@/store/workflowContext';
 import { humanStatus, toneToBadgeVariant } from '@/lib/format';
+import { nextActionLabel } from '@/lib/work-order-ui';
 import { PageHeader, EmptyState } from '@/components/tailadmin';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -12,19 +13,6 @@ import { Input } from '@/components/ui/input';
 import { ListChecks } from 'lucide-react';
 
 const ACTIONABLE: string[] = ['NotStarted', 'InProgress', 'ReadyToAdvance'];
-
-function nextActionLabel(wo: WorkOrderSummary): string {
-  switch (wo.lifecycleState) {
-    case 'NotStarted':
-      return `Start ${wo.currentPhaseLabel}`;
-    case 'InProgress':
-      return `Finish ${wo.currentPhaseLabel}`;
-    case 'ReadyToAdvance':
-      return `Advance from ${wo.currentPhaseLabel}`;
-    default:
-      return wo.currentPhaseLabel;
-  }
-}
 
 export default function MyQueuePage() {
   const { activeWorkflowId } = useWorkflowContext();

@@ -4,6 +4,11 @@
 
 export type StatusTone = 'neutral' | 'secondary' | 'destructive' | 'default' | 'success';
 
+/** Localised date-time, or null when absent (callers apply their own placeholder). */
+export function formatDate(value: string | null | undefined): string | null {
+  return value ? new Date(value).toLocaleString() : null;
+}
+
 /** Drop a leading `prefix:` segment, e.g. `unit:HET-2607010DEJ` -> `HET-2607010DEJ`. */
 export function stripPrefix(value: string | null | undefined): string {
   if (!value) return '';

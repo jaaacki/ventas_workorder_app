@@ -4,7 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { fetchWorkflows } from '@/lib/workflows-api';
 import { fetchHets, type HetSummary } from '@/lib/hets-api';
-import { statusTone, workflowLabel } from '@/lib/work-order-ui';
+import { statusTone, workflowLabel, unitsLabel } from '@/lib/work-order-ui';
 import { useWorkflowContext } from '@/store/workflowContext';
 import { humanStatus, toneToBadgeVariant } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
@@ -104,10 +104,6 @@ function hetLabel(het: HetSummary) {
     .join(' - ');
 }
 
-function unitsLabel(workOrder: WorkOrderSummary) {
-  const qty = workOrder.het?.quantity;
-  return qty != null ? `${qty} unit${qty === 1 ? '' : 's'}` : '—';
-}
 
 function WorkOrderCard({
   workOrder,
@@ -143,7 +139,7 @@ function WorkOrderCard({
 
       <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
         <span className="truncate">{workOrder.het?.hetNumber || workOrder.hetId || 'No HET'}</span>
-        <span>{unitsLabel(workOrder)}</span>
+        <span>{unitsLabel(workOrder.het?.quantity) ?? '—'}</span>
         <span>{workOrder.counts?.serials ?? 0}/{workOrder.serialRequiredCount ?? 0} serials</span>
       </div>
 
@@ -514,7 +510,24 @@ export default function WorkOrdersPage() {
     () => workOrders.find((wo) => wo.id === selectedId) ?? null,
     [selectedId, workOrders],
   );
-  const phaseColumns = useMemo(() => buildPhaseColumns(scopedWorkOrders), [scopedWorkOrders]);
+  const phaseColumns = useMemo(() => {
+    const base = buildPhaseColumns(scopedWorkOrders);
+    const known = new Set(base.map((column) => column.id));
+    // Append a column for any work order whose current phase isn't in the template
+    // (unphased/legacy WOs, or a foreign workflow in "All lines") so none are dropped.
+    const extras: PhaseColumn[] = [];
+    for (const wo of scopedWorkOrders) {
+      const key = workOrderColumnId(wo);
+      if (!known.has(key) && !extras.some((column) => column.id === key)) {
+        extras.push({
+          id: key,
+          label: wo.phase?.phaseShort || wo.phaseShort || 'Unphased',
+          order: (wo.phaseOrder ?? 0) + 1000,
+        });
+      }
+    }
+    return [...base, ...extras].sort((a, b) => a.order - b.order);
+  }, [scopedWorkOrders]);
   const groupedByPhase = useMemo(() => groupByPhase(scopedWorkOrders, phaseColumns), [scopedWorkOrders, phaseColumns]);
 
   const openCreate = () => {

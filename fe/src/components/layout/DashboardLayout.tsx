@@ -48,7 +48,19 @@ interface NavGroup {
   items: NavItem[];
 }
 
-const ALL_ROLES = ['owner', 'admin', 'user'];
+// Operational screens are open to every authenticated role (display-only role awareness);
+// Setup stays owner/admin. Keep in sync with the route guards in App.tsx.
+const ALL_ROLES = [
+  'owner',
+  'admin',
+  'user',
+  'operator',
+  'qa_manager',
+  'production_manager',
+  'procurement_manager',
+  'inventory_manager',
+  'viewer',
+];
 
 // Job-oriented IA (handoff §4). Every link resolves to a live route; My queue, a split
 // Quarantine, Traceability, and the Users+Roles merge land in their own follow-up PRs.
@@ -105,8 +117,11 @@ function isActive(pathname: string, href: string) {
 }
 
 function useReleaseCount() {
+  const { activeWorkflowId } = useWorkflowContext();
   const { data } = useQuery({ queryKey: ['qa-queue'], queryFn: fetchQaWorkOrderQueue });
-  return data?.counts.release ?? 0;
+  if (!data) return 0;
+  // Scope to the active line so the badge matches the Release queue page's count.
+  return data.release.filter((wo) => !activeWorkflowId || wo.workflowId === activeWorkflowId).length;
 }
 
 function WorkflowSwitcher() {

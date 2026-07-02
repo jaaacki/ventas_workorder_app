@@ -7,17 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PageHeader, EmptyState } from '@/components/tailadmin';
 import { SummaryStrip, DetailGrid, SourceRecord } from '@/components/detail';
-import { humanStatus, toneToBadgeVariant } from '@/lib/format';
+import { humanStatus, toneToBadgeVariant, formatDate } from '@/lib/format';
 import {
   fetchInventoryGenealogy,
   fetchInventoryLot,
   type InventoryGenealogyEdge,
   type InventoryLot,
 } from '@/lib/inventory-api';
-
-function formatDate(value?: string | null) {
-  return value ? new Date(value).toLocaleString() : null;
-}
 
 function formatQty(value?: string | number | null, uom?: string | null) {
   if (value === null || value === undefined || value === '') return null;

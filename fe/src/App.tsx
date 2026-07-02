@@ -6,16 +6,19 @@ import DashboardLayout from './components/layout/DashboardLayout';
 import LoginPage from './pages/LoginPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 import DashboardHome from './pages/DashboardHome';
-import UsersPage from './pages/UsersPage';
-import RolesPage from './pages/RolesPage';
+import UsersRolesPage from './pages/UsersRolesPage';
 import WorkflowsPage from './pages/WorkflowsPage';
 import WorkOrdersPage from './pages/WorkOrdersPage';
 import WorkOrderDetailPage from './pages/WorkOrderDetailPage';
+import MyQueuePage from './pages/MyQueuePage';
 import QaQueuePage from './pages/QaQueuePage';
+import QuarantinePage from './pages/QuarantinePage';
 import ProcurementPage from './pages/ProcurementPage';
 import CollectionUnitDetailPage from './pages/CollectionUnitDetailPage';
+import HetDetailPage from './pages/HetDetailPage';
 import InventoryPage from './pages/InventoryPage';
 import InventoryLotDetailPage from './pages/InventoryLotDetailPage';
+import TraceabilityPage from './pages/TraceabilityPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 function App() {
@@ -41,21 +44,12 @@ function App() {
             element={
               <ProtectedRoute roles={['owner', 'admin']}>
                 <DashboardLayout>
-                  <UsersPage />
+                  <UsersRolesPage />
                 </DashboardLayout>
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/dashboard/roles"
-            element={
-              <ProtectedRoute roles={['owner']}>
-                <DashboardLayout>
-                  <RolesPage />
-                </DashboardLayout>
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/dashboard/roles" element={<Navigate to="/dashboard/users" replace />} />
           <Route
             path="/dashboard/workflows"
             element={
@@ -69,7 +63,7 @@ function App() {
           <Route
             path="/dashboard/work-orders/:id"
             element={
-              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+              <ProtectedRoute>
                 <DashboardLayout>
                   <WorkOrderDetailPage />
                 </DashboardLayout>
@@ -79,7 +73,7 @@ function App() {
           <Route
             path="/dashboard/work-orders"
             element={
-              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+              <ProtectedRoute>
                 <DashboardLayout>
                   <WorkOrdersPage />
                 </DashboardLayout>
@@ -87,9 +81,19 @@ function App() {
             }
           />
           <Route
+            path="/dashboard/my-queue"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <MyQueuePage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/dashboard/qa"
             element={
-              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+              <ProtectedRoute>
                 <DashboardLayout>
                   <QaQueuePage />
                 </DashboardLayout>
@@ -97,9 +101,19 @@ function App() {
             }
           />
           <Route
+            path="/dashboard/quarantine"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <QuarantinePage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/dashboard/procurement/collection-units/:id"
             element={
-              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+              <ProtectedRoute>
                 <DashboardLayout>
                   <CollectionUnitDetailPage />
                 </DashboardLayout>
@@ -107,9 +121,19 @@ function App() {
             }
           />
           <Route
+            path="/dashboard/hets/:id"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <HetDetailPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/dashboard/procurement"
             element={
-              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+              <ProtectedRoute>
                 <DashboardLayout>
                   <ProcurementPage />
                 </DashboardLayout>
@@ -119,7 +143,7 @@ function App() {
           <Route
             path="/dashboard/inventory/lots/:id"
             element={
-              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+              <ProtectedRoute>
                 <DashboardLayout>
                   <InventoryLotDetailPage />
                 </DashboardLayout>
@@ -129,9 +153,19 @@ function App() {
           <Route
             path="/dashboard/inventory"
             element={
-              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+              <ProtectedRoute>
                 <DashboardLayout>
                   <InventoryPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/traceability"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <TraceabilityPage />
                 </DashboardLayout>
               </ProtectedRoute>
             }

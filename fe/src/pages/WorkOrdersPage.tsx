@@ -4,7 +4,10 @@ import { Link, useSearchParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { fetchWorkflows } from '@/lib/workflows-api';
 import { fetchHets, type HetSummary } from '@/lib/hets-api';
-import { statusTone, workflowLabel } from '@/lib/work-order-ui';
+import { statusTone, workflowLabel, unitsLabel } from '@/lib/work-order-ui';
+import { useWorkflowContext } from '@/store/workflowContext';
+import { humanStatus, toneToBadgeVariant } from '@/lib/format';
+import { Badge } from '@/components/ui/badge';
 import {
   fetchWorkOrders,
   createWorkOrder,
@@ -23,7 +26,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { AdminPanel, EmptyState, MetricCard, PageHeader, StatusPill } from '@/components/tailadmin';
+import { EmptyState, MetricCard, PageHeader, StatusPill } from '@/components/tailadmin';
 import { toast } from 'sonner';
 import {
   AlertTriangle,
@@ -35,9 +38,7 @@ import {
   FileSignature,
   FlaskConical,
   Maximize2,
-  PackageCheck,
   Plus,
-  ShieldCheck,
   Signature,
   X,
 } from 'lucide-react';
@@ -46,22 +47,55 @@ function formatDate(value?: string | null) {
   return value ? new Date(value).toLocaleString() : '-';
 }
 
-const LEGACY_KANBAN_COLUMNS = [
-  '1. In Progress',
-  '2. Next Phase',
-  '3. In Quarantine',
-  '4. Finished Goods',
-  '5. WO Completed',
-] as const;
+interface PhaseColumn {
+  id: string;
+  label: string;
+  order: number;
+}
 
-function groupByLegacyState(workOrders: WorkOrderSummary[]) {
-  const grouped = new Map<string, WorkOrderSummary[]>(LEGACY_KANBAN_COLUMNS.map((column) => [column, []]));
-  for (const workOrder of workOrders) {
-    const bucket = workOrder.legacyStateBucket || '1. In Progress';
-    if (!grouped.has(bucket)) grouped.set(bucket, []);
-    grouped.get(bucket)?.push(workOrder);
+// Board columns = the workflow's phases in recipe order. Any work order in a line carries
+// the full ordered phaseTimeline, so we derive the columns from the richest timeline present.
+function buildPhaseColumns(workOrders: WorkOrderSummary[]): PhaseColumn[] {
+  let template: WorkOrderSummary['phaseTimeline'] = [];
+  for (const wo of workOrders) {
+    if ((wo.phaseTimeline?.length ?? 0) > template.length) template = wo.phaseTimeline;
   }
-  return Array.from(grouped.entries());
+  if (template.length) {
+    return [...template]
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((phase) => ({
+        id: phase.id,
+        label: phase.phaseShort || phase.phaseName || `Phase ${phase.sortOrder + 1}`,
+        order: phase.sortOrder,
+      }));
+  }
+  // Fallback: distinct current phases when no timeline is available.
+  const seen = new Map<string, PhaseColumn>();
+  for (const wo of workOrders) {
+    const id = wo.phase?.id || `order-${wo.phaseOrder ?? 0}`;
+    if (!seen.has(id)) {
+      seen.set(id, {
+        id,
+        label: wo.phase?.phaseShort || wo.phaseShort || `Phase ${wo.phaseOrder ?? '?'}`,
+        order: wo.phaseOrder ?? 0,
+      });
+    }
+  }
+  return Array.from(seen.values()).sort((a, b) => a.order - b.order);
+}
+
+function workOrderColumnId(workOrder: WorkOrderSummary): string {
+  return workOrder.phase?.id || `order-${workOrder.phaseOrder ?? 0}`;
+}
+
+function groupByPhase(workOrders: WorkOrderSummary[], columns: PhaseColumn[]) {
+  const grouped = new Map<string, WorkOrderSummary[]>(columns.map((column) => [column.id, []]));
+  for (const workOrder of workOrders) {
+    const key = workOrderColumnId(workOrder);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)?.push(workOrder);
+  }
+  return grouped;
 }
 
 function hetLabel(het: HetSummary) {
@@ -69,6 +103,7 @@ function hetLabel(het: HetSummary) {
     .filter(Boolean)
     .join(' - ');
 }
+
 
 function WorkOrderCard({
   workOrder,
@@ -94,16 +129,17 @@ function WorkOrderCard({
           <div className="truncate text-sm font-semibold text-gray-800 dark:text-white/90">
             {workOrder.woNumber || workOrder.id}
           </div>
-          <div className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">{workflowLabel(workOrder)}</div>
+          <div className="mt-1 truncate text-xs text-muted-foreground">{workflowLabel(workOrder)}</div>
         </div>
-        <StatusPill tone={statusTone(workOrder.legacyStateBucket)}>
-          {workOrder.legacyStateBucket.replace(/^\d+\.\s*/, '')}
-        </StatusPill>
+        {(() => {
+          const status = humanStatus(workOrder.operationalStatus);
+          return <Badge variant={toneToBadgeVariant(status.tone)}>{status.label}</Badge>;
+        })()}
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-gray-500 dark:text-gray-400">
+      <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
         <span className="truncate">{workOrder.het?.hetNumber || workOrder.hetId || 'No HET'}</span>
-        <span>Phase {workOrder.phaseOrder ?? '-'}/{workOrder.phaseOrderCurrent ?? '-'}</span>
+        <span>{unitsLabel(workOrder.het?.quantity) ?? '—'}</span>
         <span>{workOrder.counts?.serials ?? 0}/{workOrder.serialRequiredCount ?? 0} serials</span>
       </div>
 
@@ -446,6 +482,8 @@ export function WorkOrderWorkspace({
 
 export default function WorkOrdersPage() {
   const queryClient = useQueryClient();
+  const { activeWorkflowId } = useWorkflowContext();
+  const [allLines, setAllLines] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('wo');
   const [workspaceMode, setWorkspaceMode] = useState<'create' | 'detail' | null>(selectedId ? 'detail' : null);
@@ -464,14 +502,33 @@ export default function WorkOrdersPage() {
     queryFn: fetchHets,
   });
 
+  const scopedWorkOrders = useMemo(
+    () => (allLines || !activeWorkflowId ? workOrders : workOrders.filter((wo) => wo.workflowId === activeWorkflowId)),
+    [workOrders, allLines, activeWorkflowId],
+  );
   const selectedWorkOrder = useMemo(
     () => workOrders.find((wo) => wo.id === selectedId) ?? null,
     [selectedId, workOrders],
   );
-  const grouped = useMemo(() => groupByLegacyState(workOrders), [workOrders]);
-  const nextPhaseCount = workOrders.filter((wo) => wo.legacyStateBucket === '2. Next Phase').length;
-  const quarantineCount = workOrders.filter((wo) => wo.legacyStateBucket === '3. In Quarantine').length;
-  const completedCount = workOrders.filter((wo) => wo.legacyStateBucket === '5. WO Completed').length;
+  const phaseColumns = useMemo(() => {
+    const base = buildPhaseColumns(scopedWorkOrders);
+    const known = new Set(base.map((column) => column.id));
+    // Append a column for any work order whose current phase isn't in the template
+    // (unphased/legacy WOs, or a foreign workflow in "All lines") so none are dropped.
+    const extras: PhaseColumn[] = [];
+    for (const wo of scopedWorkOrders) {
+      const key = workOrderColumnId(wo);
+      if (!known.has(key) && !extras.some((column) => column.id === key)) {
+        extras.push({
+          id: key,
+          label: wo.phase?.phaseShort || wo.phaseShort || 'Unphased',
+          order: (wo.phaseOrder ?? 0) + 1000,
+        });
+      }
+    }
+    return [...base, ...extras].sort((a, b) => a.order - b.order);
+  }, [scopedWorkOrders]);
+  const groupedByPhase = useMemo(() => groupByPhase(scopedWorkOrders, phaseColumns), [scopedWorkOrders, phaseColumns]);
 
   const openCreate = () => {
     setSearchParams({});
@@ -541,59 +598,58 @@ export default function WorkOrdersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Production"
-        description="Run factory-floor work, QA gates, and release readiness from the work-order board."
+        title="Board"
+        description="Every work order by production phase for the active line."
         action={
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" />
-            New work order
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant={allLines ? 'default' : 'outline'} onClick={() => setAllLines((value) => !value)}>
+              {allLines ? 'Active line' : 'All lines'}
+            </Button>
+            <Button onClick={openCreate}>
+              <Plus className="h-4 w-4" />
+              New work order
+            </Button>
+          </div>
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard icon={<ClipboardList className="h-6 w-6" />} label="Work orders" value={workOrders.length} />
-        <MetricCard icon={<ArrowRight className="h-6 w-6" />} label="Next phase" value={nextPhaseCount} detail={<StatusPill tone="success">Review</StatusPill>} />
-        <MetricCard icon={<ShieldCheck className="h-6 w-6" />} label="In quarantine" value={quarantineCount} />
-        <MetricCard icon={<PackageCheck className="h-6 w-6" />} label="Completed" value={completedCount} />
-      </div>
-
-      <AdminPanel title="Production kanban" description="Grouped by the legacy AppSheet production state derived from HET/batch phase progress.">
-        {isLoading ? (
-          <div className="flex h-40 items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+      {isLoading ? (
+        <div className="flex h-40 items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      ) : !scopedWorkOrders.length ? (
+        <EmptyState icon={<Factory className="h-6 w-6" />} title="No active production runs" description="Start a production run with New work order." />
+      ) : (
+        <div className="overflow-x-auto pb-2">
+          <div className="flex gap-4">
+            {phaseColumns.map((column) => {
+              const items = groupedByPhase.get(column.id) ?? [];
+              return (
+                <section key={column.id} className="flex w-[260px] shrink-0 flex-col rounded-xl border border-border bg-muted/40 p-3">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div className="truncate text-sm font-semibold text-foreground" title={column.label}>{column.label}</div>
+                    <Badge variant="outline">{items.length}</Badge>
+                  </div>
+                  <div className="space-y-2">
+                    {items.length ? (
+                      items.map((wo) => (
+                        <WorkOrderCard
+                          key={wo.id}
+                          workOrder={wo}
+                          selected={selectedWorkOrder?.id === wo.id && activeWorkspaceMode === 'detail'}
+                          onOpen={() => openWorkOrder(wo.id)}
+                        />
+                      ))
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">Empty</div>
+                    )}
+                  </div>
+                </section>
+              );
+            })}
           </div>
-        ) : !workOrders.length ? (
-          <EmptyState icon={<Factory className="h-6 w-6" />} title="No active production runs" description="Start a production run from the work-order workspace." />
-        ) : (
-          <div className="grid gap-4 lg:grid-cols-3 2xl:grid-cols-5">
-            {grouped.map(([phase, items]) => (
-              <section key={phase} className="min-h-44 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-white/[0.03]">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div className="truncate text-sm font-semibold text-gray-800 dark:text-white/90">{phase.replace(/^\d+\.\s*/, '')}</div>
-                  <StatusPill tone="neutral">{items.length}</StatusPill>
-                </div>
-                <div className="space-y-2">
-                  {items.length ? (
-                    items.map((wo) => (
-                      <WorkOrderCard
-                        key={wo.id}
-                        workOrder={wo}
-                        selected={selectedWorkOrder?.id === wo.id && activeWorkspaceMode === 'detail'}
-                        onOpen={() => openWorkOrder(wo.id)}
-                      />
-                    ))
-                  ) : (
-                    <div className="rounded-lg border border-dashed border-gray-200 p-4 text-center text-sm text-gray-400 dark:border-gray-800">
-                      No work waiting here
-                    </div>
-                  )}
-                </div>
-              </section>
-            ))}
-          </div>
-        )}
-      </AdminPanel>
+        </div>
+      )}
 
       <Sheet open={activeWorkspaceMode !== null} onOpenChange={(open) => !open && closeWorkspace()}>
         <SheetContent className="w-full overflow-y-auto p-0 sm:max-w-[min(1120px,96vw)]">

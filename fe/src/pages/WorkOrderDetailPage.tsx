@@ -6,21 +6,23 @@ import { toast } from 'sonner';
 import {
   ArrowLeft,
   Boxes,
+  ChevronDown,
   ClipboardList,
   Factory,
-  FlaskConical,
   GitBranch,
   History,
   ImageUp,
   PackageSearch,
-  Route,
   ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AdminPanel, EmptyState, MetricCard, PageHeader, StatusPill } from '@/components/tailadmin';
+import { SummaryStrip, GenealogyCard } from '@/components/detail';
+import { humanStatus, hasValue, toneToBadgeVariant } from '@/lib/format';
 import {
   advanceWorkOrder,
   fetchWorkOrder,
@@ -38,7 +40,7 @@ import {
   type WorkOrderDetail,
   type WorkOrderRequiredSerial,
 } from '@/lib/work-orders-api';
-import { statusTone, workflowLabel } from '@/lib/work-order-ui';
+import { workflowLabel } from '@/lib/work-order-ui';
 import { WorkOrderWorkspace } from './WorkOrdersPage';
 
 const MAX_PHOTO_EVIDENCE_BYTES = 5 * 1024 * 1024;
@@ -66,11 +68,6 @@ function formatQuantity(value?: string | number | null) {
 
 function workOrderTitle(workOrder: WorkOrderDetail) {
   return workOrder.woNumber || workOrder.id;
-}
-
-function lifecycleDetail(workOrder: WorkOrderDetail) {
-  const duration = formatDurationMinutes(workOrder.prodDuration);
-  return duration === '-' ? workOrder.operationalStatus : `${workOrder.operationalStatus} - ${duration}`;
 }
 
 function actionLabel(action: string) {
@@ -574,6 +571,7 @@ export default function WorkOrderDetailPage() {
   const updateCachedWorkOrder = (updated: WorkOrderDetail) => {
     queryClient.setQueryData(['work-order', updated.id], updated);
     queryClient.invalidateQueries({ queryKey: ['work-orders'] });
+    queryClient.invalidateQueries({ queryKey: ['qa-queue'] });
     queryClient.invalidateQueries({ queryKey: ['work-order-inventory-trace', updated.id] });
     queryClient.invalidateQueries({ queryKey: ['work-order-audit-events', updated.id] });
   };
@@ -663,7 +661,7 @@ export default function WorkOrderDetailPage() {
     <div className="space-y-6">
       <PageHeader
         title={workOrderTitle(workOrder)}
-        description={`${workflowLabel(workOrder)} - ${workOrder.currentPhaseLabel} - ${workOrder.legacyProductionState}`}
+        description={`${workflowLabel(workOrder)} · ${workOrder.currentPhaseLabel}`}
         action={
           <>
             <Button asChild variant="outline">
@@ -672,19 +670,26 @@ export default function WorkOrderDetailPage() {
                 Board
               </Link>
             </Button>
-            <StatusPill tone={statusTone(workOrder.legacyStateBucket)}>
-              {workOrder.legacyStateBucket.replace(/^\d+\.\s*/, '')}
-            </StatusPill>
+            {(() => {
+              const status = humanStatus(workOrder.operationalStatus);
+              return <Badge variant={toneToBadgeVariant(status.tone)}>{status.label}</Badge>;
+            })()}
           </>
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard icon={<Factory className="h-6 w-6" />} label="Current phase" value={workOrder.currentPhaseLabel} detail={`Order ${workOrder.phaseOrder ?? '-'}`} />
-        <MetricCard icon={<Boxes className="h-6 w-6" />} label="HET / batch" value={workOrder.het?.hetNumber || workOrder.hetId || 'Unassigned'} />
-        <MetricCard icon={<FlaskConical className="h-6 w-6" />} label="Sterilisation/BET" value={workOrder.counts.sterilisationRecords} />
-        <MetricCard icon={<Route className="h-6 w-6" />} label="Lifecycle" value={workOrder.lifecycleState} detail={lifecycleDetail(workOrder)} />
-      </div>
+      <SummaryStrip
+        rows={[
+          { label: 'Status', value: humanStatus(workOrder.operationalStatus).label },
+          { label: 'Product line', value: workOrder.workflow?.name },
+          { label: 'HET / batch', value: workOrder.het?.hetNumber },
+          { label: 'Received from', value: workOrder.het?.clinicName },
+          { label: 'Current phase', value: workOrder.currentPhaseLabel },
+          { label: 'Started', value: workOrder.prodStart ? formatDate(workOrder.prodStart) : null },
+          { label: 'Cycle time', value: hasValue(workOrder.prodDuration) ? formatDurationMinutes(workOrder.prodDuration) : null },
+          { label: 'Output', value: hasValue(workOrder.outputQuantity) ? formatQuantity(workOrder.outputQuantity) : null },
+        ]}
+      />
 
       <AdminPanel title="Production execution" description="Controlled phase actions, readiness gates, evidence counts, and workflow timeline for this production run.">
         <WorkOrderWorkspace
@@ -698,6 +703,8 @@ export default function WorkOrderDetailPage() {
         />
       </AdminPanel>
 
+      <GenealogyCard genealogy={trace?.genealogy ?? []} lots={trace?.lots ?? []} />
+
       <OutputEvidencePanel key={workOrder.id} workOrder={workOrder} onSaved={recordOutputSaved} />
 
       <PhotoEvidencePanel workOrder={workOrder} onSaved={recordPhotoSaved} />
@@ -708,6 +715,12 @@ export default function WorkOrderDetailPage() {
 
       <SerialEvidencePanel workOrder={workOrder} onSaved={recordSerialSaved} />
 
+      <details className="group rounded-2xl border border-border bg-card">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-semibold text-foreground">
+          <span>Source record — audit trail &amp; inventory movements</span>
+          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="space-y-6 border-t border-border p-5">
       <AdminPanel title="Audit trail" description="Controlled lifecycle events recorded for this production run.">
         {auditQuery.isLoading ? (
           <div className="flex h-32 items-center justify-center">
@@ -822,6 +835,8 @@ export default function WorkOrderDetailPage() {
           </div>
         )}
       </AdminPanel>
+        </div>
+      </details>
     </div>
   );
 }

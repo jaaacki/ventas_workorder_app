@@ -4,11 +4,11 @@
 when:
   event: push
   branch: [dev]
-  # instance: PR/DEV run only on jmacpro; MAIN (main.yml) runs on home-syno. See issue #31.
-  instance: [jmacpro.noonoon.cc]
+  # instance: PR/DEV run only on jmacair; MAIN (main.yml) runs on home-syno. See issue #31 and #100.
+  instance: [jmacair.noonoon.cc]
 
 variables:
-  - &node_image node:22-alpine
+  - &node_image node:24-alpine
   - &postgres_image postgres:16-alpine
 
 steps:
@@ -51,7 +51,7 @@ steps:
       - npm run -w be db:deploy
       - npm run -w be db:seed
     environment:
-      DATABASE_URL: postgres://woodpecker_test:woodpecker_test@postgres:5432/woodpecker_test?sslmode=disable
+      DATABASE_URL: postgres://woodpecker_test:woodpecker_test@workorder-ci-db:5432/woodpecker_test?sslmode=disable
       JWT_SECRET: ci-jwt-secret-not-used-in-production
       NODE_ENV: test
     depends_on:
@@ -62,7 +62,7 @@ steps:
     commands:
       - npm run -w be test:integration
     environment:
-      DATABASE_URL: postgres://woodpecker_test:woodpecker_test@postgres:5432/woodpecker_test?sslmode=disable
+      DATABASE_URL: postgres://woodpecker_test:woodpecker_test@workorder-ci-db:5432/woodpecker_test?sslmode=disable
       JWT_SECRET: ci-jwt-secret-not-used-in-production
       NODE_ENV: test
     depends_on:
@@ -78,7 +78,7 @@ steps:
     commands:
       - npm run -w be test:integration -- importRepeatability
     environment:
-      DATABASE_URL: postgres://woodpecker_test:woodpecker_test@postgres:5432/woodpecker_test?sslmode=disable
+      DATABASE_URL: postgres://woodpecker_test:woodpecker_test@workorder-ci-db:5432/woodpecker_test?sslmode=disable
       JWT_SECRET: ci-jwt-secret-not-used-in-production
       NODE_ENV: test
       REPEATABILITY_CYCLES: '3'
@@ -96,9 +96,9 @@ steps:
       - dev-shared-build
 
 services:
-  postgres:
+  workorder-ci-db:
     image: *postgres_image
     environment:
+      POSTGRES_DB: woodpecker_test
       POSTGRES_USER: woodpecker_test
       POSTGRES_PASSWORD: woodpecker_test
-      POSTGRES_DB: woodpecker_test

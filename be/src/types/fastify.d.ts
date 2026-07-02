@@ -6,6 +6,10 @@ declare module 'fastify' {
     config: import('../config/env.js').Env;
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     requireRole: (...roles: string[]) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    requirePermission: (resource: string, action: string) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    requireAnyPermission: (
+      requirements: Array<{ resource: string; action: string }>,
+    ) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   }
 
   interface FastifyReply {

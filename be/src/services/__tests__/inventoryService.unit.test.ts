@@ -37,15 +37,15 @@ describe('inventoryService tenant scoping', () => {
 
     await inventoryService.getInventoryOverview(tenantId);
 
-    expect(mocks.inventorySku.count).toHaveBeenCalledWith({ where: { tenantId } });
-    expect(mocks.inventoryLot.count).toHaveBeenCalledWith({ where: { tenantId } });
-    expect(mocks.inventoryTransaction.count).toHaveBeenCalledWith({ where: { tenantId } });
-    expect(mocks.inventoryLocation.count).toHaveBeenCalledWith({ where: { tenantId } });
-    expect(mocks.inventoryBalance.count).toHaveBeenCalledWith({ where: { tenantId } });
-    expect(mocks.inventoryImportReport.count).toHaveBeenCalledWith({ where: { tenantId } });
-    expect(mocks.inventoryLot.count).toHaveBeenCalledWith({ where: { tenantId, inventoryType: 'HET' } });
+    expect(mocks.inventorySku.count).toHaveBeenCalledWith({ where: { tenantId, deleted: false } });
+    expect(mocks.inventoryLot.count).toHaveBeenCalledWith({ where: { tenantId, deleted: false } });
+    expect(mocks.inventoryTransaction.count).toHaveBeenCalledWith({ where: { tenantId, deleted: false } });
+    expect(mocks.inventoryLocation.count).toHaveBeenCalledWith({ where: { tenantId, deleted: false } });
+    expect(mocks.inventoryBalance.count).toHaveBeenCalledWith({ where: { tenantId, deleted: false } });
+    expect(mocks.inventoryImportReport.count).toHaveBeenCalledWith({ where: { tenantId, deleted: false } });
+    expect(mocks.inventoryLot.count).toHaveBeenCalledWith({ where: { tenantId, deleted: false, inventoryType: 'HET' } });
     expect(mocks.inventoryLot.count).toHaveBeenCalledWith({
-      where: { tenantId, inventoryType: 'FINISHED_GOOD' },
+      where: { tenantId, deleted: false, inventoryType: 'FINISHED_GOOD' },
     });
   });
 
@@ -60,8 +60,8 @@ describe('inventoryService tenant scoping', () => {
     await inventoryService.listLots({ tenantId, q: 'lot', inventoryType: 'HET', status: 'available', take: 50 });
     await inventoryService.getLot('lot-1', tenantId);
     await inventoryService.listTransactions({ tenantId, q: 'WO-1', take: 75 });
-    await inventoryService.listLocations(tenantId);
-    await inventoryService.listImportReports(tenantId);
+    await inventoryService.listLocations({ tenantId });
+    await inventoryService.listImportReports({ tenantId });
 
     expect(mocks.inventorySku.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ tenantId }), take: 25 }),
@@ -73,16 +73,16 @@ describe('inventoryService tenant scoping', () => {
       }),
     );
     expect(mocks.inventoryLot.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'lot-1', tenantId } }),
+      expect.objectContaining({ where: { id: 'lot-1', tenantId, deleted: false } }),
     );
     expect(mocks.inventoryTransaction.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ tenantId }), take: 75 }),
     );
     expect(mocks.inventoryLocation.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { tenantId } }),
+      expect.objectContaining({ where: { tenantId, deleted: false } }),
     );
     expect(mocks.inventoryImportReport.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { tenantId } }),
+      expect.objectContaining({ where: { tenantId, deleted: false } }),
     );
   });
 
@@ -93,13 +93,13 @@ describe('inventoryService tenant scoping', () => {
     await inventoryService.getGenealogy('lot-1', tenantId);
 
     expect(mocks.inventoryLot.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'lot-1', tenantId } }),
+      expect.objectContaining({ where: { id: 'lot-1', tenantId, deleted: false } }),
     );
     expect(mocks.inventoryGenealogy.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { tenantId, childInventoryLotId: 'lot-1' } }),
+      expect.objectContaining({ where: { tenantId, childInventoryLotId: 'lot-1', deleted: false } }),
     );
     expect(mocks.inventoryGenealogy.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { tenantId, parentInventoryLotId: 'lot-1' } }),
+      expect.objectContaining({ where: { tenantId, parentInventoryLotId: 'lot-1', deleted: false } }),
     );
   });
 });

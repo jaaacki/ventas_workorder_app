@@ -256,6 +256,63 @@ const inventoryTraceExample = {
   workOrders: [{ id: 'WO-1001', woNumber: 'WO-1001', hetId: 'het-1001', phaseOrder: 10 }],
 };
 
+const auditLogExample = {
+  id: 'audit-1001',
+  tenantId: 'ventas',
+  actorId: 'staff-admin-1',
+  actorEmail: 'admin@example.test',
+  entityType: 'InventoryLot',
+  entityId: 'lot-1001',
+  action: 'update',
+  before: { status: 'available' },
+  after: { status: 'reserved' },
+  metadata: { source: 'api' },
+  createdAt: '2026-07-01T09:00:00.000Z',
+};
+
+const permissionCrudExample = {
+  id: 'crud-1001',
+  tenantId: 'ventas',
+  deleted: false,
+  deletedAt: null,
+  deletedById: null,
+  createdById: 'staff-admin-1',
+  updatedById: 'staff-admin-1',
+  sourceSystem: 'api',
+  legacyRaw: null,
+  createdAt: '2026-07-01T00:00:00.000Z',
+  updatedAt: '2026-07-01T00:00:00.000Z',
+};
+
+function withCrudMetadata(example: Record<string, unknown>) {
+  return {
+    ...permissionCrudExample,
+    ...example,
+  };
+}
+
+const generatedCrudSuccessExamples: Array<[string, Record<string, unknown>]> = [
+  ['SupplyEntities', withCrudMetadata({ id: 'supply-1', name: 'Clinic Group A', legalName: 'Clinic Group A Pte Ltd', externalCode: 'CGA', legacyClinicId: 'clinic-1' })],
+  ['CollectionPoints', withCrudMetadata({ id: 'point-1', supplyEntityId: 'supply-1', displayName: 'Clinic A', hciCode: 'HCI-001', address: '1 Example Road', postalCode: '000001', personInCharge: 'Ops Lead' })],
+  ['CollectionUnits', withCrudMetadata({ id: 'cu-1001', unitNumber: 'CU-1001', status: 'received', supplyEntityId: 'supply-1', collectionPointId: 'point-1', legacyHetId: 'HET-1001', parcelTrackingNumber: 'TRACK-1001' })],
+  ['IssuanceOrders', withCrudMetadata({ id: 'issue-1001', supplyEntityId: 'supply-1', collectionPointId: 'point-1', issuedAt: '2026-07-01T08:00:00.000Z', issuedBy: 'Ops Lead', level: 'routine', remarks: 'Issued for scheduled collection' })],
+  ['IssuanceOrderLines', withCrudMetadata({ id: 'issue-line-1001', issuanceOrderId: 'issue-1001', collectionUnitId: 'cu-1001', itemCode: 'HET-KIT', quantity: '1.0000', uom: 'ea', legacyHetId: 'HET-1001', legacyHetNumber: 'HET-1001', parcelTrackingNumber: 'TRACK-1001' })],
+  ['CollectionUnitFulfilments', withCrudMetadata({ id: 'fulfilment-1001', collectionUnitId: 'cu-1001', fulfilledAt: '2026-07-01T09:00:00.000Z', fulfilledBy: 'Ops Lead', source: 'manual', evidencePath: '/evidence/cu-1001.pdf', remarks: 'Collected by courier', inferred: false })],
+  ['CollectionOrders', withCrudMetadata({ id: 'collect-1001', supplyEntityId: 'supply-1', collectionPointId: 'point-1', requestedAt: '2026-07-01T08:30:00.000Z', scheduledFor: '2026-07-01T12:00:00.000Z', requestedBy: 'Ops Lead', status: 'requested', remarks: 'Routine pickup' })],
+  ['CollectionReceipts', withCrudMetadata({ id: 'receipt-1001', collectionOrderId: 'collect-1001', receivedAt: '2026-07-01T13:00:00.000Z', receivedBy: 'Receiving Operator', acceptanceState: 'accepted', remarks: 'Packaging intact' })],
+  ['CollectionReceiptLines', withCrudMetadata({ id: 'receipt-line-1001', collectionReceiptId: 'receipt-1001', collectionUnitId: 'cu-1001', itemCode: 'HET-KIT', quantity: '1.0000', uom: 'ea', conditionStatus: 'intact', acceptanceStatus: 'accepted', resultingHetId: 'het-1001', discrepancyReason: null })],
+  ['ProcurementImportReports', withCrudMetadata({ id: 'proc-import-1001', source: 'procurement-legacy', startedAt: '2026-07-01T00:00:00.000Z', finishedAt: '2026-07-01T00:01:00.000Z', report: { imported: 12, skipped: 1 } })],
+  ['References', withCrudMetadata({ id: 'ref-graft', refType: 'category', name: 'Graft', shortCode: 'GRAFT', description: 'Graft inventory category' })],
+  ['Locations', withCrudMetadata({ id: 'loc-clean-room', locationType: 'ROOM', name: 'Clean Room', parentLocationId: null, description: 'Production clean room' })],
+  ['Skus', withCrudMetadata({ id: 'sku-graft', sku: 'GRAFT-001', description: 'AmGraft tissue graft', category: 'Graft', brand: 'Ventas', size: '10x10', uom: 'ea', packQuantity: '1', threshold: '10', serialisedMode: 'lot' })],
+  ['Lots', withCrudMetadata({ id: 'lot-1001', inventorySkuId: 'sku-graft', lotNumber: 'LOT-1001', inventoryType: 'HET', status: 'available', quantityInitial: '1.0000', quantityCurrent: '1.0000', uom: 'ea', currentLocationId: 'loc-clean-room', collectionUnitId: 'cu-1001' })],
+  ['Transactions', withCrudMetadata({ id: 'txn-1001', inventorySkuId: 'sku-graft', inventoryLotId: 'lot-1001', transactionType: 'ADJUST', direction: 'IN', reason: 'Initial balance correction', quantity: '1.0000', uom: 'ea', toLocationId: 'loc-clean-room', occurredAt: '2026-07-01T09:00:00.000Z', remarks: 'Approved correction' })],
+  ['Balances', withCrudMetadata({ id: 'balance-1001', inventorySkuId: 'sku-graft', inventoryLotId: 'lot-1001', inventoryLocationId: 'loc-clean-room', quantity: '1.0000' })],
+  ['Genealogy', withCrudMetadata({ id: 'genealogy-1001', parentInventoryLotId: 'lot-parent', childInventoryLotId: 'lot-child', relationshipType: 'consumed_into', workOrderId: 'WO-1001', phaseId: 'phase-intake' })],
+  ['WorkOrderConsumptions', withCrudMetadata({ id: 'consumption-1001', workOrderId: 'WO-1001', inventoryLotId: 'lot-1001', inventorySkuId: 'sku-graft', bomLineId: 'bom-line-membrane', quantity: '1.0000', uom: 'ea' })],
+  ['InventoryImportReports', withCrudMetadata({ id: 'inventory-import-1001', source: 'inventory-legacy', startedAt: '2026-07-01T00:00:00.000Z', finishedAt: '2026-07-01T00:01:00.000Z', report: { imported: 24, warnings: 2 } })],
+];
+
 const successExamples: Record<string, unknown> = {
   getHealth: { status: 'ok' },
   login: { token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example', user: userExample },
@@ -409,7 +466,7 @@ const successExamples: Record<string, unknown> = {
   getInventoryLot: inventoryLotExample,
   listInventoryTransactions: inventoryTraceExample.transactions,
   listInventoryLocations: [{ id: 'loc-clean-room', locationType: 'ROOM', name: 'Clean Room', parentLocationId: null, description: 'Production clean room', imagePath: null, sourceSystem: 'legacy', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z' }],
-  getInventoryGenealogy: { id: 'lot-1001', lot: inventoryLotExample, parents: [], children: [] },
+  getInventoryLotGenealogy: { id: 'lot-1001', lot: inventoryLotExample, parents: [], children: [] },
   listInventoryImportReports: [{ id: 'inv-import-1001', source: 'legacy-inventory-csv', dryRun: false, startedAt: '2026-07-01T00:00:00.000Z', finishedAt: '2026-07-01T00:03:00.000Z', report: { rows: 4500, warnings: 3 } }],
 };
 
@@ -938,7 +995,7 @@ const readOnlyTracePolicy = {
   destructiveDeletes: 'not-exposed' as const,
 };
 
-for (const operationId of ['getWorkOrderInventoryTrace', 'getHetInventoryTrace', 'getCollectionUnitInventoryTrace', 'getInventoryGenealogy']) {
+for (const operationId of ['getWorkOrderInventoryTrace', 'getHetInventoryTrace', 'getCollectionUnitInventoryTrace']) {
   methodPolicies[operationId] = {
     resource: 'Inventory trace',
     ...readOnlyTracePolicy,
@@ -946,36 +1003,42 @@ for (const operationId of ['getWorkOrderInventoryTrace', 'getHetInventoryTrace',
   };
 }
 
+methodPolicies.getInventoryLotGenealogy = {
+  resource: 'Inventory trace',
+  ...readOnlyTracePolicy,
+  notes: 'Derived lot genealogy read model; individual genealogy links are managed through permission-gated soft-delete CRUD endpoints.',
+};
+
 for (const operationId of ['getProcurementOverview', 'listSupplyEntities', 'listCollectionPoints', 'listCollectionUnits', 'getCollectionUnit', 'listIssuanceOrders', 'listCollectionOrders', 'listCollectionReceipts']) {
   methodPolicies[operationId] = {
-    resource: 'Procurement read model',
-    completeness: 'read-model-operational-mutations-deferred',
+    resource: 'Procurement',
+    completeness: 'guarded-crud-soft-delete',
     allowedMethods: ['GET'],
-    omittedMethods: [{ method: 'POST/PATCH/DELETE', reason: 'Procurement mutation workflows are not implemented yet; imported operational records are exposed read-only.' }],
+    omittedMethods: [{ method: 'PUT/hard DELETE', reason: 'Procurement resources use PATCH updates, permission checks, audit logs, and soft-delete/archive endpoints.' }],
     destructiveDeletes: 'not-exposed',
-    notes: 'Read-only procurement surface over imported collection-unit, issuance, order, and receipt records.',
+    notes: 'Read model over procurement records; resource mutations are exposed through permission-gated CRUD endpoints with archive/restore/audit paths.',
   };
 }
 
 for (const operationId of ['getInventoryOverview', 'listInventorySkus', 'listInventoryLots', 'getInventoryLot', 'listInventoryTransactions', 'listInventoryLocations']) {
   methodPolicies[operationId] = {
-    resource: 'Inventory read model',
-    completeness: 'read-model-operational-mutations-deferred',
+    resource: 'Inventory',
+    completeness: 'guarded-crud-soft-delete',
     allowedMethods: ['GET'],
-    omittedMethods: [{ method: 'POST/PATCH/DELETE', reason: 'Inventory transactions and balances are traceability records; mutation workflows require controlled stock actions.' }],
+    omittedMethods: [{ method: 'PUT/hard DELETE', reason: 'Inventory resources use PATCH updates, permission checks, audit logs, and soft-delete/archive endpoints.' }],
     destructiveDeletes: 'not-exposed',
-    notes: 'Read-only inventory surface over imported lots, SKUs, locations, and immutable transactions.',
+    notes: 'Read model over inventory records; resource mutations are exposed through permission-gated CRUD endpoints with archive/restore/audit paths.',
   };
 }
 
 for (const operationId of ['listProcurementImportReports', 'listInventoryImportReports']) {
   methodPolicies[operationId] = {
     resource: 'Import report',
-    completeness: 'read-only-admin-audit',
+    completeness: 'archive-restore-audit-only',
     allowedMethods: ['GET'],
-    omittedMethods: [{ method: 'POST/PATCH/DELETE', reason: 'Import reports are generated by import jobs and retained as audit evidence.' }],
+    omittedMethods: [{ method: 'POST/PATCH content update and hard DELETE', reason: 'Import reports are generated by import jobs and retained as audit evidence; only visibility archive/restore and audit reads are mutable.' }],
     destructiveDeletes: 'not-exposed',
-    notes: 'Admin/owner import audit read model.',
+    notes: 'Permission-gated import audit read model. Report content is immutable, while archive/restore/audit routes control visibility and traceability.',
   };
 }
 
@@ -983,6 +1046,92 @@ function jsonContent(response: OpenAPIV3.ResponseObject) {
   response.content ??= {};
   response.content['application/json'] ??= {};
   return response.content['application/json'];
+}
+
+function fallbackSuccessExample(operation: OpenAPIV3.OperationObject) {
+  if (operation.operationId?.endsWith('Audit')) return [auditLogExample];
+  const generatedExample = generatedCrudSuccessExamples.find(([suffix]) => operation.operationId?.includes(suffix))?.[1];
+  if (operation.operationId?.startsWith('list')) return [generatedExample ?? permissionCrudExample];
+  if (
+    operation.operationId?.startsWith('get') ||
+    operation.operationId?.startsWith('create') ||
+    operation.operationId?.startsWith('update') ||
+    operation.operationId?.startsWith('archive') ||
+    operation.operationId?.startsWith('restore')
+  ) return generatedExample ?? permissionCrudExample;
+  return undefined;
+}
+
+function fallbackRequestExample(operation: OpenAPIV3.OperationObject) {
+  const operationId = operation.operationId ?? '';
+  const searchableName = `${operationId} ${operation.summary ?? ''}`.toLowerCase();
+  const examples: Array<[string, Record<string, unknown>]> = [
+    ['SupplyEntities', { name: 'Clinic Group A', legalName: 'Clinic Group A Pte Ltd', externalCode: 'CGA', legacyClinicId: 'clinic-1', sourceSystem: 'api' }],
+    ['supply entity', { name: 'Clinic Group A', legalName: 'Clinic Group A Pte Ltd', externalCode: 'CGA', legacyClinicId: 'clinic-1', sourceSystem: 'api' }],
+    ['CollectionPoints', { supplyEntityId: 'supply-1', displayName: 'Clinic A', hciCode: 'HCI-001', address: '1 Example Road', postalCode: '000001', personInCharge: 'Ops Lead' }],
+    ['collection point', { supplyEntityId: 'supply-1', displayName: 'Clinic A', hciCode: 'HCI-001', address: '1 Example Road', postalCode: '000001', personInCharge: 'Ops Lead' }],
+    ['CollectionUnits', { unitNumber: 'CU-1001', status: 'received', supplyEntityId: 'supply-1', collectionPointId: 'point-1', legacyHetId: 'HET-1001', parcelTrackingNumber: 'TRACK-1001', sourceSystem: 'api' }],
+    ['collection unit', { unitNumber: 'CU-1001', status: 'received', supplyEntityId: 'supply-1', collectionPointId: 'point-1', legacyHetId: 'HET-1001', parcelTrackingNumber: 'TRACK-1001', sourceSystem: 'api' }],
+    ['IssuanceOrders', { supplyEntityId: 'supply-1', collectionPointId: 'point-1', issuedAt: '2026-07-01T08:00:00.000Z', issuedBy: 'Ops Lead', level: 'routine', remarks: 'Issued for scheduled collection' }],
+    ['IssuanceOrderLines', { issuanceOrderId: 'issue-1001', collectionUnitId: 'cu-1001', itemCode: 'HET-KIT', quantity: '1.0000', uom: 'ea', legacyHetId: 'HET-1001', legacyHetNumber: 'HET-1001', parcelTrackingNumber: 'TRACK-1001' }],
+    ['CollectionUnitFulfilments', { collectionUnitId: 'cu-1001', fulfilledAt: '2026-07-01T09:00:00.000Z', fulfilledBy: 'Ops Lead', source: 'manual', evidencePath: '/evidence/cu-1001.pdf', remarks: 'Collected by courier', inferred: false }],
+    ['CollectionOrders', { supplyEntityId: 'supply-1', collectionPointId: 'point-1', requestedAt: '2026-07-01T08:30:00.000Z', scheduledFor: '2026-07-01T12:00:00.000Z', requestedBy: 'Ops Lead', status: 'requested', remarks: 'Routine pickup' }],
+    ['CollectionReceipts', { collectionOrderId: 'collect-1001', receivedAt: '2026-07-01T13:00:00.000Z', receivedBy: 'Receiving Operator', acceptanceState: 'accepted', remarks: 'Packaging intact' }],
+    ['CollectionReceiptLines', { collectionReceiptId: 'receipt-1001', collectionUnitId: 'cu-1001', itemCode: 'HET-KIT', quantity: '1.0000', uom: 'ea', conditionStatus: 'intact', acceptanceStatus: 'accepted', resultingHetId: 'het-1001', discrepancyReason: null }],
+    ['InventoryReferences', { refType: 'category', name: 'Graft', shortCode: 'GRAFT', description: 'Graft inventory category', sourceSystem: 'api' }],
+    ['inventory reference', { refType: 'category', name: 'Graft', shortCode: 'GRAFT', description: 'Graft inventory category', sourceSystem: 'api' }],
+    ['InventoryLocations', { locationType: 'ROOM', name: 'Clean Room', parentLocationId: null, description: 'Production clean room', sourceSystem: 'api' }],
+    ['inventory location', { locationType: 'ROOM', name: 'Clean Room', parentLocationId: null, description: 'Production clean room', sourceSystem: 'api' }],
+    ['InventorySkus', { sku: 'GRAFT-001', description: 'AmGraft tissue graft', category: 'Graft', brand: 'Ventas', size: '10x10', uom: 'ea', packQuantity: '1', threshold: '10', serialisedMode: 'lot', sourceSystem: 'api' }],
+    ['inventory sku', { sku: 'GRAFT-001', description: 'AmGraft tissue graft', category: 'Graft', brand: 'Ventas', size: '10x10', uom: 'ea', packQuantity: '1', threshold: '10', serialisedMode: 'lot', sourceSystem: 'api' }],
+    ['InventoryLots', { inventorySkuId: 'sku-graft', lotNumber: 'LOT-1001', inventoryType: 'HET', status: 'available', quantityInitial: '1.0000', quantityCurrent: '1.0000', uom: 'ea', currentLocationId: 'loc-clean-room', collectionUnitId: 'cu-1001', sourceSystem: 'api' }],
+    ['inventory lot', { inventorySkuId: 'sku-graft', lotNumber: 'LOT-1001', inventoryType: 'HET', status: 'available', quantityInitial: '1.0000', quantityCurrent: '1.0000', uom: 'ea', currentLocationId: 'loc-clean-room', collectionUnitId: 'cu-1001', sourceSystem: 'api' }],
+    ['InventoryTransactions', { inventorySkuId: 'sku-graft', inventoryLotId: 'lot-1001', transactionType: 'ADJUST', direction: 'IN', reason: 'Initial balance correction', quantity: '1.0000', uom: 'ea', toLocationId: 'loc-clean-room', occurredAt: '2026-07-01T09:00:00.000Z', remarks: 'Approved correction' }],
+    ['inventory transaction', { inventorySkuId: 'sku-graft', inventoryLotId: 'lot-1001', transactionType: 'ADJUST', direction: 'IN', reason: 'Initial balance correction', quantity: '1.0000', uom: 'ea', toLocationId: 'loc-clean-room', occurredAt: '2026-07-01T09:00:00.000Z', remarks: 'Approved correction' }],
+    ['InventoryBalances', { inventorySkuId: 'sku-graft', inventoryLotId: 'lot-1001', inventoryLocationId: 'loc-clean-room', quantity: '1.0000', sourceSystem: 'api' }],
+    ['inventory balance', { inventorySkuId: 'sku-graft', inventoryLotId: 'lot-1001', inventoryLocationId: 'loc-clean-room', quantity: '1.0000', sourceSystem: 'api' }],
+    ['InventoryGenealogy', { parentInventoryLotId: 'lot-parent', childInventoryLotId: 'lot-child', relationshipType: 'consumed_into', workOrderId: 'WO-1001', phaseId: 'phase-intake', sourceSystem: 'api' }],
+    ['inventory genealogy link', { parentInventoryLotId: 'lot-parent', childInventoryLotId: 'lot-child', relationshipType: 'consumed_into', workOrderId: 'WO-1001', phaseId: 'phase-intake', sourceSystem: 'api' }],
+    ['WorkOrderConsumptions', { workOrderId: 'WO-1001', inventoryLotId: 'lot-1001', inventorySkuId: 'sku-graft', bomLineId: 'bom-line-membrane', quantity: '1.0000', uom: 'ea', sourceSystem: 'api' }],
+    ['work-order inventory consumption', { workOrderId: 'WO-1001', inventoryLotId: 'lot-1001', inventorySkuId: 'sku-graft', bomLineId: 'bom-line-membrane', quantity: '1.0000', uom: 'ea', sourceSystem: 'api' }],
+  ];
+  const matched = examples.find(([suffix]) => searchableName.includes(suffix.toLowerCase()))?.[1];
+  if (matched && operationId.startsWith('update')) return { ...matched, remarks: matched.remarks ?? 'Updated after operator review' };
+  if (matched && operationId.startsWith('create')) return matched;
+  return undefined;
+}
+
+function resourceFromSummary(operation: OpenAPIV3.OperationObject) {
+  return operation.summary
+    ?.replace(/^List /, '')
+    .replace(/^Get /, '')
+    .replace(/^Create /, '')
+    .replace(/^Update /, '')
+    .replace(/^Archive /, '')
+    .replace(/^Restore /, '')
+    .replace(/ audit events$/, '')
+    .replace(/\.$/, '') || 'Permission-gated resource';
+}
+
+function allowedMethodFromOperationId(operationId: string | undefined) {
+  if (!operationId) return 'GET';
+  if (operationId.startsWith('create')) return 'POST';
+  if (operationId.startsWith('update') || operationId.startsWith('restore')) return 'PATCH';
+  if (operationId.startsWith('archive')) return 'DELETE';
+  return 'GET';
+}
+
+function permissionCrudPolicy(operation: OpenAPIV3.OperationObject): MethodPolicy | undefined {
+  const metadata = operation as OpenAPIV3.OperationObject & Record<string, unknown>;
+  if (metadata['x-route-kind'] !== 'resource-crud' || metadata['x-auth'] !== 'permission') return undefined;
+  return {
+    resource: resourceFromSummary(operation),
+    completeness: 'guarded-crud-soft-delete',
+    allowedMethods: [allowedMethodFromOperationId(operation.operationId)],
+    omittedMethods: [{ method: 'PUT/hard DELETE', reason: 'Permission-gated CRUD uses PATCH updates, soft-delete/archive, restore, and audit-log reads instead of full replacement or physical deletion.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Tenant-scoped procurement/inventory resource endpoint guarded by x-required-permissions metadata.',
+  };
 }
 
 function addResponseExamples(operation: OpenAPIV3.OperationObject) {
@@ -998,7 +1147,7 @@ function addResponseExamples(operation: OpenAPIV3.OperationObject) {
       };
     } else if (status.startsWith('2')) {
       const content = jsonContent(response);
-      const successExample = operation.operationId ? successExamples[operation.operationId] : undefined;
+      const successExample = operation.operationId ? successExamples[operation.operationId] ?? fallbackSuccessExample(operation) : fallbackSuccessExample(operation);
       if (successExample !== undefined && content.example === undefined) content.example = successExample;
     } else if (errorExamples[status]) {
       const content = jsonContent(response);
@@ -1009,7 +1158,7 @@ function addResponseExamples(operation: OpenAPIV3.OperationObject) {
 
 function addRequestExample(operation: OpenAPIV3.OperationObject) {
   if (!operation.operationId || !operation.requestBody || '$ref' in operation.requestBody) return;
-  const example = requestExamples[operation.operationId];
+  const example = requestExamples[operation.operationId] ?? fallbackRequestExample(operation);
   if (example === undefined) return;
   const content = operation.requestBody.content?.['application/json'];
   if (content && content.example === undefined) content.example = example;
@@ -1025,7 +1174,7 @@ function addParameterExamples(operation: OpenAPIV3.OperationObject) {
 
 function addMethodPolicy(operation: OpenAPIV3.OperationObject) {
   if (!operation.operationId) return;
-  const policy = methodPolicies[operation.operationId];
+  const policy = methodPolicies[operation.operationId] ?? permissionCrudPolicy(operation);
   if (policy) (operation as OperationWithMethodPolicy)['x-method-policy'] = policy;
 }
 
@@ -1042,7 +1191,7 @@ export function enrichOpenApiDocument(document: OpenAPIV3.Document): OpenAPIV3.D
     }
   }
 
-  document.info.description = `${document.info.description}\n\nError responses use a consistent JSON shape: \`{ "error": "message" }\`. List endpoints use explicit query parameters such as \`q\`, \`take\`, \`status\`, and domain filters where implemented; endpoints without those parameters are intentionally unpaginated read models today.\n\nMethod policy is documented per operation in \`x-method-policy\`. The API intentionally avoids generic destructive deletes for production, procurement, inventory, HET, sterilisation, and import-audit records; those domains use lifecycle actions, read models, deactivation, or future controlled correction workflows instead of full generic CRUD.`;
+  document.info.description = `${document.info.description}\n\nError responses use a consistent JSON shape: \`{ "error": "message" }\`. List endpoints use explicit query parameters such as \`q\`, \`take\`, \`status\`, and domain filters where implemented; endpoints without those parameters are intentionally unpaginated read models today.\n\nMethod policy is documented per operation in \`x-method-policy\`. The API intentionally avoids generic destructive deletes for production, procurement, inventory, HET, sterilisation, and import-audit records; procurement and inventory resources use permission-gated PATCH, archive, restore, and audit endpoints instead of hard deletes.`;
   return document;
 }
 
@@ -1067,8 +1216,8 @@ export async function registerOpenApi(app: FastifyInstance) {
         { name: 'Sterilisation', description: 'Sterilisation and BET gate records.' },
         { name: 'Manufacturing', description: 'Manufacturing batch-record actions and reads.' },
         { name: 'HETs', description: 'HET register reads and lifecycle linkage actions.' },
-        { name: 'Procurement', description: 'Read models for collection-unit procurement traceability and import audit records.' },
-        { name: 'Inventory', description: 'Read models for inventory lots, transactions, locations, genealogy, and import audit records.' },
+        { name: 'Procurement', description: 'Read models and permission-gated soft-delete CRUD for procurement traceability and import audit records.' },
+        { name: 'Inventory', description: 'Read models and permission-gated soft-delete CRUD for inventory lots, transactions, locations, genealogy, and import audit records.' },
       ],
       components: {
         securitySchemes: {

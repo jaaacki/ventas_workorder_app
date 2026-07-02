@@ -11,7 +11,7 @@ dc up -d --no-recreate postgres
 dc up -d --force-recreate --no-deps be-migrate
 
 migrate_state=""
-for _ in $(seq 1 60); do
+for _ in $(seq 1 300); do
   migrate_state="$(docker inspect -f '{{.State.Status}} {{.State.ExitCode}}' workorder-stg-migrate 2>/dev/null || true)"
   case "$migrate_state" in
     "exited 0") break ;;
@@ -21,6 +21,7 @@ for _ in $(seq 1 60); do
 done
 
 if [ "$migrate_state" != "exited 0" ]; then
+  echo "Timed out waiting for workorder-stg-migrate; last state: ${migrate_state:-unknown}"
   docker logs workorder-stg-migrate
   exit 1
 fi

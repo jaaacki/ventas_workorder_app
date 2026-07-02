@@ -72,11 +72,11 @@ const mocks = vi.hoisted(() => ({
   },
   procurementService: {
     procurementCrudResources: {
-      supplyEntities: { resource: 'procurement.supplyEntity', mutableFields: [] },
+      supplyEntities: { resource: 'procurement.supplyEntity', mutableFields: ['name'], createRequiredFields: ['name'] },
       collectionPoints: { resource: 'procurement.collectionPoint', mutableFields: [] },
       collectionUnits: { resource: 'procurement.collectionUnit', mutableFields: [] },
       issuanceOrders: { resource: 'procurement.issuanceOrder', mutableFields: [] },
-      issuanceOrderLines: { resource: 'procurement.issuanceOrderLine', mutableFields: [] },
+      issuanceOrderLines: { resource: 'procurement.issuanceOrderLine', mutableFields: ['issuanceOrderId'], createRequiredFields: ['issuanceOrderId'] },
       collectionUnitFulfilments: { resource: 'procurement.collectionUnitFulfilment', mutableFields: [] },
       collectionOrders: { resource: 'procurement.collectionOrder', mutableFields: [] },
       collectionReceipts: { resource: 'procurement.collectionReceipt', mutableFields: [] },
@@ -105,7 +105,7 @@ const mocks = vi.hoisted(() => ({
       references: { resource: 'inventory.reference', mutableFields: [] },
       locations: { resource: 'inventory.location', mutableFields: [] },
       skus: { resource: 'inventory.sku', mutableFields: [] },
-      lots: { resource: 'inventory.lot', mutableFields: [] },
+      lots: { resource: 'inventory.lot', mutableFields: ['inventorySkuId'], createRequiredFields: ['inventorySkuId'] },
       transactions: { resource: 'inventory.transaction', mutableFields: [] },
       balances: { resource: 'inventory.balance', mutableFields: [] },
       genealogy: { resource: 'inventory.genealogy', mutableFields: [] },
@@ -390,6 +390,24 @@ const hetDetail = {
   workOrders: [],
 };
 
+const supplyEntityRow = {
+  id: 'supply-1',
+  tenantId,
+  name: 'Clinic A',
+  legalName: null,
+  externalCode: null,
+  sourceSystem: null,
+  legacyGroupKey: null,
+  legacyClinicId: null,
+  deleted: false,
+  deletedAt: null,
+  deletedById: null,
+  createdById: adminActorId,
+  updatedById: adminActorId,
+  createdAt: now,
+  updatedAt: now,
+};
+
 function stubRequiredEnv() {
   vi.stubEnv('NODE_ENV', 'test');
   vi.stubEnv('DATABASE_URL', 'postgresql://workorder:workorder@localhost:5432/workorder_test');
@@ -476,6 +494,12 @@ function resetServiceMocks() {
   mocks.procurementService.listCollectionReceipts.mockResolvedValue([]);
   mocks.procurementService.listImportReports.mockResolvedValue([]);
   mocks.procurementService.listProcurementResource.mockResolvedValue([]);
+  mocks.procurementService.getProcurementResource.mockResolvedValue(supplyEntityRow);
+  mocks.procurementService.createProcurementResource.mockResolvedValue(supplyEntityRow);
+  mocks.procurementService.updateProcurementResource.mockResolvedValue(supplyEntityRow);
+  mocks.procurementService.archiveProcurementResource.mockResolvedValue(supplyEntityRow);
+  mocks.procurementService.restoreProcurementResource.mockResolvedValue(supplyEntityRow);
+  mocks.procurementService.listProcurementResourceAudit.mockResolvedValue([]);
   mocks.inventoryService.getInventoryOverview.mockResolvedValue({
     skus: 0,
     lots: 0,
@@ -494,6 +518,12 @@ function resetServiceMocks() {
   mocks.inventoryService.getGenealogy.mockResolvedValue(null);
   mocks.inventoryService.listImportReports.mockResolvedValue([]);
   mocks.inventoryService.listInventoryResource.mockResolvedValue([]);
+  mocks.inventoryService.getInventoryResource.mockResolvedValue(null);
+  mocks.inventoryService.createInventoryResource.mockResolvedValue(null);
+  mocks.inventoryService.updateInventoryResource.mockResolvedValue(null);
+  mocks.inventoryService.archiveInventoryResource.mockResolvedValue(null);
+  mocks.inventoryService.restoreInventoryResource.mockResolvedValue(null);
+  mocks.inventoryService.listInventoryResourceAudit.mockResolvedValue([]);
   mocks.inventoryTraceService.getWorkOrderInventoryTrace.mockResolvedValue(null);
   mocks.inventoryTraceService.getCollectionUnitInventoryTrace.mockResolvedValue(null);
   mocks.inventoryTraceService.getHetInventoryTrace.mockResolvedValue(null);
@@ -701,6 +731,126 @@ describe('route tenant propagation', () => {
       expect(mocks.inventoryService.listImportReports).toHaveBeenCalledWith({
         tenantId,
         includeDeleted: undefined,
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('enforces includeDeleted permissions before listing ERP CRUD resources', async () => {
+    const { buildServer } = await import('../../server.js');
+    const app = await buildServer();
+    await app.ready();
+
+    try {
+      const token = app.jwt.sign({
+        id: adminActorId,
+        email: 'route-admin@example.test',
+        role: 'admin',
+        tenantId,
+      });
+
+      mocks.procurementService.listProcurementResource.mockClear();
+      mocks.prisma.rolePermission.findFirst
+        .mockResolvedValueOnce({ roleId: 'role-route' })
+        .mockResolvedValueOnce(null);
+
+      const denied = await app.inject({
+        method: 'GET',
+        url: '/api/procurement/issuance-order-lines?includeDeleted=true',
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+      expect(denied.statusCode).toBe(403);
+      expect(mocks.procurementService.listProcurementResource).not.toHaveBeenCalled();
+
+      mocks.prisma.rolePermission.findFirst
+        .mockResolvedValueOnce({ roleId: 'role-route' })
+        .mockResolvedValueOnce({ roleId: 'role-route' });
+
+      const allowed = await app.inject({
+        method: 'GET',
+        url: '/api/procurement/issuance-order-lines?includeDeleted=true&issuanceOrderId=issuance-1',
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+      expect(allowed.statusCode).toBe(200);
+      expect(mocks.procurementService.listProcurementResource).toHaveBeenCalledWith('issuanceOrderLines', {
+        tenantId,
+        q: undefined,
+        take: undefined,
+        includeDeleted: true,
+        filters: { issuanceOrderId: 'issuance-1' },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('routes procurement CRUD mutations, restore, and audit with tenant and actor context', async () => {
+    const { buildServer } = await import('../../server.js');
+    const app = await buildServer();
+    await app.ready();
+
+    try {
+      const token = app.jwt.sign({
+        id: adminActorId,
+        email: 'route-admin@example.test',
+        role: 'admin',
+        tenantId,
+      });
+      const headers = { authorization: `Bearer ${token}` };
+
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/procurement/supply-entities',
+        headers,
+        payload: { name: 'Clinic A' },
+      });
+
+      expect(created.statusCode).toBe(201);
+      expect(mocks.procurementService.createProcurementResource).toHaveBeenCalledWith('supplyEntities', {
+        tenantId,
+        actor: expect.objectContaining({ id: adminActorId, role: 'admin', tenantId }),
+        payload: { name: 'Clinic A' },
+      });
+
+      const updated = await app.inject({
+        method: 'PATCH',
+        url: '/api/procurement/supply-entities/supply-1',
+        headers,
+        payload: { name: 'Clinic A Updated' },
+      });
+
+      expect(updated.statusCode).toBe(200);
+      expect(mocks.procurementService.updateProcurementResource).toHaveBeenCalledWith('supplyEntities', {
+        id: 'supply-1',
+        tenantId,
+        actor: expect.objectContaining({ id: adminActorId, role: 'admin', tenantId }),
+        payload: { name: 'Clinic A Updated' },
+      });
+
+      const archived = await app.inject({ method: 'DELETE', url: '/api/procurement/supply-entities/supply-1', headers });
+      expect(archived.statusCode).toBe(200);
+      expect(mocks.procurementService.archiveProcurementResource).toHaveBeenCalledWith('supplyEntities', {
+        id: 'supply-1',
+        tenantId,
+        actor: expect.objectContaining({ id: adminActorId, role: 'admin', tenantId }),
+      });
+
+      const restored = await app.inject({ method: 'PATCH', url: '/api/procurement/supply-entities/supply-1/restore', headers });
+      expect(restored.statusCode).toBe(200);
+      expect(mocks.procurementService.restoreProcurementResource).toHaveBeenCalledWith('supplyEntities', {
+        id: 'supply-1',
+        tenantId,
+        actor: expect.objectContaining({ id: adminActorId, role: 'admin', tenantId }),
+      });
+
+      const audit = await app.inject({ method: 'GET', url: '/api/procurement/supply-entities/supply-1/audit', headers });
+      expect(audit.statusCode).toBe(200);
+      expect(mocks.procurementService.listProcurementResourceAudit).toHaveBeenCalledWith('supplyEntities', {
+        id: 'supply-1',
+        tenantId,
       });
     } finally {
       await app.close();

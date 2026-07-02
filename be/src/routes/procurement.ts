@@ -1,5 +1,6 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import type { JwtPayload } from '../plugins/auth.js';
 import * as procurementService from '../services/procurementService.js';
 import * as inventoryTraceService from '../services/inventoryTraceService.js';
@@ -8,6 +9,7 @@ import { registerCrudRoutes, type CrudRouteDefinition } from './crudRouteHelpers
 
 const errorResponse = z.object({ error: z.string() });
 const dateish = z.union([z.date(), z.string()]);
+const decimalish = z.union([z.number(), z.string(), z.custom<Prisma.Decimal>()]);
 const softDeleteSchema = {
   deleted: z.boolean(),
   deletedAt: dateish.nullable(),
@@ -86,6 +88,9 @@ const issuanceOrderLineSchema = z.object({
   tenantId: z.string(),
   issuanceOrderId: z.string(),
   collectionUnitId: z.string().nullable(),
+  itemCode: z.string().nullable(),
+  quantity: decimalish.nullable(),
+  uom: z.string().nullable(),
   legacyHetId: z.string().nullable(),
   legacyHetNumber: z.string().nullable(),
   parcelTrackingNumber: z.string().nullable(),
@@ -114,6 +119,9 @@ const collectionReceiptLineSchema = z.object({
   tenantId: z.string(),
   collectionReceiptId: z.string(),
   collectionUnitId: z.string().nullable(),
+  itemCode: z.string().nullable(),
+  quantity: decimalish.nullable(),
+  uom: z.string().nullable(),
   conditionStatus: z.string().nullable(),
   acceptanceStatus: z.string().nullable(),
   resultingHetId: z.string().nullable(),

@@ -92,6 +92,7 @@ import {
   CrudSheet,
   DeletedBadge,
   IncludeDeletedButton,
+  ReadOnlyNotice,
   RowCrudActions,
   SelectField,
   TextField,
@@ -162,6 +163,9 @@ const editorFieldLabels: Record<EditableKind, Record<string, string>> = {
   issuanceLine: {
     issuanceOrderId: 'Issuance order ID',
     collectionUnitId: 'Collection unit ID',
+    itemCode: 'Item code',
+    quantity: 'Quantity',
+    uom: 'Unit',
     legacyHetId: 'Legacy HET ID',
     legacyHetNumber: 'Legacy HET number',
     parcelTrackingNumber: 'Parcel tracking number',
@@ -198,6 +202,9 @@ const editorFieldLabels: Record<EditableKind, Record<string, string>> = {
   receiptLine: {
     collectionReceiptId: 'Collection receipt ID',
     collectionUnitId: 'Collection unit ID',
+    itemCode: 'Item code',
+    quantity: 'Quantity',
+    uom: 'Unit',
     conditionStatus: 'Condition status',
     acceptanceStatus: 'Acceptance status',
     resultingHetId: 'Resulting HET ID',
@@ -587,6 +594,7 @@ function IssuanceLinesTable({
         <TableRow>
           <TableHead>Issuance order</TableHead>
           <TableHead>Collection unit</TableHead>
+          <TableHead>Item / Qty</TableHead>
           <TableHead>Legacy HET</TableHead>
           <TableHead>Tracking</TableHead>
           <TableHead>Updated</TableHead>
@@ -605,6 +613,10 @@ function IssuanceLinesTable({
                 </div>
               </TableCell>
               <TableCell>{line.collectionUnitId ? unitName(unitsById.get(line.collectionUnitId)) : '-'}</TableCell>
+              <TableCell>
+                <div>{line.itemCode || '-'}</div>
+                <div className="text-xs text-gray-500">{line.quantity ?? '-'} {line.uom || ''}</div>
+              </TableCell>
               <TableCell>
                 <div>{line.legacyHetNumber || '-'}</div>
                 <div className="text-xs text-gray-500">{line.legacyHetId || '-'}</div>
@@ -738,6 +750,7 @@ function ReceiptLinesTable({
         <TableRow>
           <TableHead>Receipt</TableHead>
           <TableHead>Collection unit</TableHead>
+          <TableHead>Item / Qty</TableHead>
           <TableHead>Condition</TableHead>
           <TableHead>Acceptance</TableHead>
           <TableHead>Resulting HET</TableHead>
@@ -756,6 +769,10 @@ function ReceiptLinesTable({
                 </div>
               </TableCell>
               <TableCell>{line.collectionUnitId ? unitName(unitsById.get(line.collectionUnitId)) : '-'}</TableCell>
+              <TableCell>
+                <div>{line.itemCode || '-'}</div>
+                <div className="text-xs text-gray-500">{line.quantity ?? '-'} {line.uom || ''}</div>
+              </TableCell>
               <TableCell>{line.conditionStatus || '-'}</TableCell>
               <TableCell>
                 <div className="flex flex-col gap-1">
@@ -862,6 +879,7 @@ export default function ProcurementPage() {
 
   const can = (kind: ActionKind, action: string) => hasPermission(`${resourceByKind[kind]}.${action}`);
   const permissions = (kind: ActionKind) => ({
+    read: can(kind, 'read'),
     create: can(kind, 'create'),
     update: can(kind, 'update'),
     delete: can(kind, 'delete'),
@@ -870,6 +888,11 @@ export default function ProcurementPage() {
     readAudit: can(kind, 'readAudit'),
   });
   const canSeeDeletedFor = (kind: ActionKind) => can(kind, 'readDeleted') || can(kind, 'readAudit');
+  const canMutate = (kind: ActionKind) => {
+    const item = permissions(kind);
+    return item.create || item.update || item.delete || item.restore;
+  };
+  const readOnlyNotice = (kind: ActionKind, label: string) => (permissions(kind).read && !canMutate(kind) ? <ReadOnlyNotice label={label} /> : null);
   const includeDeletedFor = (kind: ActionKind) => Boolean(includeDeletedByKind[kind]) && canSeeDeletedFor(kind);
   const toggleIncludeDeletedFor = (kind: ActionKind) => setIncludeDeletedByKind((current) => ({ ...current, [kind]: !current[kind] }));
   const includeDeletedToggle = (kind: ActionKind, label: string) => canSeeDeletedFor(kind) ? (
@@ -877,39 +900,47 @@ export default function ProcurementPage() {
   ) : null;
   const canReadImports = can('import', 'read');
 
-  const overview = useQuery({ queryKey: ['procurement', 'overview'], queryFn: fetchProcurementOverview });
+  const overview = useQuery({ queryKey: ['procurement', 'overview'], queryFn: fetchProcurementOverview, enabled: can('supply', 'read') });
   const entities = useQuery({
     queryKey: ['procurement', 'supply-entities', includeDeletedFor('supply')],
     queryFn: () => fetchSupplyEntities({ includeDeleted: includeDeletedFor('supply') }),
+    enabled: can('supply', 'read'),
   });
-  const points = useQuery({ queryKey: ['procurement', 'collection-points', includeDeletedFor('point')], queryFn: () => fetchCollectionPoints({ includeDeleted: includeDeletedFor('point') }) });
+  const points = useQuery({ queryKey: ['procurement', 'collection-points', includeDeletedFor('point')], queryFn: () => fetchCollectionPoints({ includeDeleted: includeDeletedFor('point') }), enabled: can('point', 'read') });
   const units = useQuery({
     queryKey: ['procurement', 'collection-units', includeHidden, includeDeletedFor('unit'), unitSearch],
     queryFn: () => fetchCollectionUnits({ includeHidden, includeDeleted: includeDeletedFor('unit'), q: unitSearch }),
+    enabled: can('unit', 'read'),
   });
   const issuance = useQuery({
     queryKey: ['procurement', 'issuance-orders', includeDeletedFor('issuance')],
     queryFn: () => fetchIssuanceOrders({ includeDeleted: includeDeletedFor('issuance') }),
+    enabled: can('issuance', 'read'),
   });
   const issuanceLines = useQuery({
     queryKey: ['procurement', 'issuance-order-lines', includeDeletedFor('issuanceLine')],
     queryFn: () => fetchIssuanceOrderLines({ includeDeleted: includeDeletedFor('issuanceLine') }),
+    enabled: can('issuanceLine', 'read'),
   });
   const fulfilments = useQuery({
     queryKey: ['procurement', 'collection-unit-fulfilments', includeDeletedFor('fulfilment')],
     queryFn: () => fetchCollectionUnitFulfilments({ includeDeleted: includeDeletedFor('fulfilment') }),
+    enabled: can('fulfilment', 'read'),
   });
   const collectionOrders = useQuery({
     queryKey: ['procurement', 'collection-orders', includeDeletedFor('order')],
     queryFn: () => fetchCollectionOrders({ includeDeleted: includeDeletedFor('order') }),
+    enabled: can('order', 'read'),
   });
   const receipts = useQuery({
     queryKey: ['procurement', 'collection-receipts', includeDeletedFor('receipt')],
     queryFn: () => fetchCollectionReceipts({ includeDeleted: includeDeletedFor('receipt') }),
+    enabled: can('receipt', 'read'),
   });
   const receiptLines = useQuery({
     queryKey: ['procurement', 'collection-receipt-lines', includeDeletedFor('receiptLine')],
     queryFn: () => fetchCollectionReceiptLines({ includeDeleted: includeDeletedFor('receiptLine') }),
+    enabled: can('receiptLine', 'read'),
   });
   const importReports = useQuery({
     queryKey: ['procurement', 'import-reports', includeDeletedFor('import')],
@@ -919,7 +950,7 @@ export default function ProcurementPage() {
   });
   const auditQuery = useQuery<AuditEvent<unknown>[]>({
     queryKey: ['procurement', 'audit', audit?.kind, audit?.id],
-    enabled: Boolean(audit),
+    enabled: Boolean(audit) && (audit ? can(audit.kind, 'readAudit') : false),
     queryFn: async () => {
       if (!audit) return Promise.resolve([]);
       if (audit.kind === 'supply') return fetchSupplyEntityAudit(audit.id);
@@ -1032,7 +1063,7 @@ export default function ProcurementPage() {
   const receiptOptions = useMemo(() => (receipts.data ?? []).map((event) => option(event.id, event.receivedBy || event.legacyCollectDeliverCollectId || event.id)).filter((entry): entry is { value: string; label: string } => Boolean(entry)), [receipts.data]);
   const metrics = overview.data;
   const hasError = overview.isError || entities.isError || points.isError || units.isError || issuance.isError || issuanceLines.isError || fulfilments.isError || collectionOrders.isError || receipts.isError || receiptLines.isError;
-  const mutationBusy = archiveMutation.isPending || restoreMutation.isPending;
+  const mutationBusy = archiveMutation.isPending || restoreMutation.isPending || updateMutation.isPending || createMutation.isPending;
 
   const setField = (key: string, value: string | boolean) => {
     setEditor((current) => current && { ...current, values: { ...current.values, [key]: value } });
@@ -1108,6 +1139,9 @@ export default function ProcurementPage() {
     values: {
       issuanceOrderId: line.issuanceOrderId || '',
       collectionUnitId: line.collectionUnitId || '',
+      itemCode: line.itemCode || '',
+      quantity: String(line.quantity ?? ''),
+      uom: line.uom || '',
       legacyHetId: line.legacyHetId || '',
       legacyHetNumber: line.legacyHetNumber || '',
       parcelTrackingNumber: line.parcelTrackingNumber || '',
@@ -1136,6 +1170,9 @@ export default function ProcurementPage() {
     values: {
       collectionReceiptId: line.collectionReceiptId || '',
       collectionUnitId: line.collectionUnitId || '',
+      itemCode: line.itemCode || '',
+      quantity: String(line.quantity ?? ''),
+      uom: line.uom || '',
       conditionStatus: line.conditionStatus || '',
       acceptanceStatus: line.acceptanceStatus || '',
       resultingHetId: line.resultingHetId || '',
@@ -1173,6 +1210,9 @@ export default function ProcurementPage() {
       issuanceLine: {
         issuanceOrderId: '',
         collectionUnitId: '',
+        itemCode: '',
+        quantity: '',
+        uom: '',
         legacyHetId: '',
         legacyHetNumber: '',
         parcelTrackingNumber: '',
@@ -1191,6 +1231,9 @@ export default function ProcurementPage() {
       receiptLine: {
         collectionReceiptId: '',
         collectionUnitId: '',
+        itemCode: '',
+        quantity: '',
+        uom: '',
         conditionStatus: '',
         acceptanceStatus: '',
         resultingHetId: '',
@@ -1339,8 +1382,9 @@ export default function ProcurementPage() {
                 {units.isFetching && <span className="text-sm text-gray-500 dark:text-gray-400">Loading units...</span>}
               </div>
             </div>
-            {units.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load collection units" /> : units.isLoading ? <EmptyState icon={<Boxes className="h-6 w-6" />} title="Loading collection units" /> : (
+            {!permissions('unit').read ? <EmptyState icon={<Boxes className="h-6 w-6" />} title="Collection units require read permission" /> : units.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load collection units" /> : units.isLoading ? <EmptyState icon={<Boxes className="h-6 w-6" />} title="Loading collection units" /> : (
               <div className="space-y-6">
+                {readOnlyNotice('unit', 'collection units')}
                 <UnitTable
                   units={units.data ?? []}
                   entitiesById={entitiesById}
@@ -1357,7 +1401,9 @@ export default function ProcurementPage() {
                     <span className="inline-flex items-center gap-2"><Truck className="h-4 w-4" />Fulfilments</span>
                     {permissions('fulfilment').create && <Button type="button" size="sm" onClick={() => openCreateEditor('fulfilment')}>Create</Button>}
                   </div>
-                  {fulfilments.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load fulfilments" /> : fulfilments.isLoading ? <EmptyState icon={<Truck className="h-6 w-6" />} title="Loading fulfilments" /> : (
+                  {!permissions('fulfilment').read ? <EmptyState icon={<Truck className="h-6 w-6" />} title="Fulfilments require read permission" /> : fulfilments.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load fulfilments" /> : fulfilments.isLoading ? <EmptyState icon={<Truck className="h-6 w-6" />} title="Loading fulfilments" /> : (
+                    <>
+                    {readOnlyNotice('fulfilment', 'collection unit fulfilments')}
                     <FulfilmentsTable
                       fulfilments={fulfilments.data ?? []}
                       unitsById={unitsById}
@@ -1368,6 +1414,7 @@ export default function ProcurementPage() {
                       onRestore={(id) => restoreMutation.mutate({ kind: 'fulfilment', id })}
                       onAudit={(id, label) => setAudit({ kind: 'fulfilment', id, label })}
                     />
+                    </>
                   )}
                 </div>
               </div>
@@ -1380,7 +1427,9 @@ export default function ProcurementPage() {
                 <div className="mb-4 flex justify-end">
                   {permissions('supply').create && <Button type="button" onClick={() => openCreateEditor('supply')}>Create supply entity</Button>}
                 </div>
-                {entities.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load supply entities" /> : entities.isLoading ? <EmptyState icon={<Building2 className="h-6 w-6" />} title="Loading supply entities" /> : !(entities.data ?? []).length ? <EmptyState icon={<Building2 className="h-6 w-6" />} title="No supply entities" /> : (
+                {!permissions('supply').read ? <EmptyState icon={<Building2 className="h-6 w-6" />} title="Supply entities require read permission" /> : entities.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load supply entities" /> : entities.isLoading ? <EmptyState icon={<Building2 className="h-6 w-6" />} title="Loading supply entities" /> : !(entities.data ?? []).length ? <EmptyState icon={<Building2 className="h-6 w-6" />} title="No supply entities" /> : (
+                  <>
+                  {readOnlyNotice('supply', 'supply entities')}
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1421,6 +1470,7 @@ export default function ProcurementPage() {
                       ))}
                     </TableBody>
                   </Table>
+                  </>
                 )}
               </div>
               <div>
@@ -1428,7 +1478,9 @@ export default function ProcurementPage() {
                   <span className="inline-flex items-center gap-2"><MapPin className="h-4 w-4" />Collection points</span>
                   {permissions('point').create && <Button type="button" size="sm" onClick={() => openCreateEditor('point')}>Create</Button>}
                 </div>
-                {points.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load collection points" /> : points.isLoading ? <EmptyState icon={<MapPin className="h-6 w-6" />} title="Loading collection points" /> : (
+                {!permissions('point').read ? <EmptyState icon={<MapPin className="h-6 w-6" />} title="Collection points require read permission" /> : points.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load collection points" /> : points.isLoading ? <EmptyState icon={<MapPin className="h-6 w-6" />} title="Loading collection points" /> : (
+                  <>
+                  {readOnlyNotice('point', 'collection points')}
                   <PointsTable
                     points={points.data ?? []}
                     entitiesById={entitiesById}
@@ -1439,6 +1491,7 @@ export default function ProcurementPage() {
                     onRestore={(id) => restoreMutation.mutate({ kind: 'point', id })}
                     onAudit={(id, label) => setAudit({ kind: 'point', id, label })}
                   />
+                  </>
                 )}
               </div>
             </div>
@@ -1450,7 +1503,9 @@ export default function ProcurementPage() {
                 <div className="mb-4 flex justify-end">
                   {permissions('issuance').create && <Button type="button" onClick={() => openCreateEditor('issuance')}>Create issuance order</Button>}
                 </div>
-                {issuance.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load issuance orders" /> : issuance.isLoading ? <EmptyState icon={<ClipboardList className="h-6 w-6" />} title="Loading issuance orders" /> : (
+                {!permissions('issuance').read ? <EmptyState icon={<ClipboardList className="h-6 w-6" />} title="Issuance orders require read permission" /> : issuance.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load issuance orders" /> : issuance.isLoading ? <EmptyState icon={<ClipboardList className="h-6 w-6" />} title="Loading issuance orders" /> : (
+                  <>
+                  {readOnlyNotice('issuance', 'issuance orders')}
                   <EventTable
                     events={issuance.data ?? []}
                     kind="issuance"
@@ -1461,6 +1516,7 @@ export default function ProcurementPage() {
                     onRestore={(id) => restoreMutation.mutate({ kind: 'issuance', id })}
                     onAudit={(id, label) => setAudit({ kind: 'issuance', id, label })}
                   />
+                  </>
                 )}
               </div>
               <div>
@@ -1468,7 +1524,9 @@ export default function ProcurementPage() {
                   <span className="inline-flex items-center gap-2"><ClipboardList className="h-4 w-4" />Issuance lines</span>
                   {permissions('issuanceLine').create && <Button type="button" size="sm" onClick={() => openCreateEditor('issuanceLine')}>Create</Button>}
                 </div>
-                {issuanceLines.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load issuance lines" /> : issuanceLines.isLoading ? <EmptyState icon={<ClipboardList className="h-6 w-6" />} title="Loading issuance lines" /> : (
+                {!permissions('issuanceLine').read ? <EmptyState icon={<ClipboardList className="h-6 w-6" />} title="Issuance lines require read permission" /> : issuanceLines.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load issuance lines" /> : issuanceLines.isLoading ? <EmptyState icon={<ClipboardList className="h-6 w-6" />} title="Loading issuance lines" /> : (
+                  <>
+                  {readOnlyNotice('issuanceLine', 'issuance lines')}
                   <IssuanceLinesTable
                     lines={issuanceLines.data ?? []}
                     unitsById={unitsById}
@@ -1479,6 +1537,7 @@ export default function ProcurementPage() {
                     onRestore={(id) => restoreMutation.mutate({ kind: 'issuanceLine', id })}
                     onAudit={(id, label) => setAudit({ kind: 'issuanceLine', id, label })}
                   />
+                  </>
                 )}
               </div>
             </div>
@@ -1489,14 +1548,20 @@ export default function ProcurementPage() {
               <div className="grid gap-5 xl:grid-cols-2">
                 <div>
                   <div className="mb-3 flex items-center justify-between gap-2 text-sm font-semibold text-gray-800 dark:text-white/90"><span className="inline-flex items-center gap-2"><ClipboardList className="h-4 w-4" />Collection orders</span>{permissions('order').create && <Button type="button" size="sm" onClick={() => openCreateEditor('order')}>Create</Button>}</div>
-                  {collectionOrders.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load collection orders" /> : collectionOrders.isLoading ? <EmptyState icon={<ClipboardList className="h-6 w-6" />} title="Loading collection orders" /> : (
+                  {!permissions('order').read ? <EmptyState icon={<ClipboardList className="h-6 w-6" />} title="Collection orders require read permission" /> : collectionOrders.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load collection orders" /> : collectionOrders.isLoading ? <EmptyState icon={<ClipboardList className="h-6 w-6" />} title="Loading collection orders" /> : (
+                    <>
+                    {readOnlyNotice('order', 'collection orders')}
                     <EventTable events={collectionOrders.data ?? []} kind="order" permissions={permissions('order')} busy={mutationBusy} onEdit={openEventEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'order', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'order', id })} onAudit={(id, label) => setAudit({ kind: 'order', id, label })} />
+                    </>
                   )}
                 </div>
                 <div>
                   <div className="mb-3 flex items-center justify-between gap-2 text-sm font-semibold text-gray-800 dark:text-white/90"><span className="inline-flex items-center gap-2"><PackageCheck className="h-4 w-4" />Receipts</span>{permissions('receipt').create && <Button type="button" size="sm" onClick={() => openCreateEditor('receipt')}>Create</Button>}</div>
-                  {receipts.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load receipts" /> : receipts.isLoading ? <EmptyState icon={<PackageCheck className="h-6 w-6" />} title="Loading receipts" /> : (
+                  {!permissions('receipt').read ? <EmptyState icon={<PackageCheck className="h-6 w-6" />} title="Receipts require read permission" /> : receipts.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load receipts" /> : receipts.isLoading ? <EmptyState icon={<PackageCheck className="h-6 w-6" />} title="Loading receipts" /> : (
+                    <>
+                    {readOnlyNotice('receipt', 'collection receipts')}
                     <EventTable events={receipts.data ?? []} kind="receipt" permissions={permissions('receipt')} busy={mutationBusy} onEdit={openEventEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'receipt', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'receipt', id })} onAudit={(id, label) => setAudit({ kind: 'receipt', id, label })} />
+                    </>
                   )}
                 </div>
               </div>
@@ -1505,7 +1570,9 @@ export default function ProcurementPage() {
                   <span className="inline-flex items-center gap-2"><FileCheck2 className="h-4 w-4" />Receipt lines</span>
                   {permissions('receiptLine').create && <Button type="button" size="sm" onClick={() => openCreateEditor('receiptLine')}>Create</Button>}
                 </div>
-                {receiptLines.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load receipt lines" /> : receiptLines.isLoading ? <EmptyState icon={<FileCheck2 className="h-6 w-6" />} title="Loading receipt lines" /> : (
+                {!permissions('receiptLine').read ? <EmptyState icon={<FileCheck2 className="h-6 w-6" />} title="Receipt lines require read permission" /> : receiptLines.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load receipt lines" /> : receiptLines.isLoading ? <EmptyState icon={<FileCheck2 className="h-6 w-6" />} title="Loading receipt lines" /> : (
+                  <>
+                  {readOnlyNotice('receiptLine', 'receipt lines')}
                   <ReceiptLinesTable
                     lines={receiptLines.data ?? []}
                     unitsById={unitsById}
@@ -1516,6 +1583,7 @@ export default function ProcurementPage() {
                     onRestore={(id) => restoreMutation.mutate({ kind: 'receiptLine', id })}
                     onAudit={(id, label) => setAudit({ kind: 'receiptLine', id, label })}
                   />
+                  </>
                 )}
               </div>
             </div>

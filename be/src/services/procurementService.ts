@@ -131,9 +131,9 @@ export const procurementCrudResources = {
     resource: 'procurement.issuanceOrderLine',
     entityType: 'IssuanceOrderLine',
     delegate: 'issuanceOrderLine',
-    mutableFields: ['issuanceOrderId', 'collectionUnitId', 'legacyHetId', 'legacyHetNumber', 'parcelTrackingNumber'],
+    mutableFields: ['issuanceOrderId', 'collectionUnitId', 'itemCode', 'quantity', 'uom', 'legacyHetId', 'legacyHetNumber', 'parcelTrackingNumber'],
     createRequiredFields: ['issuanceOrderId'],
-    searchableFields: ['id', 'issuanceOrderId', 'legacyHetId', 'legacyHetNumber', 'parcelTrackingNumber'],
+    searchableFields: ['id', 'issuanceOrderId', 'itemCode', 'legacyHetId', 'legacyHetNumber', 'parcelTrackingNumber'],
     defaultOrderBy: [{ createdAt: 'desc' }],
     validators: [
       ({ tenantId, payload }) => requireSameTenant('issuanceOrder', payload.issuanceOrderId, tenantId, 'Issuance order'),
@@ -205,9 +205,9 @@ export const procurementCrudResources = {
     resource: 'procurement.collectionReceiptLine',
     entityType: 'CollectionReceiptLine',
     delegate: 'collectionReceiptLine',
-    mutableFields: ['collectionReceiptId', 'collectionUnitId', 'conditionStatus', 'acceptanceStatus', 'resultingHetId', 'discrepancyReason'],
+    mutableFields: ['collectionReceiptId', 'collectionUnitId', 'itemCode', 'quantity', 'uom', 'conditionStatus', 'acceptanceStatus', 'resultingHetId', 'discrepancyReason'],
     createRequiredFields: ['collectionReceiptId'],
-    searchableFields: ['id', 'collectionReceiptId', 'collectionUnitId', 'acceptanceStatus', 'resultingHetId', 'discrepancyReason'],
+    searchableFields: ['id', 'collectionReceiptId', 'collectionUnitId', 'itemCode', 'acceptanceStatus', 'resultingHetId', 'discrepancyReason'],
     defaultOrderBy: [{ createdAt: 'desc' }],
     validators: [
       ({ tenantId, payload }) => requireSameTenant('collectionReceipt', payload.collectionReceiptId, tenantId, 'Collection receipt'),

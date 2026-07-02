@@ -406,12 +406,14 @@ export const tableConfigs: TableConfig[] = [
         if (data.startSignById) start += 1;
         if (data.endSignById) end += 1;
       }
-      ctx.report.warnings.push({
-        entity: 'workOrder',
-        reason: `signer resolution: start=${start} end=${end}${
-          unresolved.size ? ` unresolved=${[...unresolved].join('|')}` : ''
-        }`,
-      });
+      // Only warn when signer emails couldn't be resolved to a staff record; a clean
+      // run (nothing to resolve, or everything resolved) is not a warning.
+      if (unresolved.size > 0) {
+        ctx.report.warnings.push({
+          entity: 'workOrder',
+          reason: `signer resolution: start=${start} end=${end} unresolved=${[...unresolved].join('|')}`,
+        });
+      }
     },
   },
   {

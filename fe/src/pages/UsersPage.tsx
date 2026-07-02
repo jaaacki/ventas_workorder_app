@@ -1,18 +1,27 @@
+import { useState, type FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchStaff, fetchRoles, updateStaffRole, updateStaffActive } from '@/lib/auth-api';
+import { fetchStaff, fetchRoles, register, updateStaffRole, updateStaffActive } from '@/lib/auth-api';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AdminPanel, EmptyState, MetricCard, PageHeader, StatusPill } from '@/components/tailadmin';
 import { toast } from 'sonner';
-import { Shield, UserCheck, Users } from 'lucide-react';
+import { Plus, Save, Shield, UserCheck, Users } from 'lucide-react';
 
 export default function UsersPage() {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const isOwner = user?.role?.key === 'owner';
   const isAdmin = user?.role?.key === 'admin' || isOwner;
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newRoleId, setNewRoleId] = useState('');
 
   const { data: staff, isLoading: staffLoading } = useQuery({ queryKey: ['staff'], queryFn: fetchStaff });
   const { data: roles, isLoading: rolesLoading } = useQuery({ queryKey: ['roles'], queryFn: fetchRoles });
@@ -35,6 +44,32 @@ export default function UsersPage() {
     onError: () => toast.error('Failed to update status'),
   });
 
+  const createUserMutation = useMutation({
+    mutationFn: () =>
+      register({
+        email: newEmail.trim(),
+        password: newPassword,
+        name: newName.trim() || undefined,
+        roleId: newRoleId || undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['staff'] });
+      toast.success('User created');
+      setNewEmail('');
+      setNewName('');
+      setNewPassword('');
+      setNewRoleId('');
+      setCreateOpen(false);
+    },
+    onError: () => toast.error('Failed to create user'),
+  });
+
+  const submitCreateUser = (event: FormEvent) => {
+    event.preventDefault();
+    if (!newEmail.trim() || !newPassword) return;
+    createUserMutation.mutate();
+  };
+
   if (staffLoading || rolesLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -52,7 +87,66 @@ export default function UsersPage() {
         <MetricCard icon={<Users className="h-6 w-6" />} label="Staff accounts" value={staff?.length ?? 0} />
         <MetricCard icon={<UserCheck className="h-6 w-6" />} label="Active users" value={staff?.filter((s) => s.active).length ?? 0} />
       </div>
-      <AdminPanel title="Staff accounts" description="Owner users can update roles. Admins can enable or disable accounts.">
+      <AdminPanel
+        title="Staff accounts"
+        description="Owner users can update roles. Admins can create, enable, or disable accounts."
+        action={
+          isAdmin ? (
+            <Button type="button" onClick={() => setCreateOpen(true)}>
+              <Plus className="h-4 w-4" />
+              New user
+            </Button>
+          ) : null
+        }
+      >
+        <Sheet open={createOpen} onOpenChange={setCreateOpen}>
+          <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
+            <form onSubmit={submitCreateUser} className="flex min-h-full flex-col">
+              <SheetHeader>
+                <SheetTitle>Create user</SheetTitle>
+                <SheetDescription>Add a staff account and assign its initial role.</SheetDescription>
+              </SheetHeader>
+              <div className="grid gap-4 p-4">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="new-user-email">Email</Label>
+                  <Input id="new-user-email" type="email" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="new-user-name">Name</Label>
+                  <Input id="new-user-name" value={newName} onChange={(event) => setNewName(event.target.value)} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="new-user-password">Temporary password</Label>
+                  <Input id="new-user-password" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="new-user-role">Role</Label>
+                  <Select value={newRoleId} onValueChange={setNewRoleId}>
+                    <SelectTrigger id="new-user-role">
+                      <SelectValue placeholder="Default role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {roles?.map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <SheetFooter>
+                <Button type="submit" disabled={createUserMutation.isPending || !newEmail.trim() || !newPassword}>
+                  <Save className="h-4 w-4" />
+                  Create user
+                </Button>
+                <Button type="button" variant="outline" disabled={createUserMutation.isPending} onClick={() => setCreateOpen(false)}>
+                  Cancel
+                </Button>
+              </SheetFooter>
+            </form>
+          </SheetContent>
+        </Sheet>
         {!staff?.length ? (
           <EmptyState icon={<Shield className="h-6 w-6" />} title="No staff accounts" description="Staff users will appear here after they are created or sign in." />
         ) : (

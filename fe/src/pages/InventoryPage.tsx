@@ -242,6 +242,26 @@ function skuLabel(sku?: InventorySku | null) {
   return sku.description || sku.sku || sku.id;
 }
 
+// Colour-coded reagents (AM025 SOP): green ethanol, yellow hypochlorite, orange
+// peroxide, blue acid. Render a dot next to the SKU so inventory reads at a glance.
+function ReagentDot({ colour }: { colour?: string | null }) {
+  if (!colour) return null;
+  const key = colour.trim().toLowerCase();
+  const swatch =
+    key === 'green'
+      ? 'bg-emerald-500'
+      : key === 'yellow'
+        ? 'bg-yellow-400'
+        : key === 'orange'
+          ? 'bg-orange-500'
+          : key === 'blue'
+            ? 'bg-blue-500'
+            : key === 'red'
+              ? 'bg-red-500'
+              : 'bg-gray-400';
+  return <span className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${swatch}`} title={colour} aria-label={`${colour} reagent`} />;
+}
+
 function lotLabel(lot?: InventoryLot | null) {
   if (!lot) return '-';
   return lot.lotNumber || lot.legacyHetId || lot.legacyItemSerialId || lot.id;
@@ -321,7 +341,7 @@ function LotsTable({ lots, permissions, busy, onEdit, onArchive, onRestore, onAu
                 </div>
                 <div className="text-xs text-gray-500">{lot.id}</div>
               </TableCell>
-              <TableCell><div>{skuLabel(lot.inventorySku)}</div><div className="text-xs text-gray-500">{lot.inventorySku?.category || lot.inventorySkuId || '-'}</div></TableCell>
+              <TableCell><div className="flex items-center gap-2"><ReagentDot colour={lot.inventorySku?.colour} /><span>{skuLabel(lot.inventorySku)}</span></div><div className="text-xs text-gray-500">{lot.inventorySku?.category || lot.inventorySkuId || '-'}</div></TableCell>
               <TableCell><StatusPill tone={statusTone(lot.inventoryType)}>{lot.inventoryType.replace(/_/g, ' ')}</StatusPill></TableCell>
               <TableCell><StatusPill tone={statusTone(lot.status)}>{lot.status.replace(/_/g, ' ')}</StatusPill></TableCell>
               <TableCell>{formatQty(lot.quantityCurrent, lot.uom)}</TableCell>

@@ -6,15 +6,24 @@ import * as manufacturingService from '../services/manufacturingService.js';
 
 const errorResponse = z.object({ error: z.string() });
 
-const manufacturerSchema = z
-  .object({
-    id: z.string(),
-    manuNumber: z.string().nullable(),
-    manuName: z.string().nullable(),
-    createdAt: z.date(),
-    updatedAt: z.date(),
-  })
-  .passthrough();
+const manufacturerSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+  createdById: z.string().nullable(),
+  updatedById: z.string().nullable(),
+  manuName: z.string().nullable(),
+  manuNumber: z.string().nullable(),
+  keyText: z.string().nullable(),
+  workOrders: z.array(
+    z.object({
+      id: z.string(),
+      woNumber: z.string().nullable(),
+      phaseShort: z.string().nullable(),
+    }),
+  ),
+});
 
 const generateBodySchema = z.object({
   workOrderId: z.string().min(1),
@@ -34,6 +43,14 @@ export const manufacturingRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('admin', 'owner')],
       schema: {
+        tags: ['Manufacturing'],
+        summary: 'Generate batch record',
+        description: 'Create and link the manufacturing batch record for a work order. Admin or owner role required.',
+        operationId: 'generateBatchRecord',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
         body: generateBodySchema,
         response: {
           201: manufacturerSchema,
@@ -71,6 +88,13 @@ export const manufacturingRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Manufacturing'],
+        summary: 'Get batch record',
+        description: 'Read one manufacturing batch record by id.',
+        operationId: 'getBatchRecord',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
         params: z.object({ id: z.string() }),
         response: {
           200: manufacturerSchema,

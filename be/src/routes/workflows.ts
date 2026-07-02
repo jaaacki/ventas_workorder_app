@@ -23,31 +23,34 @@ const phaseDetailSchema = z.object({
   }),
 });
 
-const workflowSummarySchema = z
-  .object({
-    id: z.string(),
-    name: z.string(),
-    code: z.string(),
-    description: z.string().nullable(),
-    active: z.boolean(),
-    createdAt: z.date(),
-    updatedAt: z.date(),
-    _count: z.object({ phases: z.number(), workOrders: z.number() }),
-  })
-  .passthrough();
+const staffRefSchema = z.object({
+  id: z.string(),
+  name: z.string().nullable(),
+  email: z.string(),
+});
 
-const workflowDetailSchema = z
-  .object({
-    id: z.string(),
-    name: z.string(),
-    code: z.string(),
-    description: z.string().nullable(),
-    active: z.boolean(),
-    createdAt: z.date(),
-    updatedAt: z.date(),
-    phases: z.array(phaseDetailSchema),
-  })
-  .passthrough();
+const workflowBaseSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  name: z.string(),
+  code: z.string(),
+  description: z.string().nullable(),
+  active: z.boolean(),
+  createdById: z.string().nullable(),
+  updatedById: z.string().nullable(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+});
+
+const workflowSummarySchema = workflowBaseSchema.extend({
+  _count: z.object({ phases: z.number(), workOrders: z.number() }),
+});
+
+const workflowDetailSchema = workflowBaseSchema.extend({
+  createdBy: staffRefSchema.nullable(),
+  updatedBy: staffRefSchema.nullable(),
+  phases: z.array(phaseDetailSchema),
+});
 
 const createBodySchema = z.object({
   name: z.string().min(1),
@@ -77,6 +80,13 @@ export const workflowRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Workflows'],
+        summary: 'List workflows',
+        description: 'Read configured product workflows. Optional active=true narrows the read model to active workflows.',
+        operationId: 'listWorkflows',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'resource-crud',
+        'x-auth': 'authenticated',
         querystring: z.object({ active: z.string().optional() }),
         response: { 200: z.array(workflowSummarySchema), 401: errorResponse },
       },
@@ -92,6 +102,13 @@ export const workflowRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Workflows'],
+        summary: 'Get workflow',
+        description: 'Read one workflow with its ordered phase bindings.',
+        operationId: 'getWorkflow',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'resource-crud',
+        'x-auth': 'authenticated',
         params: z.object({ id: z.string() }),
         response: { 200: workflowDetailSchema, 401: errorResponse, 404: errorResponse },
       },
@@ -110,6 +127,14 @@ export const workflowRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('admin', 'owner')],
       schema: {
+        tags: ['Workflows'],
+        summary: 'Create workflow',
+        description: 'Create a product workflow and, when supplied, its initial ordered phase bindings. Admin or owner role required.',
+        operationId: 'createWorkflow',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'resource-crud',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
         body: createBodySchema,
         response: {
           201: workflowDetailSchema,
@@ -143,6 +168,14 @@ export const workflowRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('admin', 'owner')],
       schema: {
+        tags: ['Workflows'],
+        summary: 'Update workflow',
+        description: 'Patch workflow metadata and optionally replace ordered phase bindings atomically. Admin or owner role required.',
+        operationId: 'updateWorkflow',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'resource-crud',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
         params: z.object({ id: z.string() }),
         body: updateBodySchema,
         response: {

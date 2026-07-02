@@ -1,10 +1,144 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import type { JwtPayload } from '../plugins/auth.js';
 import * as inventoryService from '../services/inventoryService.js';
 
 const errorResponse = z.object({ error: z.string() });
-const looseEntitySchema = z.object({ id: z.string() }).passthrough();
+const dateish = z.union([z.date(), z.string()]);
+const decimalish = z.union([z.number(), z.string(), z.custom<Prisma.Decimal>()]);
+
+const inventoryOverviewSchema = z.object({
+  skus: z.number(),
+  lots: z.number(),
+  transactions: z.number(),
+  locations: z.number(),
+  balances: z.number(),
+  importReports: z.number(),
+  hetLots: z.number(),
+  finishedGoodLots: z.number(),
+});
+
+const inventorySkuSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  sku: z.string().nullable(),
+  description: z.string().nullable(),
+  category: z.string().nullable(),
+  brand: z.string().nullable(),
+  size: z.string().nullable(),
+  colour: z.string().nullable(),
+  uom: z.string().nullable(),
+  packQuantity: decimalish.nullable(),
+  threshold: decimalish.nullable(),
+  serialisedMode: z.string().nullable(),
+  qrImagePath: z.string().nullable(),
+  mediaUrl: z.string().nullable(),
+  qrPrintPath: z.string().nullable(),
+  sourceSystem: z.string().nullable(),
+  legacyRaw: z.unknown().nullable(),
+  createdAt: dateish,
+  updatedAt: dateish,
+});
+
+const inventoryLocationSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  locationType: z.string(),
+  name: z.string(),
+  parentLocationId: z.string().nullable(),
+  description: z.string().nullable(),
+  imagePath: z.string().nullable(),
+  sourceSystem: z.string().nullable(),
+  legacyRaw: z.unknown().nullable(),
+  createdAt: dateish,
+  updatedAt: dateish,
+});
+
+const inventoryLotSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  inventorySkuId: z.string().nullable(),
+  lotNumber: z.string().nullable(),
+  inventoryType: z.string(),
+  status: z.string(),
+  quantityInitial: decimalish.nullable(),
+  quantityCurrent: decimalish.nullable(),
+  uom: z.string().nullable(),
+  currentLocationId: z.string().nullable(),
+  collectionUnitId: z.string().nullable(),
+  hetId: z.string().nullable(),
+  workOrderId: z.string().nullable(),
+  sourceSystem: z.string().nullable(),
+  legacyItemSerialId: z.string().nullable(),
+  legacyCheckInOutId: z.string().nullable(),
+  legacyHetId: z.string().nullable(),
+  legacyRaw: z.unknown().nullable(),
+  createdAt: dateish,
+  updatedAt: dateish,
+  inventorySku: inventorySkuSchema.nullable().optional(),
+  currentLocation: inventoryLocationSchema.nullable().optional(),
+});
+
+const inventoryTransactionSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  inventorySkuId: z.string().nullable(),
+  inventoryLotId: z.string().nullable(),
+  transactionType: z.string(),
+  direction: z.string().nullable(),
+  reason: z.string().nullable(),
+  quantity: decimalish.nullable(),
+  uom: z.string().nullable(),
+  fromLocationId: z.string().nullable(),
+  toLocationId: z.string().nullable(),
+  workOrderId: z.string().nullable(),
+  occurredAt: dateish.nullable(),
+  actor: z.string().nullable(),
+  signaturePath: z.string().nullable(),
+  remarks: z.string().nullable(),
+  legacyRefNumber: z.string().nullable(),
+  legacyRefNumberOut: z.string().nullable(),
+  sourceSystem: z.string().nullable(),
+  legacyRaw: z.unknown().nullable(),
+  createdAt: dateish,
+  updatedAt: dateish,
+  inventorySku: inventorySkuSchema.nullable().optional(),
+  inventoryLot: inventoryLotSchema.nullable().optional(),
+  fromLocation: inventoryLocationSchema.nullable().optional(),
+  toLocation: inventoryLocationSchema.nullable().optional(),
+});
+
+const inventoryGenealogyLinkSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  parentInventoryLotId: z.string(),
+  childInventoryLotId: z.string(),
+  relationshipType: z.string(),
+  workOrderId: z.string().nullable(),
+  phaseId: z.string().nullable(),
+  sourceSystem: z.string().nullable(),
+  legacyRaw: z.unknown().nullable(),
+  createdAt: dateish,
+  updatedAt: dateish,
+});
+
+const inventoryGenealogySchema = z.object({
+  id: z.string(),
+  lot: inventoryLotSchema,
+  parents: z.array(inventoryGenealogyLinkSchema.extend({ parentInventoryLot: inventoryLotSchema })),
+  children: z.array(inventoryGenealogyLinkSchema.extend({ childInventoryLot: inventoryLotSchema })),
+});
+
+const importReportSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  source: z.string(),
+  dryRun: z.boolean(),
+  startedAt: dateish,
+  finishedAt: dateish.nullable(),
+  report: z.unknown(),
+});
 
 function tenantIdOf(req: { user: unknown }): string {
   return (req.user as JwtPayload).tenantId;
@@ -20,7 +154,16 @@ export const inventoryRoutes: FastifyPluginAsyncZod = async function (app) {
     '/overview',
     {
       onRequest: [app.authenticate],
-      schema: { response: { 200: z.record(z.string(), z.number()), 401: errorResponse } },
+      schema: {
+        tags: ['Inventory'],
+        summary: 'Get inventory overview',
+        description: 'Read aggregate inventory counts for the dashboard. Example: GET /api/inventory/overview.',
+        operationId: 'getInventoryOverview',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
+        response: { 200: inventoryOverviewSchema, 401: errorResponse },
+      },
     },
     async (req) => inventoryService.getInventoryOverview(tenantIdOf(req)),
   );
@@ -30,8 +173,15 @@ export const inventoryRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Inventory'],
+        summary: 'List inventory SKUs',
+        description: 'Read inventory SKU master records. Example: GET /api/inventory/skus?q=graft&take=50.',
+        operationId: 'listInventorySkus',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
         querystring: listQuery,
-        response: { 200: z.array(looseEntitySchema), 401: errorResponse },
+        response: { 200: z.array(inventorySkuSchema), 401: errorResponse },
       },
     },
     async (req) => inventoryService.listSkus({ tenantId: tenantIdOf(req), q: req.query.q, take: req.query.take }),
@@ -42,11 +192,18 @@ export const inventoryRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Inventory'],
+        summary: 'List inventory lots',
+        description: 'Read inventory lots with SKU and current-location context. Example: GET /api/inventory/lots?inventoryType=HET&status=available&take=50.',
+        operationId: 'listInventoryLots',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
         querystring: listQuery.extend({
           inventoryType: z.string().optional(),
           status: z.string().optional(),
         }),
-        response: { 200: z.array(looseEntitySchema), 401: errorResponse },
+        response: { 200: z.array(inventoryLotSchema), 401: errorResponse },
       },
     },
     async (req) =>
@@ -60,12 +217,42 @@ export const inventoryRoutes: FastifyPluginAsyncZod = async function (app) {
   );
 
   app.get(
+    '/lots/:id',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        tags: ['Inventory'],
+        summary: 'Get inventory lot',
+        description: 'Read one inventory lot with SKU and current-location context. Example: GET /api/inventory/lots/lot-1001.',
+        operationId: 'getInventoryLot',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
+        params: z.object({ id: z.string() }),
+        response: { 200: inventoryLotSchema, 401: errorResponse, 404: errorResponse },
+      },
+    },
+    async (req, reply) => {
+      const lot = await inventoryService.getLot(req.params.id, tenantIdOf(req));
+      if (!lot) return reply.status(404).send({ error: 'Inventory lot not found' });
+      return lot;
+    },
+  );
+
+  app.get(
     '/transactions',
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Inventory'],
+        summary: 'List inventory transactions',
+        description: 'Read immutable inventory transaction history with SKU, lot, and location context. Example: GET /api/inventory/transactions?q=WO-1001&take=100.',
+        operationId: 'listInventoryTransactions',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
         querystring: listQuery,
-        response: { 200: z.array(looseEntitySchema), 401: errorResponse },
+        response: { 200: z.array(inventoryTransactionSchema), 401: errorResponse },
       },
     },
     async (req) =>
@@ -76,7 +263,16 @@ export const inventoryRoutes: FastifyPluginAsyncZod = async function (app) {
     '/locations',
     {
       onRequest: [app.authenticate],
-      schema: { response: { 200: z.array(looseEntitySchema), 401: errorResponse } },
+      schema: {
+        tags: ['Inventory'],
+        summary: 'List inventory locations',
+        description: 'Read inventory location master records.',
+        operationId: 'listInventoryLocations',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
+        response: { 200: z.array(inventoryLocationSchema), 401: errorResponse },
+      },
     },
     async (req) => inventoryService.listLocations(tenantIdOf(req)),
   );
@@ -86,8 +282,15 @@ export const inventoryRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Inventory'],
+        summary: 'Get inventory genealogy',
+        description: 'Read parent and child lot genealogy for one inventory lot.',
+        operationId: 'getInventoryGenealogy',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
         params: z.object({ lotId: z.string() }),
-        response: { 200: looseEntitySchema, 401: errorResponse, 404: errorResponse },
+        response: { 200: inventoryGenealogySchema, 401: errorResponse, 404: errorResponse },
       },
     },
     async (req, reply) => {
@@ -101,7 +304,17 @@ export const inventoryRoutes: FastifyPluginAsyncZod = async function (app) {
     '/import-reports',
     {
       onRequest: [app.requireRole('admin', 'owner')],
-      schema: { response: { 200: z.array(looseEntitySchema), 401: errorResponse, 403: errorResponse } },
+      schema: {
+        tags: ['Inventory'],
+        summary: 'List inventory import reports',
+        description: 'Read recent inventory import audit reports. Admin or owner role required.',
+        operationId: 'listInventoryImportReports',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'import-admin',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
+        response: { 200: z.array(importReportSchema), 401: errorResponse, 403: errorResponse },
+      },
     },
     async (req) => inventoryService.listImportReports(tenantIdOf(req)),
   );

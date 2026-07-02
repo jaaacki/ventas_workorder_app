@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState, type FormEvent, type PointerEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { fetchWorkflows } from '@/lib/workflows-api';
 import { fetchHets, type HetSummary } from '@/lib/hets-api';
+import { statusTone, workflowLabel } from '@/lib/work-order-ui';
 import {
   fetchWorkOrders,
   createWorkOrder,
@@ -33,6 +34,7 @@ import {
   Factory,
   FileSignature,
   FlaskConical,
+  Maximize2,
   PackageCheck,
   Plus,
   ShieldCheck,
@@ -40,24 +42,8 @@ import {
   X,
 } from 'lucide-react';
 
-function workflowLabel(workOrder: WorkOrderSummary) {
-  if (workOrder.workflow) return `${workOrder.workflow.name} (${workOrder.workflow.code})`;
-  return workOrder.workflowId ? `Missing workflow (${workOrder.workflowId})` : 'No workflow assigned';
-}
-
 function formatDate(value?: string | null) {
   return value ? new Date(value).toLocaleString() : '-';
-}
-
-function statusTone(status: string): 'brand' | 'success' | 'warning' | 'error' | 'neutral' {
-  if (status.startsWith('2. ')) return 'success';
-  if (status.startsWith('3. ')) return 'warning';
-  if (status.startsWith('4. ')) return 'brand';
-  if (status.startsWith('5. ')) return 'neutral';
-  if (status === 'ReadyToAdvance') return 'success';
-  if (status === 'ReleasePending') return 'brand';
-  if (status === 'Blocked') return 'warning';
-  return 'neutral';
 }
 
 const LEGACY_KANBAN_COLUMNS = [
@@ -320,7 +306,7 @@ function CreateWorkOrderForm({
   );
 }
 
-function WorkOrderWorkspace({
+export function WorkOrderWorkspace({
   workOrder,
   onAdvance,
   onStart,
@@ -626,9 +612,17 @@ export default function WorkOrdersPage() {
                 </SheetDescription>
               </div>
               {selectedWorkOrder && activeWorkspaceMode === 'detail' && (
-                <StatusPill tone={statusTone(selectedWorkOrder.legacyStateBucket)}>
-                  {selectedWorkOrder.legacyStateBucket.replace(/^\d+\.\s*/, '')}
-                </StatusPill>
+                <div className="flex items-center gap-2">
+                  <Button asChild variant="outline" size="sm">
+                    <Link to={`/dashboard/work-orders/${encodeURIComponent(selectedWorkOrder.id)}`}>
+                      <Maximize2 className="h-3.5 w-3.5" />
+                      Full page
+                    </Link>
+                  </Button>
+                  <StatusPill tone={statusTone(selectedWorkOrder.legacyStateBucket)}>
+                    {selectedWorkOrder.legacyStateBucket.replace(/^\d+\.\s*/, '')}
+                  </StatusPill>
+                </div>
               )}
             </div>
           </SheetHeader>

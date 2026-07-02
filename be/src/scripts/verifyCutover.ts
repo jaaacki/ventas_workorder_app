@@ -18,7 +18,6 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import csv from 'csv-parser';
 import { prisma } from '../db/prisma.js';
 import { tableConfigs } from './importCsv.js';
@@ -54,34 +53,6 @@ const failures: Failure[] = [];
 
 async function count(model: string): Promise<number> {
   return (prisma as any)[model].count();
-}
-
-function csvRowHash(file: string): string {
-  return new Promise((resolve, reject) => {
-    const h = crypto.createHash('sha256');
-    fs.createReadStream(file)
-      .pipe(csv())
-      .on('data', (row) => {
-        for (const [k, v] of Object.entries(row)) h.update(`${k}=${v};`);
-        h.update('\n');
-      })
-      .on('end', () => resolve(h.digest('hex')))
-      .on('error', reject);
-  }) as unknown as string; // we await it below; see csvRowHashAsync
-}
-
-async function csvRowHashAsync(file: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const h = crypto.createHash('sha256');
-    fs.createReadStream(file)
-      .pipe(csv())
-      .on('data', (row) => {
-        for (const [k, v] of Object.entries(row)) h.update(`${k}=${v};`);
-        h.update('\n');
-      })
-      .on('end', () => resolve(h.digest('hex')))
-      .on('error', reject);
-  });
 }
 
 async function sampleFieldCheck(config: (typeof tableConfigs)[number]): Promise<void> {

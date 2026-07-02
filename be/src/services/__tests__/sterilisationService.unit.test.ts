@@ -4,15 +4,16 @@ const mocks = vi.hoisted(() => ({
   sterilise: {
     create: vi.fn(),
     findFirst: vi.fn(),
+    findFirstOrThrow: vi.fn(),
     findMany: vi.fn(),
-    update: vi.fn(),
+    updateMany: vi.fn(),
   },
   het: {
     count: vi.fn(),
   },
   workOrder: {
     findFirst: vi.fn(),
-    update: vi.fn(),
+    updateMany: vi.fn(),
   },
 }));
 
@@ -43,7 +44,7 @@ describe('sterilisationService', () => {
     mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo-1', tenantId: 'ventas' });
     mocks.het.count.mockResolvedValue(2);
     mocks.sterilise.create.mockResolvedValue({ id: 'ster-1', workOrderId: 'wo-1' });
-    mocks.workOrder.update.mockResolvedValue({ id: 'wo-1' });
+    mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
 
     const result = await createSterilisation(
       {
@@ -78,8 +79,8 @@ describe('sterilisationService', () => {
       { hetId: 'het-2' },
     ]);
 
-    expect(mocks.workOrder.update).toHaveBeenCalledWith({
-      where: { id: 'wo-1' },
+    expect(mocks.workOrder.updateMany).toHaveBeenCalledWith({
+      where: { id: 'wo-1', tenantId: 'ventas' },
       data: {
         steralisationCurrentId: 'ster-1',
         updatedById: 'actor1',
@@ -97,13 +98,13 @@ describe('sterilisationService', () => {
     ).rejects.toMatchObject({ code: 'P2025' });
 
     expect(mocks.sterilise.create).not.toHaveBeenCalled();
-    expect(mocks.workOrder.update).not.toHaveBeenCalled();
+    expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
   });
 
   it('createSterilisation omits optional fields and batchHets when not provided', async () => {
     mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo-1', tenantId: 'ventas' });
     mocks.sterilise.create.mockResolvedValue({ id: 'ster-2' });
-    mocks.workOrder.update.mockResolvedValue({ id: 'wo-1' });
+    mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
 
     await createSterilisation(
       { workOrderId: 'wo-1', direction: 'IN' },
@@ -114,6 +115,32 @@ describe('sterilisationService', () => {
     expect(createCall.data).not.toHaveProperty('result');
     expect(createCall.data).not.toHaveProperty('signById');
     expect(createCall.data).not.toHaveProperty('batchHets');
+  });
+
+  it('createSterilisation scopes work order and HET checks to the caller tenant', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo-1', tenantId: 'tenant-a' });
+    mocks.het.count.mockResolvedValue(1);
+    mocks.sterilise.create.mockResolvedValue({ id: 'ster-1' });
+    mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
+
+    await createSterilisation(
+      { workOrderId: 'wo-1', direction: 'OUT', hetIds: ['het-1'] },
+      'actor1',
+      'tenant-a',
+    );
+
+    expect(mocks.workOrder.findFirst).toHaveBeenCalledWith({
+      where: { id: 'wo-1', tenantId: 'tenant-a' },
+      select: { id: true, tenantId: true },
+    });
+    expect(mocks.het.count).toHaveBeenCalledWith({
+      where: { id: { in: ['het-1'] }, tenantId: 'tenant-a', deleted: false },
+    });
+    expect(mocks.sterilise.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ tenantId: 'tenant-a' }),
+      }),
+    );
   });
 
   it('listSterilisations queries by workOrderId', async () => {
@@ -129,9 +156,18 @@ describe('sterilisationService', () => {
     expect(result).toEqual([{ id: 'ster-1' }]);
   });
 
+  it('listSterilisations scopes reads to the caller tenant', async () => {
+    mocks.sterilise.findMany.mockResolvedValue([]);
+    await listSterilisations('wo-1', 'tenant-a');
+    expect(mocks.sterilise.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { workOrderId: 'wo-1', tenantId: 'tenant-a' } }),
+    );
+  });
+
   it('setSterilisationResult updates the result', async () => {
     mocks.sterilise.findFirst.mockResolvedValue({ id: 'ster-1' });
-    mocks.sterilise.update.mockResolvedValue({ id: 'ster-1', result: false });
+    mocks.sterilise.updateMany.mockResolvedValue({ count: 1 });
+    mocks.sterilise.findFirstOrThrow.mockResolvedValue({ id: 'ster-1', result: false });
 
     const result = await setSterilisationResult('ster-1', false, 'actor1');
 
@@ -139,12 +175,26 @@ describe('sterilisationService', () => {
       where: { id: 'ster-1', tenantId: 'ventas' },
       select: { id: true },
     });
-    expect(mocks.sterilise.update).toHaveBeenCalledWith({
-      where: { id: 'ster-1' },
+    expect(mocks.sterilise.updateMany).toHaveBeenCalledWith({
+      where: { id: 'ster-1', tenantId: 'ventas' },
       data: { result: false, updatedById: 'actor1' },
+    });
+    expect(mocks.sterilise.findFirstOrThrow).toHaveBeenCalledWith({
+      where: { id: 'ster-1', tenantId: 'ventas' },
       include: { batchHets: { include: { het: { select: { id: true, hetNumber: true } } } } },
     });
     expect(result).toEqual({ id: 'ster-1', result: false });
+  });
+
+  it('setSterilisationResult scopes the preflight lookup to the caller tenant', async () => {
+    mocks.sterilise.findFirst.mockResolvedValue({ id: 'ster-1' });
+    mocks.sterilise.updateMany.mockResolvedValue({ count: 1 });
+    mocks.sterilise.findFirstOrThrow.mockResolvedValue({ id: 'ster-1', result: true });
+    await setSterilisationResult('ster-1', true, 'actor1', 'tenant-a');
+    expect(mocks.sterilise.findFirst).toHaveBeenCalledWith({
+      where: { id: 'ster-1', tenantId: 'tenant-a' },
+      select: { id: true },
+    });
   });
 
   it('setSterilisationResult throws a P2025-shaped error when missing', async () => {

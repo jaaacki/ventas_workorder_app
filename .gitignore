@@ -6,6 +6,11 @@ build/
 .env.local
 .env.*.local
 client_secret_*.json
+*.crt
+*.key
+*.pem
+*.p12
+*.pfx
 *.log
 npm-debug.log*
 yarn-debug.log*

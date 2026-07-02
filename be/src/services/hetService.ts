@@ -67,16 +67,28 @@ export async function useHet(hetId: string, input: UseHetInput) {
       clientVersion: 'unknown',
     });
   }
-  const updated = await prisma.het.update({
-    where: { id: hetId },
-    data: { usedById: input.workOrderId },
-    include: hetDetailInclude,
-  });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updateResult = await tx.het.updateMany({
+      where: { id: hetId, tenantId: scopedTenantId, deleted: false },
+      data: { usedById: input.workOrderId },
+    });
+    if (updateResult.count === 0) {
+      throw new Prisma.PrismaClientKnownRequestError('HET not found', {
+        code: 'P2025',
+        clientVersion: 'unknown',
+      });
+    }
 
-  await prisma.workOrderHet.upsert({
-    where: { workOrderId_hetId: { workOrderId: input.workOrderId, hetId } },
-    create: { workOrderId: input.workOrderId, hetId },
-    update: {},
+    await tx.workOrderHet.upsert({
+      where: { workOrderId_hetId: { workOrderId: input.workOrderId, hetId } },
+      create: { workOrderId: input.workOrderId, hetId },
+      update: {},
+    });
+
+    return tx.het.findFirstOrThrow({
+      where: { id: hetId, tenantId: scopedTenantId, deleted: false },
+      include: hetDetailInclude,
+    });
   });
 
   return updated;
@@ -109,9 +121,21 @@ export async function finishHet(hetId: string, input: FinishHetInput) {
       clientVersion: 'unknown',
     });
   }
-  return prisma.het.update({
-    where: { id: hetId },
-    data: { finishedById: input.workOrderId },
-    include: hetDetailInclude,
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.het.updateMany({
+      where: { id: hetId, tenantId: scopedTenantId, deleted: false },
+      data: { finishedById: input.workOrderId },
+    });
+    if (updated.count === 0) {
+      throw new Prisma.PrismaClientKnownRequestError('HET not found', {
+        code: 'P2025',
+        clientVersion: 'unknown',
+      });
+    }
+
+    return tx.het.findFirstOrThrow({
+      where: { id: hetId, tenantId: scopedTenantId, deleted: false },
+      include: hetDetailInclude,
+    });
   });
 }

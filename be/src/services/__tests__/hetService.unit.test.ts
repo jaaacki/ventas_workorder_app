@@ -5,10 +5,12 @@ const mocks = vi.hoisted(() => ({
   het: {
     findMany: vi.fn(),
     findFirst: vi.fn(),
-    update: vi.fn(),
+    findFirstOrThrow: vi.fn(),
+    updateMany: vi.fn(),
   },
   workOrder: { findFirst: vi.fn() },
   workOrderHet: { upsert: vi.fn() },
+  $transaction: vi.fn(),
 }));
 
 vi.mock('../../db/prisma.js', () => ({
@@ -16,6 +18,10 @@ vi.mock('../../db/prisma.js', () => ({
     het: mocks.het,
     workOrder: mocks.workOrder,
     workOrderHet: mocks.workOrderHet,
+    $transaction: mocks.$transaction.mockImplementation(
+      async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn({ het: mocks.het, workOrderHet: mocks.workOrderHet }),
+    ),
   },
 }));
 
@@ -40,14 +46,15 @@ describe('hetService', () => {
   it('useHet sets usedById to the work order and creates the WorkOrderHet link', async () => {
     mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo1' });
     mocks.het.findFirst.mockResolvedValue({ id: 'h1' });
-    mocks.het.update.mockResolvedValue({ id: 'h1', usedById: 'wo1' });
+    mocks.het.updateMany.mockResolvedValue({ count: 1 });
+    mocks.het.findFirstOrThrow.mockResolvedValue({ id: 'h1', usedById: 'wo1' });
     mocks.workOrderHet.upsert.mockResolvedValue({});
 
     const result = await hetService.useHet('h1', { workOrderId: 'wo1', actorId: 'actor1' });
 
-    expect(mocks.het.update).toHaveBeenCalledWith(
+    expect(mocks.het.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'h1' },
+        where: { id: 'h1', tenantId: 'ventas', deleted: false },
         data: { usedById: 'wo1' },
       }),
     );
@@ -59,20 +66,58 @@ describe('hetService', () => {
     expect(result).toEqual({ id: 'h1', usedById: 'wo1' });
   });
 
+  it('useHet scopes work order and HET preflight checks to the caller tenant', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo1' });
+    mocks.het.findFirst.mockResolvedValue({ id: 'h1' });
+    mocks.het.updateMany.mockResolvedValue({ count: 1 });
+    mocks.het.findFirstOrThrow.mockResolvedValue({ id: 'h1', usedById: 'wo1' });
+    mocks.workOrderHet.upsert.mockResolvedValue({});
+
+    await hetService.useHet('h1', { workOrderId: 'wo1', actorId: 'actor1', tenantId: 'tenant-a' });
+
+    expect(mocks.workOrder.findFirst).toHaveBeenCalledWith({
+      where: { id: 'wo1', tenantId: 'tenant-a', deleted: false },
+      select: { id: true },
+    });
+    expect(mocks.het.findFirst).toHaveBeenCalledWith({
+      where: { id: 'h1', tenantId: 'tenant-a', deleted: false },
+      select: { id: true },
+    });
+  });
+
   it('finishHet sets finishedById to the work order', async () => {
     mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo1' });
     mocks.het.findFirst.mockResolvedValue({ id: 'h1' });
-    mocks.het.update.mockResolvedValue({ id: 'h1', finishedById: 'wo1' });
+    mocks.het.updateMany.mockResolvedValue({ count: 1 });
+    mocks.het.findFirstOrThrow.mockResolvedValue({ id: 'h1', finishedById: 'wo1' });
 
     const result = await hetService.finishHet('h1', { workOrderId: 'wo1', actorId: 'actor1' });
 
-    expect(mocks.het.update).toHaveBeenCalledWith(
+    expect(mocks.het.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'h1' },
+        where: { id: 'h1', tenantId: 'ventas', deleted: false },
         data: { finishedById: 'wo1' },
       }),
     );
     expect(result).toEqual({ id: 'h1', finishedById: 'wo1' });
+  });
+
+  it('finishHet scopes work order and HET preflight checks to the caller tenant', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo1' });
+    mocks.het.findFirst.mockResolvedValue({ id: 'h1' });
+    mocks.het.updateMany.mockResolvedValue({ count: 1 });
+    mocks.het.findFirstOrThrow.mockResolvedValue({ id: 'h1', finishedById: 'wo1' });
+
+    await hetService.finishHet('h1', { workOrderId: 'wo1', actorId: 'actor1', tenantId: 'tenant-a' });
+
+    expect(mocks.workOrder.findFirst).toHaveBeenCalledWith({
+      where: { id: 'wo1', tenantId: 'tenant-a', deleted: false },
+      select: { id: true },
+    });
+    expect(mocks.het.findFirst).toHaveBeenCalledWith({
+      where: { id: 'h1', tenantId: 'tenant-a', deleted: false },
+      select: { id: true },
+    });
   });
 
   it('useHet rethrows a P2025 when the HET is missing', async () => {

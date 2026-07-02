@@ -5,10 +5,13 @@ import jwt from '@fastify/jwt';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { parseEnv } from './config/env.js';
 import authPlugin from './plugins/auth.js';
+import { registerOpenApi } from './plugins/openapi.js';
 import { authRoutes } from './auth/routes.js';
 import { oauthRoutes } from './auth/oauth.js';
 import { healthRoutes } from './routes/health.js';
 import { workflowRoutes } from './routes/workflows.js';
+import { phaseRoutes } from './routes/phases.js';
+import { masterDataRoutes } from './routes/masterData.js';
 import { workOrderRoutes } from './routes/workOrders.js';
 import { sterilisationRoutes } from './routes/sterilisation.js';
 import { manufacturingRoutes } from './routes/manufacturing.js';
@@ -34,6 +37,8 @@ async function buildServer() {
 
   app.decorate('config', config);
 
+  await registerOpenApi(app);
+
   await app.register(cookie, {
     secret: config.JWT_SECRET,
     parseOptions: {},
@@ -52,6 +57,8 @@ async function buildServer() {
 
   await app.register(healthRoutes, { prefix: '/api/health' });
   await app.register(workflowRoutes, { prefix: '/api/workflows' });
+  await app.register(phaseRoutes, { prefix: '/api/phases' });
+  await app.register(masterDataRoutes, { prefix: '/api/master-data' });
   await app.register(workOrderRoutes, { prefix: '/api/work-orders' });
   await app.register(sterilisationRoutes, { prefix: '/api/sterilisation' });
   await app.register(manufacturingRoutes, { prefix: '/api/manufacturing' });

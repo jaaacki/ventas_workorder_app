@@ -23,6 +23,7 @@ import { prisma } from '../db/prisma.js';
 import { DEFAULT_TENANT_ID, tenantIdOrDefault } from '../services/tenant.js';
 
 const errorResponse = z.object({ error: z.string() });
+const redirectResponse = z.unknown();
 
 const providerParam = z.enum(['google', 'microsoft']);
 
@@ -198,9 +199,15 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
     '/:provider/authorize',
     {
       schema: {
+        tags: ['Auth'],
+        summary: 'Start OAuth authorization',
+        description: 'Start Google or Microsoft OAuth authorization and redirect to the provider.',
+        operationId: 'authorizeOAuthProvider',
+        'x-route-kind': 'auth',
+        'x-auth': 'anonymous',
         params: z.object({ provider: providerParam }),
         response: {
-          302: z.any(),
+          302: redirectResponse,
           400: errorResponse,
           501: errorResponse,
           502: errorResponse,
@@ -247,6 +254,12 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
     '/:provider/callback',
     {
       schema: {
+        tags: ['Auth'],
+        summary: 'Handle OAuth callback',
+        description: 'Handle a Google or Microsoft OAuth callback, provision or update the local staff user, and redirect to the frontend.',
+        operationId: 'handleOAuthCallback',
+        'x-route-kind': 'auth',
+        'x-auth': 'anonymous',
         params: z.object({ provider: providerParam }),
         querystring: z.object({
           code: z.string().optional(),
@@ -255,7 +268,7 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
           error_description: z.string().optional(),
         }),
         response: {
-          302: z.any(),
+          302: redirectResponse,
           400: errorResponse,
           501: errorResponse,
         },

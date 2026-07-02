@@ -10,7 +10,12 @@ import UsersPage from './pages/UsersPage';
 import RolesPage from './pages/RolesPage';
 import WorkflowsPage from './pages/WorkflowsPage';
 import WorkOrdersPage from './pages/WorkOrdersPage';
+import WorkOrderDetailPage from './pages/WorkOrderDetailPage';
+import QaQueuePage from './pages/QaQueuePage';
 import ProcurementPage from './pages/ProcurementPage';
+import CollectionUnitDetailPage from './pages/CollectionUnitDetailPage';
+import InventoryPage from './pages/InventoryPage';
+import InventoryLotDetailPage from './pages/InventoryLotDetailPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 function App() {
@@ -62,6 +67,16 @@ function App() {
             }
           />
           <Route
+            path="/dashboard/work-orders/:id"
+            element={
+              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+                <DashboardLayout>
+                  <WorkOrderDetailPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/dashboard/work-orders"
             element={
               <ProtectedRoute roles={['owner', 'admin', 'user']}>
@@ -72,11 +87,51 @@ function App() {
             }
           />
           <Route
+            path="/dashboard/qa"
+            element={
+              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+                <DashboardLayout>
+                  <QaQueuePage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/procurement/collection-units/:id"
+            element={
+              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+                <DashboardLayout>
+                  <CollectionUnitDetailPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/dashboard/procurement"
             element={
               <ProtectedRoute roles={['owner', 'admin', 'user']}>
                 <DashboardLayout>
                   <ProcurementPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/inventory/lots/:id"
+            element={
+              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+                <DashboardLayout>
+                  <InventoryLotDetailPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/inventory"
+            element={
+              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+                <DashboardLayout>
+                  <InventoryPage />
                 </DashboardLayout>
               </ProtectedRoute>
             }

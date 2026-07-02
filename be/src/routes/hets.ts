@@ -3,21 +3,47 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import type { JwtPayload } from '../plugins/auth.js';
 import * as hetService from '../services/hetService.js';
+import * as inventoryTraceService from '../services/inventoryTraceService.js';
+import { inventoryTraceSchema } from './inventoryTraceSchemas.js';
 
 const errorResponse = z.object({ error: z.string() });
+const decimalish = z.union([z.number(), z.string(), z.custom<Prisma.Decimal>()]);
 
-const hetSchema = z
-  .object({
-    id: z.string(),
-    createdAt: z.date(),
-    updatedAt: z.date(),
-    createdById: z.string().nullable(),
-    updatedById: z.string().nullable(),
-    usedById: z.string().nullable(),
-    finishedById: z.string().nullable(),
-    deleted: z.boolean(),
-  })
-  .passthrough();
+const workOrderRefSchema = z.object({ id: z.string(), woNumber: z.string().nullable() });
+
+const hetSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+  createdById: z.string().nullable(),
+  updatedById: z.string().nullable(),
+  clinicId: z.string().nullable(),
+  HCICode: z.string().nullable(),
+  clinicName: z.string().nullable(),
+  licenseName: z.string().nullable(),
+  address: z.string().nullable(),
+  hetNumber: z.string().nullable(),
+  parcelTrackingNumber: z.string().nullable(),
+  deliverId: z.string().nullable(),
+  collectId: z.string().nullable(),
+  usedById: z.string().nullable(),
+  finishedById: z.string().nullable(),
+  quantity: z.number().nullable(),
+  deleted: z.boolean(),
+  forceField: z.number().nullable(),
+  keyText: z.string().nullable(),
+  b11Weight: decimalish.nullable(),
+  collectionUnitId: z.string().nullable(),
+  collectionReceiptLineId: z.string().nullable(),
+  sourceSystem: z.string().nullable(),
+  legacyClinicId: z.string().nullable(),
+  legacyDeliverId: z.string().nullable(),
+  legacyCollectId: z.string().nullable(),
+  usedBy: workOrderRefSchema.nullable(),
+  finishedBy: workOrderRefSchema.nullable(),
+  workOrders: z.array(workOrderRefSchema),
+});
 
 const hetLinkBodySchema = z.object({
   workOrderId: z.string().min(1),
@@ -37,6 +63,13 @@ export const hetRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['HETs'],
+        summary: 'List HETs',
+        description: 'Read non-deleted HET records available to production.',
+        operationId: 'listHets',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
         response: { 200: z.array(hetSchema), 401: errorResponse },
       },
     },
@@ -45,11 +78,42 @@ export const hetRoutes: FastifyPluginAsyncZod = async function (app) {
     },
   );
 
+  app.get(
+    '/:id/inventory-trace',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        tags: ['HETs', 'Inventory'],
+        summary: 'Get HET inventory trace',
+        description: 'Read inventory lots, movements, consumptions, genealogy, collection-unit links, and work orders associated with a HET. Example: GET /api/hets/HET-1001/inventory-trace.',
+        operationId: 'getHetInventoryTrace',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
+        params: z.object({ id: z.string() }),
+        response: { 200: inventoryTraceSchema, 401: errorResponse, 404: errorResponse },
+      },
+    },
+    async (req, reply) => {
+      const trace = await inventoryTraceService.getHetInventoryTrace(req.params.id, tenantIdOf(req));
+      if (!trace) return reply.status(404).send({ error: 'HET not found' });
+      return trace;
+    },
+  );
+
   app.post(
     '/:id/use',
     {
       onRequest: [app.requireRole('admin', 'owner')],
       schema: {
+        tags: ['HETs'],
+        summary: 'Mark HET in use',
+        description: 'Link a HET to the work order currently using it. Admin or owner role required.',
+        operationId: 'useHet',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
         params: z.object({ id: z.string() }),
         body: hetLinkBodySchema,
         response: {
@@ -87,6 +151,14 @@ export const hetRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('admin', 'owner')],
       schema: {
+        tags: ['HETs'],
+        summary: 'Mark HET finished',
+        description: 'Link a HET to the work order that finished consuming or producing it. Admin or owner role required.',
+        operationId: 'finishHet',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
         params: z.object({ id: z.string() }),
         body: hetLinkBodySchema,
         response: {

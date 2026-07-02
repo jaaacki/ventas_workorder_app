@@ -5,6 +5,7 @@ import type { JwtPayload } from '../plugins/auth.js';
 import * as sterilisationService from '../services/sterilisationService.js';
 
 const errorResponse = z.object({ error: z.string() });
+const decimalish = z.union([z.number(), z.string(), z.custom<Prisma.Decimal>()]);
 
 const hetRefSchema = z.object({
   hetId: z.string(),
@@ -14,21 +15,27 @@ const hetRefSchema = z.object({
   }),
 });
 
-const steriliseDetailSchema = z
-  .object({
-    id: z.string(),
-    workOrderId: z.string(),
-    manuId: z.string().nullable(),
-    direction: z.string().nullable(),
-    result: z.boolean().nullable(),
-    signById: z.string().nullable(),
-    createdById: z.string().nullable(),
-    updatedById: z.string().nullable(),
-    createdAt: z.date(),
-    updatedAt: z.date(),
-    batchHets: z.array(hetRefSchema),
-  })
-  .passthrough();
+const steriliseDetailSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+  createdById: z.string().nullable(),
+  updatedById: z.string().nullable(),
+  workOrderId: z.string(),
+  manuId: z.string().nullable(),
+  direction: z.string().nullable(),
+  result: z.boolean().nullable(),
+  betReading: decimalish.nullable(),
+  quantity: z.number().nullable(),
+  comment: z.string().nullable(),
+  imagePath: z.string().nullable(),
+  signOn: z.date().nullable(),
+  signById: z.string().nullable(),
+  signaturePath: z.string().nullable(),
+  keyText: z.string().nullable(),
+  batchHets: z.array(hetRefSchema),
+});
 
 const createBodySchema = z.object({
   workOrderId: z.string().min(1),
@@ -56,6 +63,14 @@ export const sterilisationRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('admin', 'owner')],
       schema: {
+        tags: ['Sterilisation'],
+        summary: 'Create sterilisation record',
+        description: 'Create an IN/OUT sterilisation or BET record linked to a work order. Admin or owner role required.',
+        operationId: 'createSterilisation',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
         body: createBodySchema,
         response: {
           201: steriliseDetailSchema,
@@ -93,6 +108,13 @@ export const sterilisationRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.authenticate],
       schema: {
+        tags: ['Sterilisation'],
+        summary: 'List sterilisation records',
+        description: 'Read sterilisation and BET records for a specific work order.',
+        operationId: 'listSterilisations',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
         querystring: z.object({ workOrderId: z.string().min(1) }),
         response: {
           200: z.array(steriliseDetailSchema),
@@ -110,6 +132,14 @@ export const sterilisationRoutes: FastifyPluginAsyncZod = async function (app) {
     {
       onRequest: [app.requireRole('admin', 'owner')],
       schema: {
+        tags: ['Sterilisation'],
+        summary: 'Set sterilisation result',
+        description: 'Update the pass/fail result for a sterilisation or BET record. Admin or owner role required.',
+        operationId: 'setSterilisationResult',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
         params: z.object({ id: z.string() }),
         body: patchBodySchema,
         response: {

@@ -47,6 +47,7 @@ export const procurementCrudResources = {
     entityType: 'SupplyEntity',
     delegate: 'supplyEntity',
     mutableFields: ['name', 'legalName', 'externalCode', 'sourceSystem', 'legacyGroupKey', 'legacyClinicId'],
+    createRequiredFields: ['name'],
     searchableFields: ['id', 'name', 'legalName', 'externalCode', 'legacyClinicId'],
     defaultOrderBy: [{ name: 'asc' }, { id: 'asc' }],
   },
@@ -65,6 +66,7 @@ export const procurementCrudResources = {
       'telephone',
       'personInCharge',
     ],
+    createRequiredFields: ['supplyEntityId', 'displayName'],
     searchableFields: ['id', 'displayName', 'licenseName', 'legacyClinicId', 'hciCode'],
     defaultOrderBy: [{ displayName: 'asc' }, { id: 'asc' }],
     validators: [
@@ -92,6 +94,7 @@ export const procurementCrudResources = {
       'hiddenFromOperations',
       'legacyRaw',
     ],
+    createRequiredFields: ['status'],
     searchableFields: ['id', 'legacyHetId', 'unitNumber', 'parcelTrackingNumber', 'legacyUsedByWorkOrderId'],
     defaultOrderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
     select: { ...unitSelect, legacyRaw: true },
@@ -116,6 +119,7 @@ export const procurementCrudResources = {
       'remarks',
       'legacyRaw',
     ],
+    createRequiredFields: ['issuedAt'],
     searchableFields: ['id', 'issuedBy', 'legacyDeliverCollectId', 'remarks'],
     defaultOrderBy: [{ issuedAt: 'desc' }, { createdAt: 'desc' }],
     validators: [
@@ -128,6 +132,7 @@ export const procurementCrudResources = {
     entityType: 'IssuanceOrderLine',
     delegate: 'issuanceOrderLine',
     mutableFields: ['issuanceOrderId', 'collectionUnitId', 'legacyHetId', 'legacyHetNumber', 'parcelTrackingNumber'],
+    createRequiredFields: ['issuanceOrderId'],
     searchableFields: ['id', 'issuanceOrderId', 'legacyHetId', 'legacyHetNumber', 'parcelTrackingNumber'],
     defaultOrderBy: [{ createdAt: 'desc' }],
     validators: [
@@ -140,6 +145,7 @@ export const procurementCrudResources = {
     entityType: 'CollectionUnitFulfilment',
     delegate: 'collectionUnitFulfilment',
     mutableFields: ['collectionUnitId', 'fulfilledAt', 'fulfilledBy', 'source', 'evidencePath', 'remarks', 'inferred'],
+    createRequiredFields: ['collectionUnitId'],
     searchableFields: ['id', 'collectionUnitId', 'fulfilledBy', 'source', 'remarks'],
     defaultOrderBy: [{ fulfilledAt: 'desc' }, { createdAt: 'desc' }],
     validators: [
@@ -165,6 +171,7 @@ export const procurementCrudResources = {
       'remarks',
       'legacyRaw',
     ],
+    createRequiredFields: ['status'],
     searchableFields: ['id', 'requestedBy', 'status', 'legacyCollectDeliverCollectId', 'remarks'],
     defaultOrderBy: [{ requestedAt: 'desc' }, { createdAt: 'desc' }],
     validators: [
@@ -187,6 +194,7 @@ export const procurementCrudResources = {
       'acceptanceState',
       'legacyRaw',
     ],
+    createRequiredFields: ['collectionOrderId'],
     searchableFields: ['id', 'receivedBy', 'legacyCollectDeliverCollectId', 'acceptanceState', 'remarks'],
     defaultOrderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }],
     validators: [
@@ -198,6 +206,7 @@ export const procurementCrudResources = {
     entityType: 'CollectionReceiptLine',
     delegate: 'collectionReceiptLine',
     mutableFields: ['collectionReceiptId', 'collectionUnitId', 'conditionStatus', 'acceptanceStatus', 'resultingHetId', 'discrepancyReason'],
+    createRequiredFields: ['collectionReceiptId'],
     searchableFields: ['id', 'collectionReceiptId', 'collectionUnitId', 'acceptanceStatus', 'resultingHetId', 'discrepancyReason'],
     defaultOrderBy: [{ createdAt: 'desc' }],
     validators: [

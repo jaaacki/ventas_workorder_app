@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import type { JwtPayload } from '../plugins/auth.js';
@@ -61,6 +62,7 @@ export interface CrudResourceConfig {
   entityType: string;
   delegate: keyof typeof prisma;
   mutableFields: readonly string[];
+  createRequiredFields?: readonly string[];
   searchableFields?: readonly string[];
   defaultOrderBy?: unknown;
   include?: unknown;
@@ -88,6 +90,31 @@ function stripUndefined(payload: Record<string, unknown>) {
 export function pickMutable(config: CrudResourceConfig, payload: Record<string, unknown>) {
   const allowed = new Set(config.mutableFields);
   return stripUndefined(Object.fromEntries(Object.entries(payload).filter(([key]) => allowed.has(key))));
+}
+
+function unsupportedFields(config: CrudResourceConfig, payload: Record<string, unknown>, options: { allowId?: boolean } = {}) {
+  const allowed = new Set(config.mutableFields);
+  if (options.allowId) allowed.add('id');
+  return Object.keys(stripUndefined(payload)).filter((key) => !allowed.has(key));
+}
+
+function validatePayloadFields(config: CrudResourceConfig, payload: Record<string, unknown>, options: { allowId?: boolean } = {}) {
+  const unsupported = unsupportedFields(config, payload, options);
+  if (unsupported.length) {
+    throw new CrudValidationError(`Unsupported field${unsupported.length === 1 ? '' : 's'}: ${unsupported.join(', ')}`);
+  }
+}
+
+function hasOperationalValue(value: unknown) {
+  if (value === null || value === undefined) return false;
+  return typeof value !== 'string' || value.trim() !== '';
+}
+
+function validateCreateRequiredFields(config: CrudResourceConfig, payload: Record<string, unknown>) {
+  const missing = (config.createRequiredFields ?? []).filter((field) => !hasOperationalValue(payload[field]));
+  if (missing.length) {
+    throw new CrudValidationError(`Missing required field${missing.length === 1 ? '' : 's'}: ${missing.join(', ')}`);
+  }
 }
 
 function listWhere(config: CrudResourceConfig, options: CrudListOptions, tenantId: string) {
@@ -145,12 +172,15 @@ export async function getCrud(config: CrudResourceConfig, id: string, tenantId?:
 
 export async function createCrud(config: CrudResourceConfig, input: { tenantId?: string | null; actor: JwtPayload; payload: Record<string, unknown> }): Promise<any> {
   const tenantId = tenantIdOrDefault(input.tenantId);
+  validatePayloadFields(config, input.payload, { allowId: true });
+  validateCreateRequiredFields(config, input.payload);
   const payload = pickMutable(config, input.payload);
   if (!Object.keys(payload).length) throw new CrudValidationError('At least one mutable field is required');
   await runValidators(config, { tenantId, payload });
 
   const created = await delegateFor(config).create({
     data: {
+      id: typeof input.payload.id === 'string' && input.payload.id.trim() ? input.payload.id.trim() : randomUUID(),
       ...payload,
       tenantId,
       createdById: input.actor.id,
@@ -177,6 +207,7 @@ export async function updateCrud(config: CrudResourceConfig, input: { id: string
   if (!existing) return null;
   if (existing.deleted) throw new CrudConflictError('Archived records must be restored before update');
 
+  validatePayloadFields(config, input.payload);
   const payload = pickMutable(config, input.payload);
   if (!Object.keys(payload).length) throw new CrudValidationError('At least one mutable field is required');
   await runValidators(config, { tenantId, id: input.id, payload, existing });

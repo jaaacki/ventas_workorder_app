@@ -41,8 +41,6 @@ const crudQuerySchema = z.object({
   relationshipType: z.string().optional(),
 });
 
-const mutationBodySchema = z.record(z.string(), z.unknown());
-
 export interface CrudRouteDefinition<ResourceKey extends string> {
   key: ResourceKey;
   path: string;
@@ -94,6 +92,29 @@ function filtersFromQuery(query: Record<string, unknown>, allowedFilters: readon
     if (value !== undefined && value !== '') filters[key] = value;
   }
   return filters;
+}
+
+function hasOperationalValue(value: unknown) {
+  if (value === null || value === undefined) return false;
+  return typeof value !== 'string' || value.trim() !== '';
+}
+
+function mutationBodySchema(definition: CrudRouteDefinition<string>, mode: 'create' | 'update') {
+  const requiredFields = mode === 'create' ? definition.config.createRequiredFields ?? [] : [];
+  const shape: Record<string, z.ZodTypeAny> = {};
+  if (mode === 'create') shape.id = z.string().trim().min(1).optional();
+  for (const field of definition.config.mutableFields) {
+    const fieldSchema = z.unknown();
+    shape[field] = requiredFields.includes(field)
+      ? fieldSchema.refine(hasOperationalValue, `${field} is required`)
+      : fieldSchema.optional();
+  }
+  return z.object(shape)
+    .strict()
+    .refine(
+      (payload) => Object.keys(payload).some((field) => field !== 'id' || mode === 'create'),
+      'At least one mutable field is required',
+    );
 }
 
 async function handleCrudError(reply: FastifyReply, error: unknown) {
@@ -188,7 +209,7 @@ export function registerCrudRoutes<ResourceKey extends string>(
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'resource-crud',
         ...permissionMeta('create'),
-        body: mutationBodySchema,
+        body: mutationBodySchema(definition, 'create'),
         response: { 201: definition.schema, 400: errorResponse, 401: errorResponse, 403: errorResponse, 409: errorResponse },
       },
     },
@@ -219,7 +240,7 @@ export function registerCrudRoutes<ResourceKey extends string>(
         'x-route-kind': 'resource-crud',
         ...permissionMeta('update'),
         params: z.object({ id: z.string() }),
-        body: mutationBodySchema,
+        body: mutationBodySchema(definition, 'update'),
         response: { 200: definition.schema, 400: errorResponse, 401: errorResponse, 403: errorResponse, 404: errorResponse, 409: errorResponse },
       },
     },

@@ -205,6 +205,18 @@ const editorFieldLabels: Record<EditableKind, Record<string, string>> = {
   },
 };
 
+const requiredFields: Record<EditableKind, string[]> = {
+  supply: ['name'],
+  point: ['supplyEntityId', 'displayName'],
+  unit: ['status'],
+  issuance: ['issuedAt'],
+  issuanceLine: ['issuanceOrderId'],
+  fulfilment: ['collectionUnitId'],
+  order: ['status'],
+  receipt: ['collectionOrderId'],
+  receiptLine: ['collectionReceiptId'],
+};
+
 function formatDate(value?: string | null) {
   return value ? new Date(value).toLocaleString() : '-';
 }
@@ -842,9 +854,8 @@ function ImportReportsTable({
 export default function ProcurementPage() {
   const queryClient = useQueryClient();
   const hasPermission = useAuthStore((state) => state.hasPermission);
-  const role = useAuthStore((state) => state.user?.role?.key || 'user');
   const [includeHidden, setIncludeHidden] = useState(false);
-  const [includeDeleted, setIncludeDeleted] = useState(false);
+  const [includeDeletedByKind, setIncludeDeletedByKind] = useState<Partial<Record<ActionKind, boolean>>>({});
   const [unitSearch, setUnitSearch] = useState('');
   const [editor, setEditor] = useState<EditorState>(null);
   const [audit, setAudit] = useState<AuditState>(null);
@@ -858,9 +869,13 @@ export default function ProcurementPage() {
     readDeleted: can(kind, 'readDeleted'),
     readAudit: can(kind, 'readAudit'),
   });
-  const canIncludeDeleted = (Object.keys(resourceByKind) as ActionKind[]).some((kind) => can(kind, 'readDeleted') || can(kind, 'readAudit'));
-  const includeDeletedFor = (kind: ActionKind) => includeDeleted && (can(kind, 'readDeleted') || can(kind, 'readAudit'));
-  const canReadImports = role === 'owner' || role === 'admin' || can('import', 'read');
+  const canSeeDeletedFor = (kind: ActionKind) => can(kind, 'readDeleted') || can(kind, 'readAudit');
+  const includeDeletedFor = (kind: ActionKind) => Boolean(includeDeletedByKind[kind]) && canSeeDeletedFor(kind);
+  const toggleIncludeDeletedFor = (kind: ActionKind) => setIncludeDeletedByKind((current) => ({ ...current, [kind]: !current[kind] }));
+  const includeDeletedToggle = (kind: ActionKind, label: string) => canSeeDeletedFor(kind) ? (
+    <IncludeDeletedButton includeDeleted={Boolean(includeDeletedByKind[kind])} label={label} onToggle={() => toggleIncludeDeletedFor(kind)} />
+  ) : null;
+  const canReadImports = can('import', 'read');
 
   const overview = useQuery({ queryKey: ['procurement', 'overview'], queryFn: fetchProcurementOverview });
   const entities = useQuery({
@@ -1188,8 +1203,9 @@ export default function ProcurementPage() {
   const renderEditorFields = () => {
     if (!editor) return null;
     const value = (key: string) => String(editor.values[key] ?? '');
+    const isRequired = (key: string) => requiredFields[editor.kind].includes(key);
     const selectField = (key: string, options: Array<{ value: string; label: string }>, label?: string) => (
-      <SelectField key={key} label={label ?? editorFieldLabels[editor.kind][key]} value={value(key)} options={options} onChange={(next) => setField(key, next)} />
+      <SelectField key={key} label={label ?? editorFieldLabels[editor.kind][key]} value={value(key)} options={options} required={isRequired(key)} allowEmpty={!isRequired(key)} onChange={(next) => setField(key, next)} />
     );
     const enumField = (key: string, values: string[], label?: string) => selectField(key, values.map((entry) => ({ value: entry, label: entry.replace(/_/g, ' ') })), label);
     const relationshipField = (key: string) => {
@@ -1204,7 +1220,7 @@ export default function ProcurementPage() {
     if (editor.kind === 'supply') {
       return (
         <>
-          <TextField label="Name" value={value('name')} onChange={(next) => setField('name', next)} />
+          <TextField label="Name" value={value('name')} required onChange={(next) => setField('name', next)} />
           <TextField label="Legal name" value={value('legalName')} onChange={(next) => setField('legalName', next)} />
           <TextField label="External code" value={value('externalCode')} onChange={(next) => setField('externalCode', next)} />
           <TextField label="Legacy clinic" value={value('legacyClinicId')} onChange={(next) => setField('legacyClinicId', next)} />
@@ -1246,7 +1262,7 @@ export default function ProcurementPage() {
                 ? enumField(key, ['intact', 'damaged', 'missing', 'unknown'])
                 : key === 'source'
                   ? enumField(key, ['manual', 'legacy', 'api', 'inferred'])
-                  : <TextField key={key} label={labels[key] ?? key.replace(/([A-Z])/g, ' $1')} value={value(key)} onChange={(next) => setField(key, next)} />)
+                  : <TextField key={key} label={labels[key] ?? key.replace(/([A-Z])/g, ' $1')} value={value(key)} required={isRequired(key)} onChange={(next) => setField(key, next)} />)
         ))}
         {booleanFields.map((key) => (
           <CheckboxField key={key} label={labels[key] ?? (key === 'legacyConflatedOrderReceipt' ? 'Conflated order/receipt' : key.replace(/([A-Z])/g, ' $1'))} checked={Boolean(editor.values[key])} onChange={(next) => setField(key, next)} />
@@ -1265,10 +1281,22 @@ export default function ProcurementPage() {
             <Button type="button" variant="outline" onClick={() => setIncludeHidden((value) => !value)}>
               {includeHidden ? 'Hide placeholders' : 'Show placeholders'}
             </Button>
-            {canIncludeDeleted && <IncludeDeletedButton includeDeleted={includeDeleted} onToggle={() => setIncludeDeleted((value) => !value)} />}
           </div>
         }
       />
+
+      <div className="flex flex-wrap gap-2">
+        {includeDeletedToggle('unit', 'units')}
+        {includeDeletedToggle('fulfilment', 'fulfilments')}
+        {includeDeletedToggle('supply', 'supply entities')}
+        {includeDeletedToggle('point', 'collection points')}
+        {includeDeletedToggle('issuance', 'issuance orders')}
+        {includeDeletedToggle('issuanceLine', 'issuance lines')}
+        {includeDeletedToggle('order', 'collection orders')}
+        {includeDeletedToggle('receipt', 'receipts')}
+        {includeDeletedToggle('receiptLine', 'receipt lines')}
+        {includeDeletedToggle('import', 'imports')}
+      </div>
 
       {hasError && (
         <div className="flex items-start gap-3 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-500/30 dark:bg-error-500/10 dark:text-error-300">
@@ -1494,15 +1522,18 @@ export default function ProcurementPage() {
           </TabsContent>
 
           <TabsContent value="imports" className="mt-4">
-            {!canReadImports ? <EmptyState icon={<FileClock className="h-6 w-6" />} title="Import reports require admin access" /> : importReports.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load import reports" /> : importReports.isLoading ? <EmptyState icon={<FileClock className="h-6 w-6" />} title="Loading import reports" /> : (
-              <ImportReportsTable
-                reports={importReports.data ?? []}
-                permissions={permissions('import')}
-                busy={mutationBusy}
-                onArchive={(id) => archiveMutation.mutate({ kind: 'import', id })}
-                onRestore={(id) => restoreMutation.mutate({ kind: 'import', id })}
-                onAudit={(id, label) => setAudit({ kind: 'import', id, label })}
-              />
+            {!canReadImports ? <EmptyState icon={<FileClock className="h-6 w-6" />} title="Import reports require import-report read permission" /> : importReports.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load import reports" /> : importReports.isLoading ? <EmptyState icon={<FileClock className="h-6 w-6" />} title="Loading import reports" /> : (
+              <div className="space-y-3">
+                <div className="rounded-lg border border-gray-200 px-4 py-3 text-sm text-gray-600 dark:border-gray-800 dark:text-gray-400">Import report content is immutable audit evidence. Authorized users can archive, restore, and inspect audit history only.</div>
+                <ImportReportsTable
+                  reports={importReports.data ?? []}
+                  permissions={permissions('import')}
+                  busy={mutationBusy}
+                  onArchive={(id) => archiveMutation.mutate({ kind: 'import', id })}
+                  onRestore={(id) => restoreMutation.mutate({ kind: 'import', id })}
+                  onAudit={(id, label) => setAudit({ kind: 'import', id, label })}
+                />
+              </div>
             )}
           </TabsContent>
         </Tabs>

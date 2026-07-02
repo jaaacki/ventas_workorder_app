@@ -1,0 +1,18 @@
+{
+  "projectId": "b411c900-076f-4dff-a51d-c5c3428a611e",
+  "shape": "package",
+  "pkg": "@workorder/fe",
+  "srcDir": "src/components/ui",
+  "tsconfig": "tsconfig.json",
+  "cssEntry": "dist/assets/index-B-G3WP_Q.css",
+  "extraFonts": ["../../../node_modules/@fontsource-variable/geist/wght.css"],
+  "overrides": {
+    "Dialog": { "cardMode": "single", "viewport": "480x360" },
+    "Select": { "cardMode": "single", "viewport": "320x360" },
+    "DropdownMenu": { "cardMode": "single", "viewport": "320x420" },
+    "Sheet": { "cardMode": "single", "viewport": "420x480" },
+    "Tooltip": { "cardMode": "single", "viewport": "280x160" },
+    "Table": { "cardMode": "column" }
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}

@@ -1,0 +1,57 @@
+/* Ventas brand tokens — CI applied to the design system.
+   Philosophy: scarlet is a VOICE, not the UI primary. Everyday actions are ink/neutral;
+   red is reserved for the critical (destructive/blocked) so it stays loud; scarlet marks
+   the brand (logo) and a few deliberate accents via --brand.
+   Load AFTER styles.css. Light = :root, dark = .dark on an ancestor (e.g. <html>). */
+
+:root{
+  --brand:#E5330E;               /* Ventas Scarlet — logo + sparing accents only */
+
+  --background:#FBFBFA;
+  --foreground:#16161A;
+  --card:#FFFFFF;
+  --card-foreground:#16161A;
+  --popover:#FFFFFF;
+  --popover-foreground:#16161A;
+
+  --primary:#16161A;             /* ink — the workhorse action color */
+  --primary-foreground:#FFFFFF;
+
+  --secondary:#F2F0EC;
+  --secondary-foreground:#16161A;
+  --muted:#F2F0EC;
+  --muted-foreground:#6B6A67;
+  --accent:#F1EFEB;             /* neutral hover surface (no red tint) */
+  --accent-foreground:#16161A;
+
+  --destructive:#E5330E;         /* scarlet = critical only — now rare, so it shouts */
+  --border:#E8E5E0;
+  --input:#DAD6CE;
+  --ring:#16161A;
+}
+
+.dark{
+  --brand:#FF4A1C;
+
+  --background:#0B0B0C;           /* Ventas Space */
+  --foreground:#F4F3F1;
+  --card:#16161A;
+  --card-foreground:#F4F3F1;
+  --popover:#16161A;
+  --popover-foreground:#F4F3F1;
+
+  --primary:#F4F3F1;            /* light ink on space */
+  --primary-foreground:#0B0B0C;
+
+  --secondary:#26262B;
+  --secondary-foreground:#F4F3F1;
+  --muted:#26262B;
+  --muted-foreground:#9A9A98;
+  --accent:#232327;
+  --accent-foreground:#F4F3F1;
+
+  --destructive:#FF4A1C;
+  --border:oklch(100% 0 0/.12);
+  --input:oklch(100% 0 0/.16);
+  --ring:#F4F3F1;
+}

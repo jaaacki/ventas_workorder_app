@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ventas Bio — Identity Foundation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500&display=swap" rel="stylesheet">
+<style>
+  @font-face{
+    font-family:'Geist';font-style:normal;font-display:swap;font-weight:100 900;
+    src:url(../fonts/geist-latin-wght-normal.woff2) format('woff2-variations');
+  }
+  :root{
+    /* ---- Ventas brand core ---- */
+    --scarlet:#E5330E;      /* primary brand */
+    --scarlet-bright:#FF4A1C;
+    --scarlet-deep:#A8180B;
+    --black:#0B0B0C;
+    --ink:#16161A;
+    --white:#FFFFFF;
+    /* ---- secondary / scientific ---- */
+    --depth:#0E4C6E;
+    --cyan:#2CA6C9;
+    --green:#1F8A5B;
+    --amber:#C08117;
+    /* ---- light neutrals ---- */
+    --paper:#FBFBFA;
+    --card:#FFFFFF;
+    --line:#E8E5E0;
+    --line-strong:#D8D4CC;
+    --muted:#6B6A67;
+    --faint:#9C9A96;
+    --shadow:0 1px 2px rgba(11,11,12,.04),0 10px 30px rgba(11,11,12,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--paper);color:var(--ink);
+    font-family:'Geist',system-ui,sans-serif;font-size:16px;line-height:1.6;
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  }
+  .serif{font-family:'Playfair Display',Georgia,serif}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 44px}
+  .mono{font-family:ui-monospace,'SF Mono',Menlo,monospace}
+  h1,h2,h3,h4{line-height:1.1;letter-spacing:-.01em;font-weight:600}
+  section{padding:92px 0;border-top:1px solid var(--line)}
+  .eyebrow{font-size:12px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--scarlet)}
+  .section-head{max-width:720px;margin-bottom:52px}
+  .section-head h2{font-size:36px;margin:14px 0 14px;letter-spacing:-.02em}
+  .section-head .serif{font-weight:600}
+  .section-head p{color:var(--muted);font-size:17px;max-width:620px}
+
+  /* ---------- masthead ---------- */
+  header.top{position:sticky;top:0;z-index:20;background:rgba(251,251,250,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  header.top .wrap{display:flex;align-items:center;gap:16px;padding-top:16px;padding-bottom:16px}
+  .navlinks{margin-left:auto;display:flex;gap:26px;font-size:13.5px;color:var(--muted)}
+  .navlinks a{color:inherit;text-decoration:none}
+  .navlinks a:hover{color:var(--ink)}
+
+  /* logo lockup (CSS recreation) */
+  .logo{display:flex;flex-direction:column;line-height:.95}
+  .logo .word{font-family:'Playfair Display',serif;font-weight:700;letter-spacing:.02em;font-size:26px}
+  .logo .word .v{color:var(--scarlet)}
+  .logo .word .b{color:var(--faint);font-weight:500}
+  .logo .tag{font-family:'Playfair Display',serif;font-size:9.5px;letter-spacing:.34em;text-transform:uppercase;color:var(--muted);margin-top:3px;padding-left:2px}
+  .logo.on-dark .word{color:#fff}
+  .logo.on-dark .word .b{color:#9A9A98}
+  .logo.on-dark .tag{color:#B9B7B2}
+
+  /* ---------- hero ---------- */
+  .hero{background:var(--black);color:#EDEBE8;border-top:none;position:relative;overflow:hidden}
+  .hero::after{content:"";position:absolute;inset:0;background:
+    radial-gradient(1200px 500px at 78% -10%, rgba(44,166,201,.16), transparent 60%),
+    radial-gradient(700px 380px at 12% 120%, rgba(229,51,14,.14), transparent 60%);pointer-events:none}
+  .hero .wrap{position:relative;z-index:1;padding-top:120px;padding-bottom:120px}
+  .hero .eyebrow{color:var(--scarlet-bright)}
+  .hero h1{font-family:'Playfair Display',serif;font-weight:600;font-size:76px;line-height:1;margin:22px 0 26px;letter-spacing:-.02em;color:#fff}
+  .hero h1 .accent{color:var(--scarlet-bright);font-style:italic}
+  .hero .lede{font-size:19px;line-height:1.6;color:#B9B7B2;max-width:640px}
+  .hero .rule{width:64px;height:3px;background:var(--scarlet);margin:34px 0 0}
+
+  /* ---------- generic cards ---------- */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow)}
+  .grid{display:grid;gap:18px}
+
+  /* ---------- essence ---------- */
+  .essence{display:grid;grid-template-columns:1.1fr 1fr;gap:60px;align-items:center}
+  .principle{padding:20px 0;border-top:1px solid var(--line)}
+  .principle:first-child{border-top:none;padding-top:0}
+  .principle h4{font-size:17px;margin-bottom:5px}
+  .principle p{color:var(--muted);font-size:14.5px}
+  .pull{font-family:'Playfair Display',serif;font-size:30px;line-height:1.3;color:var(--ink)}
+  .pull .accent{color:var(--scarlet)}
+
+  /* ---------- logo section ---------- */
+  .logo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  .logo-tile{border:1px solid var(--line);border-radius:14px;padding:34px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:150px}
+  .logo-tile.dark{background:var(--black)}
+  .logo-tile .cap{font-size:12px;color:var(--faint)}
+  .logo-tile.dark .cap{color:#7A7975}
+  .mark{width:46px;height:46px;display:grid;place-items:center;font-family:'Playfair Display',serif;font-weight:700;font-size:30px;color:var(--scarlet);border:2px solid var(--scarlet);border-radius:12px}
+  .mark.solid{background:var(--scarlet);color:#fff;border-color:var(--scarlet)}
+  .clearspace{position:relative;border:1px dashed var(--line-strong);border-radius:14px;padding:38px;display:flex;justify-content:center}
+  .clearspace .box{border:1px dashed var(--scarlet);padding:22px;border-radius:8px}
+  .dos{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
+  .do,.dont{border-radius:12px;padding:16px 18px;font-size:13.5px;border:1px solid var(--line)}
+  .do{background:color-mix(in oklch,var(--green) 8%,var(--card))}
+  .dont{background:color-mix(in oklch,var(--scarlet) 7%,var(--card))}
+  .do b{color:var(--green)}.dont b{color:var(--scarlet-deep)}
+  .do ul,.dont ul{margin:8px 0 0 16px;color:var(--muted)}
+
+  /* ---------- color ---------- */
+  .sw-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px}
+  .sw{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card)}
+  .sw .chip{height:96px}
+  .sw .meta{padding:13px 15px}
+  .sw .nm{font-size:14px;font-weight:600}
+  .sw .hx{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .sw .role{font-size:12px;color:var(--faint);margin-top:6px}
+  .sub-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:8px}
+  .sw.sm .chip{height:64px}
+
+  .tokens{border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-top:8px}
+  .tokens .thead{display:grid;grid-template-columns:1.4fr 1fr 1fr;background:var(--paper);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);padding:12px 18px;border-bottom:1px solid var(--line)}
+  .trow{display:grid;grid-template-columns:1.4fr 1fr 1fr;padding:12px 18px;border-bottom:1px solid var(--line);align-items:center;font-size:13.5px}
+  .trow:last-child{border-bottom:none}
+  .trow .tk{font-family:ui-monospace,monospace;font-size:12.5px}
+  .val{display:flex;align-items:center;gap:9px;color:var(--muted)}
+  .val .dot{width:16px;height:16px;border-radius:5px;border:1px solid rgba(0,0,0,.12);flex-shrink:0}
+
+  /* ---------- typography ---------- */
+  .type-grid{display:grid;grid-template-columns:1fr 1fr;gap:40px}
+  .specimen{border:1px solid var(--line);border-radius:16px;padding:30px;background:var(--card)}
+  .specimen .lbl{font-size:12px;color:var(--faint);letter-spacing:.06em;text-transform:uppercase;margin-bottom:18px}
+  .specimen .big{font-size:62px;line-height:1}
+  .specimen .aa{font-size:15px;color:var(--muted);margin-top:14px}
+  .scale{margin-top:26px;display:flex;flex-direction:column;gap:0}
+  .scale .r{display:flex;align-items:baseline;gap:16px;padding:12px 0;border-top:1px solid var(--line)}
+  .scale .r .role{width:120px;flex-shrink:0;font-size:12px;color:var(--faint)}
+  .scale .r .px{margin-left:auto;font-size:12px;color:var(--faint)}
+
+  /* ---------- UI application ---------- */
+  .ui-band{background:var(--ink);color:#EDEBE8}
+  .ui-band .section-head h2{color:#fff}
+  .ui-band .section-head p{color:#A9A7A2}
+  .ui-band .eyebrow{color:var(--scarlet-bright)}
+  .demo{background:var(--card);color:var(--ink);border-radius:18px;padding:30px;margin-bottom:18px}
+  .demo.dark{background:var(--black);color:#EDEBE8;border:1px solid #26262B}
+  .demo h4{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:18px}
+  .demo.dark h4{color:#7A7975}
+  .btnrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .btn{font-family:'Geist',sans-serif;font-size:13.5px;font-weight:500;border-radius:9px;padding:9px 15px;border:1px solid transparent;cursor:default;display:inline-flex;gap:7px;align-items:center}
+  .btn.primary{background:var(--ink);color:#fff}
+  .btn.secondary{background:#F0EEEA;color:var(--ink)}
+  .btn.outline{background:transparent;border-color:var(--line-strong);color:var(--ink)}
+  .btn.ghost{background:transparent;color:var(--ink)}
+  .btn.destructive{background:var(--scarlet);color:#fff}
+  .demo.dark .btn.secondary{background:#26262B;color:#EDEBE8}
+  .demo.dark .btn.outline{border-color:#34343A;color:#EDEBE8}
+  .demo.dark .btn.ghost{color:#EDEBE8}
+  .demo.dark .btn.primary{background:#F4F3F1;color:#0B0B0C}
+
+  .badges{display:flex;gap:9px;flex-wrap:wrap}
+  .bdg{font-size:12px;font-weight:500;border-radius:999px;padding:3px 11px;border:1px solid transparent}
+  .bdg.released{background:color-mix(in oklch,var(--green) 14%,#fff);color:var(--green)}
+  .bdg.prod{background:#F0EEEA;color:var(--muted)}
+  .bdg.info{background:color-mix(in oklch,var(--depth) 12%,#fff);color:var(--depth)}
+  .bdg.held{background:color-mix(in oklch,var(--amber) 16%,#fff);color:#8A5B0C}
+  .bdg.blocked{background:color-mix(in oklch,var(--scarlet) 13%,#fff);color:var(--scarlet-deep)}
+  .bdg.outline{border-color:var(--line-strong);color:var(--muted)}
+
+  .navdemo{display:flex;flex-direction:column;gap:3px;max-width:230px}
+  .ni{display:flex;align-items:center;gap:10px;padding:8px 11px;border-radius:9px;font-size:13.5px;color:var(--muted)}
+  .ni.on{background:#F1EFEB;color:var(--ink);font-weight:600;box-shadow:inset 3px 0 0 var(--scarlet)}
+  .ni .d{width:15px;height:15px;border-radius:4px;border:1.6px solid currentColor;opacity:.6}
+  .ni.on .d{opacity:.9;border-color:var(--scarlet)}
+
+  .beforeafter{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px}
+  .ba{border-radius:14px;padding:22px;border:1px solid var(--line)}
+  .ba .tagba{font-size:11px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:14px}
+  .ba.old .tagba{color:var(--faint)}
+  .ba.new .tagba{color:var(--scarlet)}
+  .ba .btn.indigo{background:#4F46E5;color:#fff}
+
+  /* ---------- imagery / icons ---------- */
+  .icon-set{display:flex;gap:14px;flex-wrap:wrap;margin-top:6px}
+  .icell{width:64px;height:64px;border:1px solid var(--line);border-radius:14px;display:grid;place-items:center;color:var(--ink)}
+  .img-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:8px}
+  .imgtile{border-radius:14px;overflow:hidden;height:170px;position:relative;border:1px solid var(--line)}
+  .imgtile .lab{position:absolute;left:14px;bottom:12px;color:#fff;font-size:12.5px;z-index:2;text-shadow:0 1px 4px rgba(0,0,0,.5)}
+  .imgtile.duo{background:linear-gradient(135deg,var(--black),var(--depth))}
+  .imgtile.duo.red{background:linear-gradient(135deg,var(--black),var(--scarlet-deep))}
+  .imgtile.ocean{background:linear-gradient(180deg,#2CA6C9,#0E4C6E 70%,var(--black))}
+  .imgtile .grain{position:absolute;inset:0;opacity:.5;background-image:radial-gradient(circle at 30% 40%,rgba(255,255,255,.14),transparent 40%),radial-gradient(circle at 70% 65%,rgba(255,255,255,.08),transparent 45%)}
+
+  footer{padding:64px 0;color:var(--faint);font-size:13px;border-top:1px solid var(--line)}
+  footer .wrap{display:flex;align-items:center;gap:16px}
+
+  @media(max-width:900px){
+    .wrap{padding:0 24px}
+    .hero h1{font-size:48px}
+    .essence,.type-grid,.beforeafter{grid-template-columns:1fr}
+    .logo-grid,.sw-row{grid-template-columns:1fr}
+    .sub-row,.img-grid{grid-template-columns:1fr 1fr}
+    .tokens .thead,.trow{grid-template-columns:1.4fr 1fr}
+    .tokens .thead span:last-child,.trow .val:last-child{display:none}
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="logo">
+      <div class="word"><span class="v">V</span>ENTAS <span class="b">BIO</span></div>
+      <div class="tag">Think Biology.</div>
+    </div>
+    <nav class="navlinks">
+      <a href="#essence">Essence</a>
+      <a href="#logo">Logo</a>
+      <a href="#color">Color</a>
+      <a href="#type">Type</a>
+      <a href="#ui">UI</a>
+      <a href="#imagery">Imagery</a>
+    </nav>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Identity Foundation · v1</div>
+    <h1>Think <span class="accent">Biology</span>.</h1>
+    <p class="lede">The corporate identity ground for Ventas Bio — carried from the AmGraft® brand into the WorkOrder product. One scarlet, deep space, an editorial serif, and the language of regenerative science. Everything downstream inherits from here.</p>
+    <div class="rule"></div>
+  </div>
+</section>
+
+<!-- ESSENCE -->
+<section id="essence">
+  <div class="wrap essence">
+    <div>
+      <div class="eyebrow">Brand essence</div>
+      <h2 class="serif" style="font-size:36px;margin:14px 0 22px">Precision, made to feel effortless.</h2>
+      <div class="principle"><h4>Scientific, not clinical-cold</h4><p>We are a regenerative-medicine company. The identity is exact and evidence-led, but warm and human — never sterile.</p></div>
+      <div class="principle"><h4>Depth as metaphor</h4><p>"Dive to the science." Deep space, layered detail, a sense of going beneath the surface to where the biology happens.</p></div>
+      <div class="principle"><h4>Scarlet is a voice, not paint</h4><p>The accent marks the brand and the critical — the logo, a selected indicator, a blocked badge. Everyday actions are ink. Kept rare, red stays loud when it must.</p></div>
+    </div>
+    <div>
+      <div class="pull serif">"Explore the depths of regenerative medicine — <span class="accent">leading the way</span> in bone and tissue regeneration."</div>
+      <div style="margin-top:28px;display:flex;flex-wrap:wrap;gap:8px">
+        <span class="bdg outline">AmGraft®</span>
+        <span class="bdg outline">HaptoTech ATRS™</span>
+        <span class="bdg outline">Regeneration</span>
+        <span class="bdg outline">Traceability</span>
+        <span class="bdg outline">Predictability</span>
+      </div>
+      <div style="margin-top:26px;color:var(--muted);font-size:14px;line-height:1.7">
+        <b style="color:var(--ink)">Voice:</b> confident, precise, unhurried. Short declaratives. Say what the product knows. In the WorkOrder app this means <i>naming the job</i>, not the database — “What can I release today?”, not “QA queue.”
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- LOGO -->
+<section id="logo">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Logo</div>
+      <h2>The <span class="serif">Ventas Bio</span> lockup</h2>
+      <p>An editorial serif wordmark with a scarlet initial and the “Think Biology.” signature. In-product, the <b>V</b> mark stands alone as the app avatar and favicon.</p>
+    </div>
+    <div class="logo-grid">
+      <div class="logo-tile">
+        <div class="logo"><div class="word"><span class="v">V</span>ENTAS <span class="b">BIO</span></div><div class="tag">Think Biology.</div></div>
+        <div class="cap">Primary · on light</div>
+      </div>
+      <div class="logo-tile dark">
+        <div class="logo on-dark"><div class="word"><span class="v">V</span>ENTAS <span class="b">BIO</span></div><div class="tag">Think Biology.</div></div>
+        <div class="cap">Reversed · on space</div>
+      </div>
+      <div class="logo-tile">
+        <div style="display:flex;gap:14px;align-items:center">
+          <div class="mark">V</div><div class="mark solid">V</div>
+        </div>
+        <div class="cap">The V mark · app avatar &amp; favicon</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:22px;align-items:start">
+      <div>
+        <div class="cap" style="font-size:12px;color:var(--faint);margin-bottom:10px">Clear space — keep a margin of the cap-height “V” on all sides.</div>
+        <div class="clearspace"><div class="box"><div class="logo"><div class="word"><span class="v">V</span>ENTAS <span class="b">BIO</span></div><div class="tag">Think Biology.</div></div></div></div>
+      </div>
+      <div class="dos">
+        <div class="do"><b>Do</b><ul><li>Keep the V scarlet, wordmark mono</li><li>Reverse to white on dark space</li><li>Use the V mark alone at small sizes</li></ul></div>
+        <div class="dont"><b>Don't</b><ul><li>Recolor the whole wordmark scarlet</li><li>Add shadows, gradients or outlines</li><li>Stretch, rotate, or reset the tagline in sans</li></ul></div>
+      </div>
+    </div>
+    <p style="font-size:12.5px;color:var(--faint);margin-top:16px">Shown here as a CSS recreation for reference. Replace with the supplied vector master (<span class="mono">VB-logo</span>) in production.</p>
+  </div>
+</section>
+
+<!-- COLOR -->
+<section id="color">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Color</div>
+      <h2>Ink does the work, scarlet carries the brand</h2>
+      <p>Everyday actions run on ink over near-black and paper-white. Scarlet is spent only where it counts — the mark and the critical. Scientific secondaries (ocean, green, amber) carry meaning in the product: status, not decoration.</p>
+    </div>
+
+    <div class="eyebrow" style="color:var(--faint);margin-bottom:14px">Brand core</div>
+    <div class="sw-row">
+      <div class="sw"><div class="chip" style="background:var(--scarlet)"></div><div class="meta"><div class="nm">Ventas Scarlet</div><div class="hx mono">#E5330E</div><div class="role">Brand voice — logo, indicators, critical states</div></div></div>
+      <div class="sw"><div class="chip" style="background:var(--black)"></div><div class="meta"><div class="nm">Ventas Space</div><div class="hx mono">#0B0B0C</div><div class="role">Dark canvas, hero, reversed surfaces</div></div></div>
+      <div class="sw"><div class="chip" style="background:var(--paper);border-bottom:1px solid var(--line)"></div><div class="meta"><div class="nm">Paper</div><div class="hx mono">#FBFBFA</div><div class="role">Light app canvas (default)</div></div></div>
+    </div>
+
+    <div class="eyebrow" style="color:var(--faint);margin:26px 0 14px">Scientific secondaries — meaning-bearing</div>
+    <div class="sub-row">
+      <div class="sw sm"><div class="chip" style="background:var(--depth)"></div><div class="meta"><div class="nm">Depth Blue</div><div class="hx mono">#0E4C6E</div><div class="role">Info · in-process</div></div></div>
+      <div class="sw sm"><div class="chip" style="background:var(--cyan)"></div><div class="meta"><div class="nm">Cyan</div><div class="hx mono">#2CA6C9</div><div class="role">Imagery · links on dark</div></div></div>
+      <div class="sw sm"><div class="chip" style="background:var(--green)"></div><div class="meta"><div class="nm">Regen Green</div><div class="hx mono">#1F8A5B</div><div class="role">Released · pass · success</div></div></div>
+      <div class="sw sm"><div class="chip" style="background:var(--amber)"></div><div class="meta"><div class="nm">Amber</div><div class="hx mono">#C08117</div><div class="role">Held · warning</div></div></div>
+    </div>
+
+    <div class="eyebrow" style="color:var(--faint);margin:34px 0 12px">Semantic UI tokens — maps onto the design system</div>
+    <div class="tokens">
+      <div class="thead"><span>Token</span><span>Light</span><span>Dark</span></div>
+      <div class="trow"><span class="tk">--brand</span><span class="val"><span class="dot" style="background:#E5330E"></span>#E5330E</span><span class="val"><span class="dot" style="background:#FF4A1C"></span>#FF4A1C</span></div>
+      <div class="trow"><span class="tk">--primary</span><span class="val"><span class="dot" style="background:#16161A"></span>#16161A</span><span class="val"><span class="dot" style="background:#F4F3F1"></span>#F4F3F1</span></div>
+      <div class="trow"><span class="tk">--primary-foreground</span><span class="val"><span class="dot" style="background:#fff"></span>#FFFFFF</span><span class="val"><span class="dot" style="background:#0B0B0C"></span>#0B0B0C</span></div>
+      <div class="trow"><span class="tk">--background</span><span class="val"><span class="dot" style="background:#FBFBFA"></span>#FBFBFA</span><span class="val"><span class="dot" style="background:#0B0B0C"></span>#0B0B0C</span></div>
+      <div class="trow"><span class="tk">--foreground</span><span class="val"><span class="dot" style="background:#16161A"></span>#16161A</span><span class="val"><span class="dot" style="background:#F4F3F1"></span>#F4F3F1</span></div>
+      <div class="trow"><span class="tk">--card</span><span class="val"><span class="dot" style="background:#fff"></span>#FFFFFF</span><span class="val"><span class="dot" style="background:#16161A"></span>#16161A</span></div>
+      <div class="trow"><span class="tk">--border</span><span class="val"><span class="dot" style="background:#E8E5E0"></span>#E8E5E0</span><span class="val"><span class="dot" style="background:#2A2A2E"></span>#2A2A2E</span></div>
+      <div class="trow"><span class="tk">--muted-foreground</span><span class="val"><span class="dot" style="background:#6B6A67"></span>#6B6A67</span><span class="val"><span class="dot" style="background:#9A9A98"></span>#9A9A98</span></div>
+      <div class="trow"><span class="tk">--destructive</span><span class="val"><span class="dot" style="background:#E5330E"></span>#E5330E</span><span class="val"><span class="dot" style="background:#FF4A1C"></span>#FF4A1C</span></div>
+      <div class="trow"><span class="tk">--ring</span><span class="val"><span class="dot" style="background:#16161A"></span>#16161A</span><span class="val"><span class="dot" style="background:#F4F3F1"></span>#F4F3F1</span></div>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-top:14px"><b style="color:var(--ink)">Scarlet is a voice, not paint.</b> The workhorse action color is <b>ink</b> (<span class="mono">--primary</span> #16161A) — buttons, focus, selected states. Scarlet lives in <span class="mono">--brand</span> (logo + a few deliberate accents) and in <span class="mono">--destructive</span> (critical only). Because red is now <i>rare</i>, a “Blocked” badge or a destructive action genuinely shouts. Never use scarlet as an ordinary button fill.</p>
+  </div>
+</section>
+
+<!-- TYPE -->
+<section id="type">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Typography</div>
+      <h2>Editorial serif meets an engineering sans</h2>
+      <p>A high-contrast display serif carries brand moments and page titles; a precise sans runs every dense, operational surface in the product.</p>
+    </div>
+    <div class="type-grid">
+      <div class="specimen">
+        <div class="lbl">Display · Playfair Display</div>
+        <div class="serif big">Regeneration</div>
+        <div class="serif aa" style="font-style:italic">Think Biology — dive to the science.</div>
+        <div class="serif" style="font-size:14px;letter-spacing:.02em;margin-top:12px">ABCDEFGHIJKLM · abcdefghijklm · 0123456789</div>
+        <div class="aa" style="font-size:13px">Brand headlines, hero, section titles, big numbers. Web match to the brand serif — swap for the licensed face if specified.</div>
+      </div>
+      <div class="specimen">
+        <div class="lbl">Product · Geist</div>
+        <div class="big" style="font-family:'Geist',sans-serif;font-weight:600">Work orders</div>
+        <div class="aa" style="font-family:'Geist',sans-serif">Legible at 12–15px in tables, forms and dense dashboards.</div>
+        <div style="font-family:'Geist',sans-serif;font-size:14px;margin-top:12px">ABCDEFGHIJKLM · abcdefghijklm · 0123456789</div>
+        <div class="aa" style="font-size:13px">Already the design-system font. Keep it for all UI; the serif never appears inside tables or controls.</div>
+      </div>
+    </div>
+    <div class="scale">
+      <div class="r"><span class="role">Display / Hero</span><span class="serif" style="font-size:34px">Think Biology</span><span class="px mono">Playfair · 64–76 / 600</span></div>
+      <div class="r"><span class="role">Page title</span><span style="font-family:'Geist';font-weight:700;font-size:26px">Today</span><span class="px mono">Geist · 26 / 700</span></div>
+      <div class="r"><span class="role">Section / Card</span><span style="font-family:'Geist';font-weight:600;font-size:17px">Ready to release</span><span class="px mono">Geist · 16–17 / 600</span></div>
+      <div class="r"><span class="role">Body</span><span style="font-family:'Geist';font-size:15px">A-Graft 0.5cc · 48 units</span><span class="px mono">Geist · 14–15 / 400–500</span></div>
+      <div class="r"><span class="role">Meta / label</span><span style="font-family:'Geist';font-size:12px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase">Source clinic</span><span class="px mono">Geist · 11–12 / 500 · caps</span></div>
+      <div class="r"><span class="role">Code / IDs</span><span class="mono" style="font-size:13px">HET-2607010DEJ</span><span class="px mono">Mono · 12–13</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- UI APPLICATION -->
+<section id="ui" class="ui-band">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Applied to the product</div>
+      <h2 style="color:#fff">The identity, in the WorkOrder UI</h2>
+      <p>Brand tokens map straight onto the design system. Scarlet becomes the primary action; status stays meaningful; the same components work light and dark.</p>
+    </div>
+
+    <div class="demo">
+      <h4>Buttons — light</h4>
+      <div class="btnrow">
+        <span class="btn primary">Release batch</span>
+        <span class="btn secondary">View</span>
+        <span class="btn outline">All lines</span>
+        <span class="btn ghost">Cancel</span>
+        <span class="btn destructive">Quarantine</span>
+      </div>
+    </div>
+    <div class="demo dark">
+      <h4>Buttons — dark</h4>
+      <div class="btnrow">
+        <span class="btn primary">Release batch</span>
+        <span class="btn secondary">View</span>
+        <span class="btn outline">All lines</span>
+        <span class="btn ghost">Cancel</span>
+        <span class="btn destructive">Quarantine</span>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:18px">
+      <div class="demo">
+        <h4>Status system</h4>
+        <div class="badges">
+          <span class="bdg released">Released</span>
+          <span class="bdg info">In production</span>
+          <span class="bdg prod">Available</span>
+          <span class="bdg held">Held · quarantine</span>
+          <span class="bdg blocked">Blocked</span>
+          <span class="bdg outline">Received</span>
+        </div>
+        <p style="font-size:13px;color:var(--muted);margin-top:16px">Green = cleared/released. Blue = moving. Amber = held. Scarlet-brick = blocked/stop. Neutral = inert.</p>
+      </div>
+      <div class="demo">
+        <h4>Active navigation</h4>
+        <div class="navdemo">
+          <div class="ni on"><span class="d"></span>Today</div>
+          <div class="ni"><span class="d"></span>Board</div>
+          <div class="ni"><span class="d"></span>Release queue</div>
+          <div class="ni"><span class="d"></span>Inventory</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo">
+      <h4>Before → after · the accent shift</h4>
+      <div class="beforeafter">
+        <div class="ba old">
+          <div class="tagba">Before · generic indigo</div>
+          <div class="btnrow"><span class="btn indigo">Production board →</span><span class="bdg" style="background:#EEF;color:#4F46E5">Next phase</span></div>
+        </div>
+        <div class="ba new">
+          <div class="tagba">After · ink primary · scarlet reserved</div>
+          <div class="btnrow"><span class="btn primary">Production board →</span><span class="bdg prod">Next phase</span><span class="bdg blocked">Blocked</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- IMAGERY & ICONS -->
+<section id="imagery">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Iconography &amp; imagery</div>
+      <h2>Thin lines, deep photography</h2>
+      <p>Icons are light, single-weight line marks. Imagery is real science — microscopy and the ocean-depth metaphor — treated as duotone in space and scarlet.</p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:start">
+      <div>
+        <div class="cap" style="font-size:12px;color:var(--faint);margin-bottom:8px">Line icons · 1.7px stroke · rounded caps</div>
+        <div class="icon-set">
+          <div class="icell"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
+          <div class="icell"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+          <div class="icell"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 4v6c0 5-3.8 8.5-9 10-5.2-1.5-9-5-9-10V6z"/></svg></div>
+          <div class="icell"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M9 6h6a3 3 0 0 1 3 3v6"/></svg></div>
+          <div class="icell"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8V21H3V8"/><rect x="1" y="3" width="22" height="5" rx="1"/><path d="M10 12h4"/></svg></div>
+        </div>
+        <p style="font-size:13.5px;color:var(--muted);margin-top:18px">Match the product’s existing line set. Scarlet only for the active/selected state — never fill whole icons with it.</p>
+      </div>
+      <div>
+        <div class="cap" style="font-size:12px;color:var(--faint);margin-bottom:8px">Imagery direction</div>
+        <div class="img-grid">
+          <div class="imgtile ocean"><div class="grain"></div><div class="lab">Depth / ocean metaphor</div></div>
+          <div class="imgtile duo"><div class="grain"></div><div class="lab">SEM · duotone space</div></div>
+          <div class="imgtile duo red"><div class="grain"></div><div class="lab">Tissue · scarlet duotone</div></div>
+        </div>
+        <p style="font-size:13.5px;color:var(--muted);margin-top:18px">Use real microscopy and lab photography. Grade to space-black + one accent (cyan for cool/scientific, scarlet for tissue). Keep marketing imagery out of dense product screens — reserve it for empty states and sign-in.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="logo"><div class="word"><span class="v">V</span>ENTAS <span class="b">BIO</span></div><div class="tag">Think Biology.</div></div>
+    <span style="margin-left:auto">Identity Foundation · v1 · Jul 2026 — the ground for the WorkOrder redesign.</span>
+  </div>
+</footer>
+
+</body>
+</html>

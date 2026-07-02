@@ -6,8 +6,7 @@ import DashboardLayout from './components/layout/DashboardLayout';
 import LoginPage from './pages/LoginPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 import DashboardHome from './pages/DashboardHome';
-import UsersPage from './pages/UsersPage';
-import RolesPage from './pages/RolesPage';
+import UsersRolesPage from './pages/UsersRolesPage';
 import WorkflowsPage from './pages/WorkflowsPage';
 import WorkOrdersPage from './pages/WorkOrdersPage';
 import WorkOrderDetailPage from './pages/WorkOrderDetailPage';
@@ -45,21 +44,12 @@ function App() {
             element={
               <ProtectedRoute roles={['owner', 'admin']}>
                 <DashboardLayout>
-                  <UsersPage />
+                  <UsersRolesPage />
                 </DashboardLayout>
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/dashboard/roles"
-            element={
-              <ProtectedRoute roles={['owner']}>
-                <DashboardLayout>
-                  <RolesPage />
-                </DashboardLayout>
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/dashboard/roles" element={<Navigate to="/dashboard/users" replace />} />
           <Route
             path="/dashboard/workflows"
             element={

@@ -36,15 +36,17 @@ export function DeletedBadge({ record }: { record: ErpMetadata }) {
 
 export function IncludeDeletedButton({
   includeDeleted,
+  label = 'records',
   onToggle,
 }: {
   includeDeleted: boolean;
+  label?: string;
   onToggle: () => void;
 }) {
   return (
     <Button type="button" variant={includeDeleted ? 'default' : 'outline'} onClick={onToggle}>
       <Archive className="h-4 w-4" />
-      {includeDeleted ? 'Hide archived' : 'Include archived'}
+      {includeDeleted ? `Hide archived ${label}` : `Include archived ${label}`}
     </Button>
   );
 }
@@ -60,6 +62,10 @@ export function RowCrudActions({
   onArchive,
   onRestore,
   onAudit,
+  editLabel = 'Edit',
+  archiveLabel = 'Archive',
+  archiveTitle = 'Archive record',
+  archiveDescription = 'Archive this record? It will be hidden from normal lists but can be restored later.',
 }: {
   deleted?: boolean;
   canEdit: boolean;
@@ -71,15 +77,19 @@ export function RowCrudActions({
   onArchive: () => void;
   onRestore: () => void;
   onAudit: () => void;
+  editLabel?: string;
+  archiveLabel?: string;
+  archiveTitle?: string;
+  archiveDescription?: string;
 }) {
   const [confirmAction, setConfirmAction] = useState<'archive' | 'restore' | null>(null);
   if (!canEdit && !canArchive && !canRestore && !canAudit) return null;
-  const confirmTitle = confirmAction === 'archive' ? 'Archive record' : 'Restore record';
+  const confirmTitle = confirmAction === 'archive' ? archiveTitle : 'Restore record';
   const confirmDescription =
     confirmAction === 'archive'
-      ? 'Archive this record? It will be hidden from normal lists but can be restored later.'
+      ? archiveDescription
       : 'Restore this archived record to normal operational lists?';
-  const confirmLabel = confirmAction === 'archive' ? 'Archive' : 'Restore';
+  const confirmLabel = confirmAction === 'archive' ? archiveLabel : 'Restore';
   const confirm = () => {
     if (confirmAction === 'archive') onArchive();
     if (confirmAction === 'restore') onRestore();
@@ -90,7 +100,7 @@ export function RowCrudActions({
     <>
       <div className="flex items-center justify-end gap-1">
         {canEdit && !deleted && (
-          <Button type="button" variant="ghost" size="icon-sm" title="Edit" aria-label="Edit" onClick={onEdit}>
+          <Button type="button" variant="ghost" size="icon-sm" title={editLabel} aria-label={editLabel} onClick={onEdit}>
             <Edit3 className="h-4 w-4" />
           </Button>
         )}
@@ -99,8 +109,8 @@ export function RowCrudActions({
             type="button"
             variant="ghost"
             size="icon-sm"
-            title="Archive"
-            aria-label="Archive"
+            title={archiveLabel}
+            aria-label={archiveLabel}
             disabled={busy}
             onClick={() => setConfirmAction('archive')}
           >
@@ -205,6 +215,7 @@ export function TextField({
   placeholder,
   type = 'text',
   className,
+  required,
 }: {
   label: string;
   value: string;
@@ -212,11 +223,15 @@ export function TextField({
   placeholder?: string;
   type?: string;
   className?: string;
+  required?: boolean;
 }) {
   return (
     <label className={className}>
-      <Label className="mb-1.5">{label}</Label>
-      <Input type={type} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+      <Label className="mb-1.5">
+        {label}
+        {required && <span className="ml-1 text-error-500">*</span>}
+      </Label>
+      <Input required={required} type={type} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
@@ -230,6 +245,7 @@ export function SelectField({
   onChange,
   placeholder = 'Select value',
   allowEmpty = true,
+  required,
 }: {
   label: string;
   value: string;
@@ -237,11 +253,15 @@ export function SelectField({
   onChange: (value: string) => void;
   placeholder?: string;
   allowEmpty?: boolean;
+  required?: boolean;
 }) {
   return (
     <label>
-      <Label className="mb-1.5">{label}</Label>
-      <Select value={value || EMPTY_SELECT_VALUE} onValueChange={(next) => onChange(next === EMPTY_SELECT_VALUE ? '' : next)}>
+      <Label className="mb-1.5">
+        {label}
+        {required && <span className="ml-1 text-error-500">*</span>}
+      </Label>
+      <Select value={value || (allowEmpty ? EMPTY_SELECT_VALUE : '')} onValueChange={(next) => onChange(next === EMPTY_SELECT_VALUE ? '' : next)}>
         <SelectTrigger>
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>

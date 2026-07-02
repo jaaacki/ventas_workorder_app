@@ -207,6 +207,17 @@ const editorFieldLabels: Record<EditableKind, Record<string, string>> = {
   },
 };
 
+const requiredFields: Record<EditableKind, string[]> = {
+  reference: ['refType', 'name'],
+  lot: ['inventoryType', 'status'],
+  transaction: ['transactionType'],
+  sku: ['sku'],
+  location: ['locationType', 'name'],
+  balance: ['inventorySkuId'],
+  genealogy: ['parentInventoryLotId', 'childInventoryLotId', 'relationshipType'],
+  consumption: ['workOrderId'],
+};
+
 function formatDate(value?: string | null) {
   return value ? new Date(value).toLocaleString() : '-';
 }
@@ -367,7 +378,22 @@ function TransactionsTable({ transactions, permissions, busy, onEdit, onArchive,
               <TableCell>{transaction.workOrderId || transaction.legacyRefNumber || transaction.legacyRefNumberOut || '-'}</TableCell>
               <TableCell>{formatDate(transaction.occurredAt || transaction.createdAt)}</TableCell>
               <TableCell>
-                <RowCrudActions deleted={transaction.deleted} canEdit={permissions.update} canArchive={permissions.delete} canRestore={permissions.restore} canAudit={permissions.readAudit} busy={busy} onEdit={() => onEdit(transaction)} onArchive={() => onArchive(transaction.id)} onRestore={() => onRestore(transaction.id)} onAudit={() => onAudit(transaction.id, label)} />
+                <RowCrudActions
+                  deleted={transaction.deleted}
+                  canEdit={permissions.update}
+                  canArchive={permissions.delete}
+                  canRestore={permissions.restore}
+                  canAudit={permissions.readAudit}
+                  busy={busy}
+                  editLabel="Correct"
+                  archiveLabel="Void"
+                  archiveTitle="Void transaction"
+                  archiveDescription="Void this transaction? The original movement remains auditable and is hidden from normal operational lists."
+                  onEdit={() => onEdit(transaction)}
+                  onArchive={() => onArchive(transaction.id)}
+                  onRestore={() => onRestore(transaction.id)}
+                  onAudit={() => onAudit(transaction.id, label)}
+                />
               </TableCell>
             </TableRow>
           );
@@ -729,7 +755,7 @@ export default function InventoryPage() {
   const [status, setStatus] = useState(ALL_FILTER);
   const [genealogyLotId, setGenealogyLotId] = useState('');
   const [selectedGenealogyLotId, setSelectedGenealogyLotId] = useState('');
-  const [includeDeleted, setIncludeDeleted] = useState(false);
+  const [includeDeletedByKind, setIncludeDeletedByKind] = useState<Partial<Record<ActionKind, boolean>>>({});
   const [editor, setEditor] = useState<EditorState>(null);
   const [audit, setAudit] = useState<AuditState>(null);
   const canReadImports = hasPermission('inventory.importReport.read');
@@ -741,8 +767,12 @@ export default function InventoryPage() {
     restore: can(kind, 'restore'),
     readAudit: can(kind, 'readAudit'),
   });
-  const canSeeDeleted = Object.values(resourceByKind).some((resource) => hasPermission(`${resource}.readDeleted`) || hasPermission(`${resource}.readAudit`));
-  const includeDeletedFor = (kind: ActionKind) => includeDeleted && (can(kind, 'readDeleted') || can(kind, 'readAudit'));
+  const canSeeDeletedFor = (kind: ActionKind) => can(kind, 'readDeleted') || can(kind, 'readAudit');
+  const includeDeletedFor = (kind: ActionKind) => Boolean(includeDeletedByKind[kind]) && canSeeDeletedFor(kind);
+  const toggleIncludeDeletedFor = (kind: ActionKind) => setIncludeDeletedByKind((current) => ({ ...current, [kind]: !current[kind] }));
+  const includeDeletedToggle = (kind: ActionKind, label: string) => canSeeDeletedFor(kind) ? (
+    <IncludeDeletedButton includeDeleted={Boolean(includeDeletedByKind[kind])} label={label} onToggle={() => toggleIncludeDeletedFor(kind)} />
+  ) : null;
 
   const overview = useQuery({ queryKey: ['inventory', 'overview'], queryFn: fetchInventoryOverview });
   const lots = useQuery({
@@ -899,8 +929,9 @@ export default function InventoryPage() {
     const labels = editorFieldLabels[editor.kind];
     const orderedKeys = [...Object.keys(labels), ...Object.keys(editor.values).filter((key) => !labels[key])];
     const value = (key: string) => editor.values[key] ?? '';
+    const isRequired = (key: string) => requiredFields[editor.kind].includes(key);
     const selectField = (key: string, options: Array<{ value: string; label: string }>, label?: string) => (
-      <SelectField key={key} label={label ?? labels[key]} value={value(key)} options={options} onChange={(next) => setField(key, next)} />
+      <SelectField key={key} label={label ?? labels[key]} value={value(key)} options={options} required={isRequired(key)} allowEmpty={!isRequired(key)} onChange={(next) => setField(key, next)} />
     );
     const enumField = (key: string, values: string[], label?: string) => selectField(key, values.map((entry) => ({ value: entry, label: entry.replace(/_/g, ' ') })), label);
     const relationshipField = (key: string) => {
@@ -923,13 +954,25 @@ export default function InventoryPage() {
                 ? enumField(key, ['consumed_into', 'produced_from', 'split_from', 'merged_into'])
                 : key === 'locationType'
                   ? enumField(key, ['warehouse', 'room', 'rack', 'bin', 'production_area'])
-                  : <TextField key={key} label={labels[key] ?? key.replace(/([A-Z])/g, ' $1')} value={value(key)} onChange={(next) => setField(key, next)} />)
+                  : <TextField key={key} label={labels[key] ?? key.replace(/([A-Z])/g, ' $1')} value={value(key)} required={isRequired(key)} onChange={(next) => setField(key, next)} />)
     ));
   };
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Inventory" description="Lots, SKUs, locations, movements, genealogy, and import audit records." action={canSeeDeleted ? <IncludeDeletedButton includeDeleted={includeDeleted} onToggle={() => setIncludeDeleted((value) => !value)} /> : undefined} />
+      <PageHeader title="Inventory" description="Lots, SKUs, locations, movements, genealogy, and import audit records." />
+
+      <div className="flex flex-wrap gap-2">
+        {includeDeletedToggle('lot', 'lots')}
+        {includeDeletedToggle('transaction', 'transactions')}
+        {includeDeletedToggle('sku', 'SKUs')}
+        {includeDeletedToggle('reference', 'references')}
+        {includeDeletedToggle('location', 'locations')}
+        {includeDeletedToggle('balance', 'balances')}
+        {includeDeletedToggle('genealogy', 'genealogy')}
+        {includeDeletedToggle('consumption', 'consumptions')}
+        {includeDeletedToggle('import', 'imports')}
+      </div>
 
       {hasError && <div className="flex items-start gap-3 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-500/30 dark:bg-error-500/10 dark:text-error-300"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{errorMessage((overview.error || lots.error || transactions.error || skus.error || references.error || locations.error || balances.error || genealogyLinks.error || consumptions.error) as Error, 'Inventory data could not be loaded.')}</span></div>}
 
@@ -968,7 +1011,7 @@ export default function InventoryPage() {
           </TabsContent>
 
           <TabsContent value="transactions" className="mt-4">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><SearchBox value={transactionSearch} onChange={setTransactionSearch} placeholder="Search reason, ref, work order" /><div className="flex items-center gap-2">{permissions('transaction').create && <Button type="button" onClick={() => openCreateEditor('transaction')}>Create transaction</Button>}{transactions.isFetching && <span className="text-sm text-gray-500 dark:text-gray-400">Loading transactions...</span>}</div></div>
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><SearchBox value={transactionSearch} onChange={setTransactionSearch} placeholder="Search reason, ref, work order" /><div className="flex items-center gap-2">{permissions('transaction').create && <Button type="button" onClick={() => openCreateEditor('transaction')}>Create movement</Button>}{transactions.isFetching && <span className="text-sm text-gray-500 dark:text-gray-400">Loading transactions...</span>}</div></div>
             {transactions.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load inventory transactions" /> : transactions.isLoading ? <EmptyState icon={<Database className="h-6 w-6" />} title="Loading inventory transactions" /> : <TransactionsTable transactions={transactions.data ?? []} permissions={permissions('transaction')} busy={mutationBusy} onEdit={openTransactionEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'transaction', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'transaction', id })} onAudit={(id, label) => setAudit({ kind: 'transaction', id, label })} />}
           </TabsContent>
 
@@ -1025,7 +1068,12 @@ export default function InventoryPage() {
           </TabsContent>
 
           <TabsContent value="imports" className="mt-4">
-            {!canReadImports ? <EmptyState icon={<FileClock className="h-6 w-6" />} title="Import reports require admin access" /> : importReports.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load import reports" /> : importReports.isLoading ? <EmptyState icon={<FileClock className="h-6 w-6" />} title="Loading import reports" /> : <ImportReportsTable reports={importReports.data ?? []} permissions={permissions('import')} busy={mutationBusy} onArchive={(id) => archiveMutation.mutate({ kind: 'import', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'import', id })} onAudit={(id, label) => setAudit({ kind: 'import', id, label })} />}
+            {!canReadImports ? <EmptyState icon={<FileClock className="h-6 w-6" />} title="Import reports require import-report read permission" /> : importReports.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load import reports" /> : importReports.isLoading ? <EmptyState icon={<FileClock className="h-6 w-6" />} title="Loading import reports" /> : (
+              <div className="space-y-3">
+                <div className="rounded-lg border border-gray-200 px-4 py-3 text-sm text-gray-600 dark:border-gray-800 dark:text-gray-400">Import report content is immutable audit evidence. Authorized users can archive, restore, and inspect audit history only.</div>
+                <ImportReportsTable reports={importReports.data ?? []} permissions={permissions('import')} busy={mutationBusy} onArchive={(id) => archiveMutation.mutate({ kind: 'import', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'import', id })} onAudit={(id, label) => setAudit({ kind: 'import', id, label })} />
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </AdminPanel>

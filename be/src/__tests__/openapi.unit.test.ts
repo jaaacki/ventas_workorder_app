@@ -516,8 +516,8 @@ describe('OpenAPI contract', () => {
     expect(jsonMedia(getInventoryLot?.responses['404'])?.examples).toBeDefined();
 
     const generatedCrudExampleExpectations: Array<[string, string, Record<string, unknown>]> = [
-      ['post', '/api/procurement/issuance-order-lines', { issuanceOrderId: 'issue-1001', collectionUnitId: 'cu-1001' }],
-      ['post', '/api/procurement/collection-receipt-lines', { collectionReceiptId: 'receipt-1001', resultingHetId: 'het-1001' }],
+      ['post', '/api/procurement/issuance-order-lines', { issuanceOrderId: 'issue-1001', collectionUnitId: 'cu-1001', itemCode: 'HET-KIT', quantity: '1.0000', uom: 'ea' }],
+      ['post', '/api/procurement/collection-receipt-lines', { collectionReceiptId: 'receipt-1001', resultingHetId: 'het-1001', itemCode: 'HET-KIT', quantity: '1.0000', uom: 'ea' }],
       ['post', '/api/inventory/balances', { inventorySkuId: 'sku-graft', inventoryLocationId: 'loc-clean-room' }],
       ['post', '/api/inventory/genealogy', { parentInventoryLotId: 'lot-parent', childInventoryLotId: 'lot-child', relationshipType: 'consumed_into' }],
       ['post', '/api/inventory/work-order-consumptions', { workOrderId: 'WO-1001', inventorySkuId: 'sku-graft' }],
@@ -529,6 +529,36 @@ describe('OpenAPI contract', () => {
       const successStatus = Object.keys(operation?.responses ?? {}).find((status) => /^[23]/.test(status));
       const example = successStatus ? jsonMedia(operation?.responses[successStatus])?.example : undefined;
       expect(example, `${method.toUpperCase()} ${path} generated success example`).toEqual(expect.objectContaining(expectedExample));
+    }
+  });
+
+  it('does not describe mutable procurement or inventory CRUD routes as read-only or backend-missing', async () => {
+    stubRequiredEnv();
+    const { buildServer } = await import('../server.js');
+    const app = await buildServer();
+
+    await app.ready();
+    const response = await app.inject({ method: 'GET', url: '/api/openapi.json' });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    const doc = JSON.parse(response.body) as OpenAPIV3.Document;
+    const staleMutableCrudText = /read-only|backend[^"]*missing|write[^"]*missing|writes[^"]*missing/i;
+
+    for (const { method, path, operation } of operationInventory(doc)) {
+      if (!path.startsWith('/api/procurement') && !path.startsWith('/api/inventory')) continue;
+      if (operation['x-route-kind'] !== 'resource-crud') continue;
+      const policy = operation['x-method-policy'] as { completeness?: string } | undefined;
+      if (policy?.completeness === 'archive-restore-audit-only') continue;
+
+      expect(
+        JSON.stringify({
+          summary: operation.summary,
+          description: operation.description,
+          policy: operation['x-method-policy'],
+        }),
+        `${method.toUpperCase()} ${path} mutable CRUD wording`,
+      ).not.toMatch(staleMutableCrudText);
     }
   });
 

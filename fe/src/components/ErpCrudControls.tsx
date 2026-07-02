@@ -51,6 +51,14 @@ export function IncludeDeletedButton({
   );
 }
 
+export function ReadOnlyNotice({ label }: { label: string }) {
+  return (
+    <div className="mb-3 rounded-lg border border-gray-200 px-4 py-3 text-sm text-gray-600 dark:border-gray-800 dark:text-gray-400">
+      You have read-only access to {label}. Create, edit, archive, and restore actions require additional permission.
+    </div>
+  );
+}
+
 export function RowCrudActions({
   deleted,
   canEdit,
@@ -100,7 +108,7 @@ export function RowCrudActions({
     <>
       <div className="flex items-center justify-end gap-1">
         {canEdit && !deleted && (
-          <Button type="button" variant="ghost" size="icon-sm" title={editLabel} aria-label={editLabel} onClick={onEdit}>
+          <Button type="button" variant="ghost" size="icon-sm" title={editLabel} aria-label={editLabel} disabled={busy} onClick={onEdit}>
             <Edit3 className="h-4 w-4" />
           </Button>
         )}
@@ -131,7 +139,7 @@ export function RowCrudActions({
           </Button>
         )}
         {canAudit && (
-          <Button type="button" variant="ghost" size="icon-sm" title="Audit" aria-label="Audit" onClick={onAudit}>
+          <Button type="button" variant="ghost" size="icon-sm" title="Audit" aria-label="Audit" disabled={busy} onClick={onAudit}>
             <History className="h-4 w-4" />
           </Button>
         )}

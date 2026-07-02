@@ -656,6 +656,9 @@ model IssuanceOrderLine {
   tenantId             String
   issuanceOrderId      String
   collectionUnitId     String?
+  itemCode             String?
+  quantity             Decimal? @db.Decimal(18, 4)
+  uom                  String?
   legacyHetId          String?
   legacyHetNumber      String?
   parcelTrackingNumber String?
@@ -761,6 +764,9 @@ model CollectionReceiptLine {
   tenantId            String
   collectionReceiptId String
   collectionUnitId    String?
+  itemCode            String?
+  quantity            Decimal? @db.Decimal(18, 4)
+  uom                 String?
   conditionStatus     String?
   acceptanceStatus    String?
   resultingHetId      String?

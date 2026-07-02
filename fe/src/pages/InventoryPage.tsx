@@ -87,6 +87,7 @@ import {
   CrudSheet,
   DeletedBadge,
   IncludeDeletedButton,
+  ReadOnlyNotice,
   RowCrudActions,
   SelectField,
   TextField,
@@ -761,6 +762,7 @@ export default function InventoryPage() {
   const canReadImports = hasPermission('inventory.importReport.read');
   const can = (kind: ActionKind, action: string) => hasPermission(`${resourceByKind[kind]}.${action}`);
   const permissions = (kind: ActionKind) => ({
+    read: can(kind, 'read'),
     create: can(kind, 'create'),
     update: can(kind, 'update'),
     delete: can(kind, 'delete'),
@@ -768,29 +770,35 @@ export default function InventoryPage() {
     readAudit: can(kind, 'readAudit'),
   });
   const canSeeDeletedFor = (kind: ActionKind) => can(kind, 'readDeleted') || can(kind, 'readAudit');
+  const canMutate = (kind: ActionKind) => {
+    const item = permissions(kind);
+    return item.create || item.update || item.delete || item.restore;
+  };
+  const readOnlyNotice = (kind: ActionKind, label: string) => (permissions(kind).read && !canMutate(kind) ? <ReadOnlyNotice label={label} /> : null);
   const includeDeletedFor = (kind: ActionKind) => Boolean(includeDeletedByKind[kind]) && canSeeDeletedFor(kind);
   const toggleIncludeDeletedFor = (kind: ActionKind) => setIncludeDeletedByKind((current) => ({ ...current, [kind]: !current[kind] }));
   const includeDeletedToggle = (kind: ActionKind, label: string) => canSeeDeletedFor(kind) ? (
     <IncludeDeletedButton includeDeleted={Boolean(includeDeletedByKind[kind])} label={label} onToggle={() => toggleIncludeDeletedFor(kind)} />
   ) : null;
 
-  const overview = useQuery({ queryKey: ['inventory', 'overview'], queryFn: fetchInventoryOverview });
+  const overview = useQuery({ queryKey: ['inventory', 'overview'], queryFn: fetchInventoryOverview, enabled: can('sku', 'read') });
   const lots = useQuery({
     queryKey: ['inventory', 'lots', lotSearch, inventoryType, status, includeDeletedFor('lot')],
     queryFn: () => fetchInventoryLots({ q: lotSearch, includeDeleted: includeDeletedFor('lot'), inventoryType: inventoryType === ALL_FILTER ? undefined : inventoryType, status: status === ALL_FILTER ? undefined : status }),
+    enabled: can('lot', 'read'),
   });
-  const transactions = useQuery({ queryKey: ['inventory', 'transactions', transactionSearch, includeDeletedFor('transaction')], queryFn: () => fetchInventoryTransactions({ q: transactionSearch, includeDeleted: includeDeletedFor('transaction') }) });
-  const skus = useQuery({ queryKey: ['inventory', 'skus', skuSearch, includeDeletedFor('sku')], queryFn: () => fetchInventorySkus({ q: skuSearch, includeDeleted: includeDeletedFor('sku') }) });
-  const references = useQuery({ queryKey: ['inventory', 'references', referenceSearch, includeDeletedFor('reference')], queryFn: () => fetchInventoryReferences({ q: referenceSearch, includeDeleted: includeDeletedFor('reference') }) });
-  const locations = useQuery({ queryKey: ['inventory', 'locations', includeDeletedFor('location')], queryFn: () => fetchInventoryLocations({ includeDeleted: includeDeletedFor('location') }) });
-  const balances = useQuery({ queryKey: ['inventory', 'balances', includeDeletedFor('balance')], queryFn: () => fetchInventoryBalances({ includeDeleted: includeDeletedFor('balance') }) });
-  const consumptions = useQuery({ queryKey: ['inventory', 'consumptions', consumptionSearch, includeDeletedFor('consumption')], queryFn: () => fetchWorkOrderInventoryConsumptions({ q: consumptionSearch, includeDeleted: includeDeletedFor('consumption') }) });
-  const genealogyLinks = useQuery({ queryKey: ['inventory', 'genealogy-links', includeDeletedFor('genealogy')], queryFn: () => fetchInventoryGenealogyLinks({ includeDeleted: includeDeletedFor('genealogy') }) });
-  const genealogy = useQuery({ queryKey: ['inventory', 'genealogy', selectedGenealogyLotId], queryFn: () => fetchInventoryGenealogy(selectedGenealogyLotId), enabled: Boolean(selectedGenealogyLotId), retry: false });
+  const transactions = useQuery({ queryKey: ['inventory', 'transactions', transactionSearch, includeDeletedFor('transaction')], queryFn: () => fetchInventoryTransactions({ q: transactionSearch, includeDeleted: includeDeletedFor('transaction') }), enabled: can('transaction', 'read') });
+  const skus = useQuery({ queryKey: ['inventory', 'skus', skuSearch, includeDeletedFor('sku')], queryFn: () => fetchInventorySkus({ q: skuSearch, includeDeleted: includeDeletedFor('sku') }), enabled: can('sku', 'read') });
+  const references = useQuery({ queryKey: ['inventory', 'references', referenceSearch, includeDeletedFor('reference')], queryFn: () => fetchInventoryReferences({ q: referenceSearch, includeDeleted: includeDeletedFor('reference') }), enabled: can('reference', 'read') });
+  const locations = useQuery({ queryKey: ['inventory', 'locations', includeDeletedFor('location')], queryFn: () => fetchInventoryLocations({ includeDeleted: includeDeletedFor('location') }), enabled: can('location', 'read') });
+  const balances = useQuery({ queryKey: ['inventory', 'balances', includeDeletedFor('balance')], queryFn: () => fetchInventoryBalances({ includeDeleted: includeDeletedFor('balance') }), enabled: can('balance', 'read') });
+  const consumptions = useQuery({ queryKey: ['inventory', 'consumptions', consumptionSearch, includeDeletedFor('consumption')], queryFn: () => fetchWorkOrderInventoryConsumptions({ q: consumptionSearch, includeDeleted: includeDeletedFor('consumption') }), enabled: can('consumption', 'read') });
+  const genealogyLinks = useQuery({ queryKey: ['inventory', 'genealogy-links', includeDeletedFor('genealogy')], queryFn: () => fetchInventoryGenealogyLinks({ includeDeleted: includeDeletedFor('genealogy') }), enabled: can('genealogy', 'read') });
+  const genealogy = useQuery({ queryKey: ['inventory', 'genealogy', selectedGenealogyLotId], queryFn: () => fetchInventoryGenealogy(selectedGenealogyLotId), enabled: Boolean(selectedGenealogyLotId) && can('genealogy', 'read'), retry: false });
   const importReports = useQuery({ queryKey: ['inventory', 'import-reports', includeDeletedFor('import')], queryFn: () => fetchInventoryImportReports({ includeDeleted: includeDeletedFor('import') }), enabled: canReadImports, retry: false });
   const auditQuery = useQuery<AuditEvent<unknown>[]>({
     queryKey: ['inventory', 'audit', audit?.kind, audit?.id],
-    enabled: Boolean(audit),
+    enabled: Boolean(audit) && (audit ? can(audit.kind, 'readAudit') : false),
     queryFn: () => {
       if (!audit) return Promise.resolve([]);
       if (audit.kind === 'reference') return fetchInventoryReferenceAudit(audit.id);
@@ -874,7 +882,7 @@ export default function InventoryPage() {
   const locationOptions = useMemo(() => (locations.data ?? []).map((location) => option(location.id, locationLabel(location))).filter((entry): entry is { value: string; label: string } => Boolean(entry)), [locations.data]);
   const metrics = overview.data;
   const hasError = overview.isError || lots.isError || transactions.isError || skus.isError || references.isError || locations.isError || balances.isError || genealogyLinks.isError || consumptions.isError;
-  const mutationBusy = archiveMutation.isPending || restoreMutation.isPending;
+  const mutationBusy = archiveMutation.isPending || restoreMutation.isPending || updateMutation.isPending || createMutation.isPending;
 
   const setField = (key: string, value: string) => setEditor((current) => current && { ...current, values: { ...current.values, [key]: value } });
   const submitEditor = (event: FormEvent<HTMLFormElement>) => {
@@ -1007,32 +1015,32 @@ export default function InventoryPage() {
                 {lots.isFetching && <span className="text-sm text-gray-500 dark:text-gray-400">Loading lots...</span>}
               </div>
             </div>
-            {lots.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load inventory lots" /> : lots.isLoading ? <EmptyState icon={<Boxes className="h-6 w-6" />} title="Loading inventory lots" /> : <LotsTable lots={lots.data ?? []} permissions={permissions('lot')} busy={mutationBusy} onEdit={openLotEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'lot', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'lot', id })} onAudit={(id, label) => setAudit({ kind: 'lot', id, label })} />}
+            {!permissions('lot').read ? <EmptyState icon={<Boxes className="h-6 w-6" />} title="Inventory lots require read permission" /> : lots.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load inventory lots" /> : lots.isLoading ? <EmptyState icon={<Boxes className="h-6 w-6" />} title="Loading inventory lots" /> : <>{readOnlyNotice('lot', 'inventory lots')}<LotsTable lots={lots.data ?? []} permissions={permissions('lot')} busy={mutationBusy} onEdit={openLotEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'lot', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'lot', id })} onAudit={(id, label) => setAudit({ kind: 'lot', id, label })} /></>}
           </TabsContent>
 
           <TabsContent value="transactions" className="mt-4">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><SearchBox value={transactionSearch} onChange={setTransactionSearch} placeholder="Search reason, ref, work order" /><div className="flex items-center gap-2">{permissions('transaction').create && <Button type="button" onClick={() => openCreateEditor('transaction')}>Create movement</Button>}{transactions.isFetching && <span className="text-sm text-gray-500 dark:text-gray-400">Loading transactions...</span>}</div></div>
-            {transactions.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load inventory transactions" /> : transactions.isLoading ? <EmptyState icon={<Database className="h-6 w-6" />} title="Loading inventory transactions" /> : <TransactionsTable transactions={transactions.data ?? []} permissions={permissions('transaction')} busy={mutationBusy} onEdit={openTransactionEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'transaction', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'transaction', id })} onAudit={(id, label) => setAudit({ kind: 'transaction', id, label })} />}
+            {!permissions('transaction').read ? <EmptyState icon={<Database className="h-6 w-6" />} title="Inventory transactions require read permission" /> : transactions.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load inventory transactions" /> : transactions.isLoading ? <EmptyState icon={<Database className="h-6 w-6" />} title="Loading inventory transactions" /> : <>{readOnlyNotice('transaction', 'inventory transactions')}<TransactionsTable transactions={transactions.data ?? []} permissions={permissions('transaction')} busy={mutationBusy} onEdit={openTransactionEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'transaction', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'transaction', id })} onAudit={(id, label) => setAudit({ kind: 'transaction', id, label })} /></>}
           </TabsContent>
 
           <TabsContent value="skus" className="mt-4">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><SearchBox value={skuSearch} onChange={setSkuSearch} placeholder="Search SKU, category, description" /><div className="flex items-center gap-2">{permissions('sku').create && <Button type="button" onClick={() => openCreateEditor('sku')}>Create SKU</Button>}{skus.isFetching && <span className="text-sm text-gray-500 dark:text-gray-400">Loading SKUs...</span>}</div></div>
-            {skus.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load inventory SKUs" /> : skus.isLoading ? <EmptyState icon={<Tags className="h-6 w-6" />} title="Loading inventory SKUs" /> : <SkusTable skus={skus.data ?? []} permissions={permissions('sku')} busy={mutationBusy} onEdit={openSkuEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'sku', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'sku', id })} onAudit={(id, label) => setAudit({ kind: 'sku', id, label })} />}
+            {!permissions('sku').read ? <EmptyState icon={<Tags className="h-6 w-6" />} title="Inventory SKUs require read permission" /> : skus.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load inventory SKUs" /> : skus.isLoading ? <EmptyState icon={<Tags className="h-6 w-6" />} title="Loading inventory SKUs" /> : <>{readOnlyNotice('sku', 'inventory SKUs')}<SkusTable skus={skus.data ?? []} permissions={permissions('sku')} busy={mutationBusy} onEdit={openSkuEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'sku', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'sku', id })} onAudit={(id, label) => setAudit({ kind: 'sku', id, label })} /></>}
           </TabsContent>
 
           <TabsContent value="references" className="mt-4">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><SearchBox value={referenceSearch} onChange={setReferenceSearch} placeholder="Search reference, type, code" /><div className="flex items-center gap-2">{permissions('reference').create && <Button type="button" onClick={() => openCreateEditor('reference')}>Create reference</Button>}{references.isFetching && <span className="text-sm text-gray-500 dark:text-gray-400">Loading references...</span>}</div></div>
-            {references.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load inventory references" /> : references.isLoading ? <EmptyState icon={<Tags className="h-6 w-6" />} title="Loading inventory references" /> : <ReferencesTable references={references.data ?? []} permissions={permissions('reference')} busy={mutationBusy} onEdit={openReferenceEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'reference', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'reference', id })} onAudit={(id, label) => setAudit({ kind: 'reference', id, label })} />}
+            {!permissions('reference').read ? <EmptyState icon={<Tags className="h-6 w-6" />} title="Inventory references require read permission" /> : references.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load inventory references" /> : references.isLoading ? <EmptyState icon={<Tags className="h-6 w-6" />} title="Loading inventory references" /> : <>{readOnlyNotice('reference', 'inventory references')}<ReferencesTable references={references.data ?? []} permissions={permissions('reference')} busy={mutationBusy} onEdit={openReferenceEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'reference', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'reference', id })} onAudit={(id, label) => setAudit({ kind: 'reference', id, label })} /></>}
           </TabsContent>
 
           <TabsContent value="locations" className="mt-4">
             <div className="mb-4 flex justify-end">{permissions('location').create && <Button type="button" onClick={() => openCreateEditor('location')}>Create location</Button>}</div>
-            {locations.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load inventory locations" /> : locations.isLoading ? <EmptyState icon={<MapPin className="h-6 w-6" />} title="Loading inventory locations" /> : <LocationsTable locations={locations.data ?? []} permissions={permissions('location')} busy={mutationBusy} onEdit={openLocationEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'location', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'location', id })} onAudit={(id, label) => setAudit({ kind: 'location', id, label })} />}
+            {!permissions('location').read ? <EmptyState icon={<MapPin className="h-6 w-6" />} title="Inventory locations require read permission" /> : locations.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load inventory locations" /> : locations.isLoading ? <EmptyState icon={<MapPin className="h-6 w-6" />} title="Loading inventory locations" /> : <>{readOnlyNotice('location', 'inventory locations')}<LocationsTable locations={locations.data ?? []} permissions={permissions('location')} busy={mutationBusy} onEdit={openLocationEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'location', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'location', id })} onAudit={(id, label) => setAudit({ kind: 'location', id, label })} /></>}
           </TabsContent>
 
           <TabsContent value="balances" className="mt-4">
             <div className="mb-4 flex justify-end">{permissions('balance').create && <Button type="button" onClick={() => openCreateEditor('balance')}>Create balance</Button>}</div>
-            {balances.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load inventory balances" /> : balances.isLoading ? <EmptyState icon={<Database className="h-6 w-6" />} title="Loading inventory balances" /> : <BalancesTable balances={balances.data ?? []} permissions={permissions('balance')} busy={mutationBusy} onEdit={openBalanceEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'balance', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'balance', id })} onAudit={(id, label) => setAudit({ kind: 'balance', id, label })} />}
+            {!permissions('balance').read ? <EmptyState icon={<Database className="h-6 w-6" />} title="Inventory balances require read permission" /> : balances.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load inventory balances" /> : balances.isLoading ? <EmptyState icon={<Database className="h-6 w-6" />} title="Loading inventory balances" /> : <>{readOnlyNotice('balance', 'inventory balances')}<BalancesTable balances={balances.data ?? []} permissions={permissions('balance')} busy={mutationBusy} onEdit={openBalanceEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'balance', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'balance', id })} onAudit={(id, label) => setAudit({ kind: 'balance', id, label })} /></>}
           </TabsContent>
 
           <TabsContent value="genealogy" className="mt-4">
@@ -1045,7 +1053,7 @@ export default function InventoryPage() {
             <div className="space-y-6">
               <div>
                 <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-white/90"><GitBranch className="h-4 w-4" />All genealogy links</div>
-                {genealogyLinks.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load genealogy links" /> : genealogyLinks.isLoading ? <EmptyState icon={<GitBranch className="h-6 w-6" />} title="Loading genealogy links" /> : <GenealogyLinksTable edges={genealogyLinks.data ?? []} permissions={permissions('genealogy')} busy={mutationBusy} onEdit={openGenealogyEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'genealogy', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'genealogy', id })} onAudit={(id, label) => setAudit({ kind: 'genealogy', id, label })} />}
+                {!permissions('genealogy').read ? <EmptyState icon={<GitBranch className="h-6 w-6" />} title="Genealogy links require read permission" /> : genealogyLinks.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load genealogy links" /> : genealogyLinks.isLoading ? <EmptyState icon={<GitBranch className="h-6 w-6" />} title="Loading genealogy links" /> : <>{readOnlyNotice('genealogy', 'genealogy links')}<GenealogyLinksTable edges={genealogyLinks.data ?? []} permissions={permissions('genealogy')} busy={mutationBusy} onEdit={openGenealogyEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'genealogy', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'genealogy', id })} onAudit={(id, label) => setAudit({ kind: 'genealogy', id, label })} /></>}
               </div>
               <div>
                 <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-white/90"><PackageSearch className="h-4 w-4" />Lot trace</div>
@@ -1064,7 +1072,7 @@ export default function InventoryPage() {
 
           <TabsContent value="consumptions" className="mt-4">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><SearchBox value={consumptionSearch} onChange={setConsumptionSearch} placeholder="Search work order, lot, SKU, BOM" /><div className="flex items-center gap-2">{permissions('consumption').create && <Button type="button" onClick={() => openCreateEditor('consumption')}>Create consumption</Button>}{consumptions.isFetching && <span className="text-sm text-gray-500 dark:text-gray-400">Loading consumptions...</span>}</div></div>
-            {consumptions.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load work-order consumptions" /> : consumptions.isLoading ? <EmptyState icon={<Database className="h-6 w-6" />} title="Loading work-order consumptions" /> : <ConsumptionsTable consumptions={consumptions.data ?? []} permissions={permissions('consumption')} busy={mutationBusy} onEdit={openConsumptionEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'consumption', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'consumption', id })} onAudit={(id, label) => setAudit({ kind: 'consumption', id, label })} />}
+            {!permissions('consumption').read ? <EmptyState icon={<Database className="h-6 w-6" />} title="Work-order consumptions require read permission" /> : consumptions.isError ? <EmptyState icon={<AlertTriangle className="h-6 w-6" />} title="Unable to load work-order consumptions" /> : consumptions.isLoading ? <EmptyState icon={<Database className="h-6 w-6" />} title="Loading work-order consumptions" /> : <>{readOnlyNotice('consumption', 'work-order consumptions')}<ConsumptionsTable consumptions={consumptions.data ?? []} permissions={permissions('consumption')} busy={mutationBusy} onEdit={openConsumptionEditor} onArchive={(id) => archiveMutation.mutate({ kind: 'consumption', id })} onRestore={(id) => restoreMutation.mutate({ kind: 'consumption', id })} onAudit={(id, label) => setAudit({ kind: 'consumption', id, label })} /></>}
           </TabsContent>
 
           <TabsContent value="imports" className="mt-4">

@@ -70,6 +70,9 @@ export interface IssuanceOrderLine extends ProcurementRecordMetadata {
   id: string;
   issuanceOrderId: string;
   collectionUnitId: string | null;
+  itemCode: string | null;
+  quantity: string | number | null;
+  uom: string | null;
   legacyHetId: string | null;
   legacyHetNumber: string | null;
   parcelTrackingNumber: string | null;
@@ -90,6 +93,9 @@ export interface CollectionReceiptLine extends ProcurementRecordMetadata {
   id: string;
   collectionReceiptId: string;
   collectionUnitId: string | null;
+  itemCode: string | null;
+  quantity: string | number | null;
+  uom: string | null;
   conditionStatus: string | null;
   acceptanceStatus: string | null;
   resultingHetId: string | null;
@@ -231,6 +237,9 @@ export type IssuanceOrderPayload = {
 export type IssuanceOrderLinePayload = {
   issuanceOrderId?: string;
   collectionUnitId?: string | null;
+  itemCode?: string | null;
+  quantity?: string | number | null;
+  uom?: string | null;
   legacyHetId?: string | null;
   legacyHetNumber?: string | null;
   parcelTrackingNumber?: string | null;
@@ -275,6 +284,9 @@ export type CollectionReceiptPayload = {
 export type CollectionReceiptLinePayload = {
   collectionReceiptId?: string;
   collectionUnitId?: string | null;
+  itemCode?: string | null;
+  quantity?: string | number | null;
+  uom?: string | null;
   conditionStatus?: string | null;
   acceptanceStatus?: string | null;
   resultingHetId?: string | null;

@@ -74,9 +74,58 @@ model Role {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  staff Staff[]
+  staff       Staff[]
+  permissions RolePermission[]
 
   @@map("role")
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  resource    String
+  action      String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  roles RolePermission[]
+
+  @@unique([resource, action])
+  @@index([resource])
+  @@map("permission")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("rolePermission")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  tenantId    String
+  actorId     String?
+  actorEmail  String?
+  entityType  String
+  entityId    String
+  action      String
+  before      Json?
+  after       Json?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, entityType, entityId, createdAt])
+  @@index([tenantId, action, createdAt])
+  @@index([actorId])
+  @@map("auditLog")
 }
 
 model Manufacturer {
@@ -496,10 +545,16 @@ model SupplyEntity {
   sourceSystem   String?
   legacyGroupKey String?
   legacyClinicId String?
+  deleted        Boolean  @default(false)
+  deletedAt      DateTime?
+  deletedById    String?
+  createdById    String?
+  updatedById    String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@index([tenantId])
+  @@index([deleted])
   @@index([legacyClinicId])
   @@map("supplyEntity")
 }
@@ -516,10 +571,16 @@ model CollectionPoint {
   postalCode     String?
   telephone      String?
   personInCharge String?
+  deleted        Boolean  @default(false)
+  deletedAt      DateTime?
+  deletedById    String?
+  createdById    String?
+  updatedById    String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@index([tenantId])
+  @@index([deleted])
   @@index([supplyEntityId])
   @@index([legacyClinicId])
   @@map("collectionPoint")
@@ -543,6 +604,10 @@ model CollectionUnit {
   semanticConfidence      String?
   hiddenFromOperations    Boolean        @default(false)
   deleted                 Boolean        @default(false)
+  deletedAt               DateTime?
+  deletedById             String?
+  createdById             String?
+  updatedById             String?
   legacyRaw               Json?
   createdAt               DateTime       @default(now())
   updatedAt               DateTime       @updatedAt
@@ -550,6 +615,7 @@ model CollectionUnit {
   inventoryLots           InventoryLot[]
 
   @@index([tenantId])
+  @@index([deleted])
   @@index([legacyHetId])
   @@index([collectionPointId])
   @@index([legacyUsedByWorkOrderId])
@@ -569,11 +635,17 @@ model IssuanceOrder {
   semanticConfidence     String?
   level                  String?
   remarks                String?
+  deleted                Boolean   @default(false)
+  deletedAt              DateTime?
+  deletedById            String?
+  createdById            String?
+  updatedById            String?
   legacyRaw              Json?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
   @@index([tenantId])
+  @@index([deleted])
   @@index([collectionPointId])
   @@index([legacyDeliverCollectId])
   @@map("issuanceOrder")
@@ -587,11 +659,17 @@ model IssuanceOrderLine {
   legacyHetId          String?
   legacyHetNumber      String?
   parcelTrackingNumber String?
+  deleted              Boolean  @default(false)
+  deletedAt            DateTime?
+  deletedById          String?
+  createdById          String?
+  updatedById          String?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
   @@unique([issuanceOrderId, legacyHetId])
   @@index([tenantId])
+  @@index([deleted])
   @@index([collectionUnitId])
   @@map("issuanceOrderLine")
 }
@@ -606,11 +684,17 @@ model CollectionUnitFulfilment {
   evidencePath     String?
   remarks          String?
   inferred         Boolean   @default(false)
+  deleted          Boolean   @default(false)
+  deletedAt        DateTime?
+  deletedById      String?
+  createdById      String?
+  updatedById      String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
   @@unique([collectionUnitId, source])
   @@index([tenantId])
+  @@index([deleted])
   @@map("collectionUnitFulfilment")
 }
 
@@ -629,11 +713,17 @@ model CollectionOrder {
   legacyConflatedOrderReceipt   Boolean   @default(false)
   level                         String?
   remarks                       String?
+  deleted                       Boolean   @default(false)
+  deletedAt                     DateTime?
+  deletedById                   String?
+  createdById                   String?
+  updatedById                   String?
   legacyRaw                     Json?
   createdAt                     DateTime  @default(now())
   updatedAt                     DateTime  @updatedAt
 
   @@index([tenantId])
+  @@index([deleted])
   @@index([collectionPointId])
   @@index([legacyCollectDeliverCollectId])
   @@map("collectionOrder")
@@ -650,11 +740,17 @@ model CollectionReceipt {
   legacyCollectDeliverCollectId String?
   legacyConflatedOrderReceipt   Boolean   @default(false)
   acceptanceState               String?
+  deleted                       Boolean   @default(false)
+  deletedAt                     DateTime?
+  deletedById                   String?
+  createdById                   String?
+  updatedById                   String?
   legacyRaw                     Json?
   createdAt                     DateTime  @default(now())
   updatedAt                     DateTime  @updatedAt
 
   @@index([tenantId])
+  @@index([deleted])
   @@index([collectionOrderId])
   @@index([legacyCollectDeliverCollectId])
   @@map("collectionReceipt")
@@ -669,12 +765,18 @@ model CollectionReceiptLine {
   acceptanceStatus    String?
   resultingHetId      String?
   discrepancyReason   String?
+  deleted             Boolean  @default(false)
+  deletedAt           DateTime?
+  deletedById         String?
+  createdById         String?
+  updatedById         String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
   hets                Het[]
 
   @@unique([collectionReceiptId, collectionUnitId])
   @@index([tenantId])
+  @@index([deleted])
   @@index([collectionUnitId])
   @@index([resultingHetId])
   @@map("collectionReceiptLine")
@@ -688,12 +790,18 @@ model InventoryReference {
   shortCode    String?
   description  String?
   sourceSystem String?
+  deleted      Boolean  @default(false)
+  deletedAt    DateTime?
+  deletedById  String?
+  createdById  String?
+  updatedById  String?
   legacyRaw    Json?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@unique([tenantId, refType, name])
   @@index([tenantId])
+  @@index([deleted])
   @@index([refType])
   @@map("inventoryReference")
 }
@@ -707,6 +815,11 @@ model InventoryLocation {
   description      String?
   imagePath        String?
   sourceSystem     String?
+  deleted          Boolean  @default(false)
+  deletedAt        DateTime?
+  deletedById      String?
+  createdById      String?
+  updatedById      String?
   legacyRaw        Json?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -719,6 +832,7 @@ model InventoryLocation {
   lots             InventoryLot[]
 
   @@index([tenantId])
+  @@index([deleted])
   @@index([locationType])
   @@index([parentLocationId])
   @@map("inventoryLocation")
@@ -741,6 +855,11 @@ model InventorySku {
   mediaUrl       String?
   qrPrintPath    String?
   sourceSystem   String?
+  deleted        Boolean  @default(false)
+  deletedAt      DateTime?
+  deletedById    String?
+  createdById    String?
+  updatedById    String?
   legacyRaw      Json?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -750,6 +869,7 @@ model InventorySku {
   transactions InventoryTransaction[]
 
   @@index([tenantId])
+  @@index([deleted])
   @@index([sku])
   @@index([category])
   @@map("inventorySku")
@@ -773,6 +893,11 @@ model InventoryLot {
   legacyItemSerialId String?
   legacyCheckInOutId String?
   legacyHetId        String?
+  deleted            Boolean  @default(false)
+  deletedAt          DateTime?
+  deletedById        String?
+  createdById        String?
+  updatedById        String?
   legacyRaw          Json?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -789,6 +914,7 @@ model InventoryLot {
   consumptions    WorkOrderInventoryConsumption[]
 
   @@index([tenantId])
+  @@index([deleted])
   @@index([inventorySkuId])
   @@index([collectionUnitId])
   @@index([currentLocationId])
@@ -819,6 +945,11 @@ model InventoryTransaction {
   legacyRefNumber    String?
   legacyRefNumberOut String?
   sourceSystem       String?
+  deleted            Boolean   @default(false)
+  deletedAt          DateTime?
+  deletedById        String?
+  createdById        String?
+  updatedById        String?
   legacyRaw          Json?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
@@ -829,6 +960,7 @@ model InventoryTransaction {
   toLocation   InventoryLocation? @relation("InventoryTransactionToLocation", fields: [toLocationId], references: [id])
 
   @@index([tenantId])
+  @@index([deleted])
   @@index([inventorySkuId])
   @@index([inventoryLotId])
   @@index([transactionType])
@@ -846,6 +978,11 @@ model InventoryBalance {
   inventoryLocationId String?
   quantity            Decimal? @db.Decimal(18, 4)
   sourceSystem        String?
+  deleted             Boolean  @default(false)
+  deletedAt           DateTime?
+  deletedById         String?
+  createdById         String?
+  updatedById         String?
   legacyRaw           Json?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -856,6 +993,7 @@ model InventoryBalance {
 
   @@unique([tenantId, inventorySkuId, inventoryLotId, inventoryLocationId])
   @@index([tenantId])
+  @@index([deleted])
   @@index([inventorySkuId])
   @@index([inventoryLotId])
   @@index([inventoryLocationId])
@@ -871,6 +1009,11 @@ model InventoryGenealogy {
   workOrderId          String?
   phaseId              String?
   sourceSystem         String?
+  deleted              Boolean  @default(false)
+  deletedAt            DateTime?
+  deletedById          String?
+  createdById          String?
+  updatedById          String?
   legacyRaw            Json?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
@@ -880,6 +1023,7 @@ model InventoryGenealogy {
 
   @@unique([parentInventoryLotId, childInventoryLotId, relationshipType])
   @@index([tenantId])
+  @@index([deleted])
   @@index([parentInventoryLotId])
   @@index([childInventoryLotId])
   @@map("inventoryGenealogy")
@@ -895,6 +1039,11 @@ model WorkOrderInventoryConsumption {
   quantity       Decimal? @db.Decimal(18, 4)
   uom            String?
   sourceSystem   String?
+  deleted        Boolean  @default(false)
+  deletedAt      DateTime?
+  deletedById    String?
+  createdById    String?
+  updatedById    String?
   legacyRaw      Json?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -903,6 +1052,7 @@ model WorkOrderInventoryConsumption {
   inventoryLot InventoryLot? @relation(fields: [inventoryLotId], references: [id])
 
   @@index([tenantId])
+  @@index([deleted])
   @@index([workOrderId])
   @@index([inventoryLotId])
   @@index([inventorySkuId])
@@ -918,8 +1068,14 @@ model InventoryImportReport {
   startedAt  DateTime  @default(now())
   finishedAt DateTime?
   report     Json
+  deleted    Boolean   @default(false)
+  deletedAt  DateTime?
+  deletedById String?
+  createdById String?
+  updatedById String?
 
   @@index([tenantId])
+  @@index([deleted])
   @@map("inventoryImportReport")
 }
 
@@ -931,8 +1087,14 @@ model ProcurementImportReport {
   startedAt  DateTime  @default(now())
   finishedAt DateTime?
   report     Json
+  deleted    Boolean   @default(false)
+  deletedAt  DateTime?
+  deletedById String?
+  createdById String?
+  updatedById String?
 
   @@index([tenantId])
+  @@index([deleted])
   @@map("procurementImportReport")
 }
 

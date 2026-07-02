@@ -4,11 +4,11 @@
 when:
   event: push
   branch: [main]
-  # instance: MAIN runs only on home-syno (Synology Woodpecker, ci.familyhub.id). PR/DEV run on jmacpro. See issue #31.
+  # instance: MAIN runs only on home-syno (Synology Woodpecker, ci.familyhub.id). PR/DEV run on jmacair. See issue #31 and #100.
   instance: [ci.familyhub.id]
 
 variables:
-  - &node_image node:22-alpine
+  - &node_image node:24-alpine
   - &postgres_image postgres:16-alpine
 
 steps:

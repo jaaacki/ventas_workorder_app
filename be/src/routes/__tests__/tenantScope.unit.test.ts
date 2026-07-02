@@ -71,6 +71,18 @@ const mocks = vi.hoisted(() => ({
     finishHet: vi.fn(),
   },
   procurementService: {
+    procurementCrudResources: {
+      supplyEntities: { resource: 'procurement.supplyEntity' },
+      collectionPoints: { resource: 'procurement.collectionPoint' },
+      collectionUnits: { resource: 'procurement.collectionUnit' },
+      issuanceOrders: { resource: 'procurement.issuanceOrder' },
+      issuanceOrderLines: { resource: 'procurement.issuanceOrderLine' },
+      collectionUnitFulfilments: { resource: 'procurement.collectionUnitFulfilment' },
+      collectionOrders: { resource: 'procurement.collectionOrder' },
+      collectionReceipts: { resource: 'procurement.collectionReceipt' },
+      collectionReceiptLines: { resource: 'procurement.collectionReceiptLine' },
+      importReports: { resource: 'procurement.importReport', archiveOnly: true },
+    },
     getProcurementOverview: vi.fn(),
     listSupplyEntities: vi.fn(),
     listCollectionPoints: vi.fn(),
@@ -80,8 +92,26 @@ const mocks = vi.hoisted(() => ({
     listCollectionOrders: vi.fn(),
     listCollectionReceipts: vi.fn(),
     listImportReports: vi.fn(),
+    listProcurementResource: vi.fn(),
+    getProcurementResource: vi.fn(),
+    createProcurementResource: vi.fn(),
+    updateProcurementResource: vi.fn(),
+    archiveProcurementResource: vi.fn(),
+    restoreProcurementResource: vi.fn(),
+    listProcurementResourceAudit: vi.fn(),
   },
   inventoryService: {
+    inventoryCrudResources: {
+      references: { resource: 'inventory.reference' },
+      locations: { resource: 'inventory.location' },
+      skus: { resource: 'inventory.sku' },
+      lots: { resource: 'inventory.lot' },
+      transactions: { resource: 'inventory.transaction' },
+      balances: { resource: 'inventory.balance' },
+      genealogy: { resource: 'inventory.genealogy' },
+      workOrderConsumptions: { resource: 'inventory.workOrderConsumption' },
+      importReports: { resource: 'inventory.importReport', archiveOnly: true },
+    },
     getInventoryOverview: vi.fn(),
     listSkus: vi.fn(),
     listLots: vi.fn(),
@@ -90,11 +120,23 @@ const mocks = vi.hoisted(() => ({
     listLocations: vi.fn(),
     getGenealogy: vi.fn(),
     listImportReports: vi.fn(),
+    listInventoryResource: vi.fn(),
+    getInventoryResource: vi.fn(),
+    createInventoryResource: vi.fn(),
+    updateInventoryResource: vi.fn(),
+    archiveInventoryResource: vi.fn(),
+    restoreInventoryResource: vi.fn(),
+    listInventoryResourceAudit: vi.fn(),
   },
   inventoryTraceService: {
     getWorkOrderInventoryTrace: vi.fn(),
     getCollectionUnitInventoryTrace: vi.fn(),
     getHetInventoryTrace: vi.fn(),
+  },
+  prisma: {
+    rolePermission: {
+      findFirst: vi.fn(),
+    },
   },
 }));
 
@@ -108,6 +150,7 @@ vi.mock('../../services/hetService.js', () => mocks.hetService);
 vi.mock('../../services/procurementService.js', () => mocks.procurementService);
 vi.mock('../../services/inventoryService.js', () => mocks.inventoryService);
 vi.mock('../../services/inventoryTraceService.js', () => mocks.inventoryTraceService);
+vi.mock('../../db/prisma.js', () => ({ prisma: mocks.prisma }));
 
 const tenantId = 'tenant-route-a';
 const adminActorId = 'staff-route-admin';
@@ -357,6 +400,7 @@ function stubRequiredEnv() {
 function resetServiceMocks() {
   vi.clearAllMocks();
 
+  mocks.prisma.rolePermission.findFirst.mockResolvedValue({ roleId: 'role-route' });
   mocks.workflowService.listWorkflows.mockResolvedValue([]);
   mocks.workflowService.getWorkflow.mockResolvedValue(null);
   mocks.workflowService.createWorkflow.mockResolvedValue(workflowDetail);
@@ -431,6 +475,7 @@ function resetServiceMocks() {
   mocks.procurementService.listCollectionOrders.mockResolvedValue([]);
   mocks.procurementService.listCollectionReceipts.mockResolvedValue([]);
   mocks.procurementService.listImportReports.mockResolvedValue([]);
+  mocks.procurementService.listProcurementResource.mockResolvedValue([]);
   mocks.inventoryService.getInventoryOverview.mockResolvedValue({
     skus: 0,
     lots: 0,
@@ -448,6 +493,7 @@ function resetServiceMocks() {
   mocks.inventoryService.listLocations.mockResolvedValue([]);
   mocks.inventoryService.getGenealogy.mockResolvedValue(null);
   mocks.inventoryService.listImportReports.mockResolvedValue([]);
+  mocks.inventoryService.listInventoryResource.mockResolvedValue([]);
   mocks.inventoryTraceService.getWorkOrderInventoryTrace.mockResolvedValue(null);
   mocks.inventoryTraceService.getCollectionUnitInventoryTrace.mockResolvedValue(null);
   mocks.inventoryTraceService.getHetInventoryTrace.mockResolvedValue(null);
@@ -559,10 +605,17 @@ describe('route tenant propagation', () => {
       expect(mocks.procurementService.getProcurementOverview).toHaveBeenCalledWith(tenantId);
 
       await get('/api/procurement/supply-entities');
-      expect(mocks.procurementService.listSupplyEntities).toHaveBeenCalledWith(tenantId);
+      expect(mocks.procurementService.listProcurementResource).toHaveBeenCalledWith('supplyEntities', {
+        tenantId,
+        includeDeleted: undefined,
+      });
 
       await get('/api/procurement/collection-points?supplyEntityId=supply-1');
-      expect(mocks.procurementService.listCollectionPoints).toHaveBeenCalledWith(tenantId, 'supply-1');
+      expect(mocks.procurementService.listProcurementResource).toHaveBeenCalledWith('collectionPoints', {
+        tenantId,
+        includeDeleted: undefined,
+        filters: { supplyEntityId: 'supply-1' },
+      });
 
       await get('/api/procurement/collection-units?includeHidden=true&status=received&q=HET&take=25');
       expect(mocks.procurementService.listCollectionUnits).toHaveBeenCalledWith({
@@ -574,28 +627,45 @@ describe('route tenant propagation', () => {
       });
 
       await get('/api/procurement/collection-units/unit-1');
-      expect(mocks.procurementService.getCollectionUnit).toHaveBeenCalledWith('unit-1', tenantId);
+      expect(mocks.procurementService.getCollectionUnit).toHaveBeenCalledWith('unit-1', tenantId, undefined);
 
       await get('/api/procurement/collection-units/unit-1/inventory-trace');
       expect(mocks.inventoryTraceService.getCollectionUnitInventoryTrace).toHaveBeenCalledWith('unit-1', tenantId);
 
       await get('/api/procurement/issuance-orders');
-      expect(mocks.procurementService.listIssuanceOrders).toHaveBeenCalledWith(tenantId);
+      expect(mocks.procurementService.listProcurementResource).toHaveBeenCalledWith('issuanceOrders', {
+        tenantId,
+        includeDeleted: undefined,
+      });
 
       await get('/api/procurement/collection-orders');
-      expect(mocks.procurementService.listCollectionOrders).toHaveBeenCalledWith(tenantId);
+      expect(mocks.procurementService.listProcurementResource).toHaveBeenCalledWith('collectionOrders', {
+        tenantId,
+        includeDeleted: undefined,
+      });
 
       await get('/api/procurement/collection-receipts');
-      expect(mocks.procurementService.listCollectionReceipts).toHaveBeenCalledWith(tenantId);
+      expect(mocks.procurementService.listProcurementResource).toHaveBeenCalledWith('collectionReceipts', {
+        tenantId,
+        includeDeleted: undefined,
+      });
 
       await get('/api/procurement/import-reports', adminToken);
-      expect(mocks.procurementService.listImportReports).toHaveBeenCalledWith(tenantId);
+      expect(mocks.procurementService.listImportReports).toHaveBeenCalledWith({
+        tenantId,
+        includeDeleted: undefined,
+      });
 
       await get('/api/inventory/overview');
       expect(mocks.inventoryService.getInventoryOverview).toHaveBeenCalledWith(tenantId);
 
       await get('/api/inventory/skus?q=graft&take=25');
-      expect(mocks.inventoryService.listSkus).toHaveBeenCalledWith({ tenantId, q: 'graft', take: 25 });
+      expect(mocks.inventoryService.listSkus).toHaveBeenCalledWith({
+        tenantId,
+        q: 'graft',
+        take: 25,
+        includeDeleted: undefined,
+      });
 
       await get('/api/inventory/lots?q=lot&inventoryType=HET&status=available&take=50');
       expect(mocks.inventoryService.listLots).toHaveBeenCalledWith({
@@ -604,22 +674,34 @@ describe('route tenant propagation', () => {
         inventoryType: 'HET',
         status: 'available',
         take: 50,
+        includeDeleted: undefined,
       });
 
       await get('/api/inventory/lots/lot-1');
-      expect(mocks.inventoryService.getLot).toHaveBeenCalledWith('lot-1', tenantId);
+      expect(mocks.inventoryService.getLot).toHaveBeenCalledWith('lot-1', tenantId, undefined);
 
       await get('/api/inventory/transactions?q=WO-1&take=75');
-      expect(mocks.inventoryService.listTransactions).toHaveBeenCalledWith({ tenantId, q: 'WO-1', take: 75 });
+      expect(mocks.inventoryService.listTransactions).toHaveBeenCalledWith({
+        tenantId,
+        q: 'WO-1',
+        take: 75,
+        includeDeleted: undefined,
+      });
 
       await get('/api/inventory/locations');
-      expect(mocks.inventoryService.listLocations).toHaveBeenCalledWith(tenantId);
+      expect(mocks.inventoryService.listLocations).toHaveBeenCalledWith({
+        tenantId,
+        includeDeleted: undefined,
+      });
 
-      await get('/api/inventory/genealogy/lot-1');
+      await get('/api/inventory/lots/lot-1/genealogy');
       expect(mocks.inventoryService.getGenealogy).toHaveBeenCalledWith('lot-1', tenantId);
 
       await get('/api/inventory/import-reports', adminToken);
-      expect(mocks.inventoryService.listImportReports).toHaveBeenCalledWith(tenantId);
+      expect(mocks.inventoryService.listImportReports).toHaveBeenCalledWith({
+        tenantId,
+        includeDeleted: undefined,
+      });
     } finally {
       await app.close();
     }

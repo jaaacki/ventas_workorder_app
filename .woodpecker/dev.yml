@@ -4,11 +4,11 @@
 when:
   event: push
   branch: [dev]
-  # instance: PR/DEV run only on jmacpro; MAIN (main.yml) runs on home-syno. See issue #31.
-  instance: [jmacpro.noonoon.cc]
+  # instance: PR/DEV run only on jmacair; MAIN (main.yml) runs on home-syno. See issue #31 and #100.
+  instance: [jmacair.noonoon.cc]
 
 variables:
-  - &node_image node:22-alpine
+  - &node_image node:24-alpine
   - &postgres_image postgres:16-alpine
 
 steps:

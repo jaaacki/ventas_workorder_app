@@ -2,7 +2,7 @@ import { describe, expect, it, afterEach, vi } from 'vitest';
 import type { OpenAPIV3 } from 'openapi-types';
 
 type RouteKind = 'auth' | 'health' | 'import-admin' | 'lifecycle-action' | 'read-model' | 'resource-crud';
-type AuthKind = 'anonymous' | 'authenticated' | 'role';
+type AuthKind = 'anonymous' | 'authenticated' | 'permission' | 'role';
 
 type ExpectedOperation = {
   method: OpenAPIV3.HttpMethods;
@@ -11,7 +11,117 @@ type ExpectedOperation = {
   routeKind: RouteKind;
   auth: AuthKind;
   requiredRoles?: string[];
+  requiredPermissions?: string[];
 };
+
+type CrudExpectedResource = {
+  basePath: string;
+  suffix: string;
+  permissionResource: string;
+  skipList?: boolean;
+  skipDetail?: boolean;
+  skipCreate?: boolean;
+  skipUpdate?: boolean;
+};
+
+function crudExpectedOperations(resources: CrudExpectedResource[]): ExpectedOperation[] {
+  return resources.flatMap((resource) => {
+    const operations: ExpectedOperation[] = [];
+    const permission = (action: string) => [`${resource.permissionResource}.${action}`];
+    if (!resource.skipList) {
+      operations.push({
+        method: 'get',
+        path: resource.basePath,
+        operationId: `list${resource.suffix}`,
+        routeKind: 'resource-crud',
+        auth: 'permission',
+        requiredPermissions: permission('read'),
+      });
+    }
+    if (!resource.skipDetail) {
+      operations.push({
+        method: 'get',
+        path: `${resource.basePath}/{id}`,
+        operationId: `get${resource.suffix}`,
+        routeKind: 'resource-crud',
+        auth: 'permission',
+        requiredPermissions: permission('read'),
+      });
+    }
+    if (!resource.skipCreate) {
+      operations.push({
+        method: 'post',
+        path: resource.basePath,
+        operationId: `create${resource.suffix}`,
+        routeKind: 'resource-crud',
+        auth: 'permission',
+        requiredPermissions: permission('create'),
+      });
+    }
+    if (!resource.skipUpdate) {
+      operations.push({
+        method: 'patch',
+        path: `${resource.basePath}/{id}`,
+        operationId: `update${resource.suffix}`,
+        routeKind: 'resource-crud',
+        auth: 'permission',
+        requiredPermissions: permission('update'),
+      });
+    }
+    operations.push(
+      {
+        method: 'delete',
+        path: `${resource.basePath}/{id}`,
+        operationId: `archive${resource.suffix}`,
+        routeKind: 'resource-crud',
+        auth: 'permission',
+        requiredPermissions: permission('delete'),
+      },
+      {
+        method: 'patch',
+        path: `${resource.basePath}/{id}/restore`,
+        operationId: `restore${resource.suffix}`,
+        routeKind: 'resource-crud',
+        auth: 'permission',
+        requiredPermissions: permission('restore'),
+      },
+      {
+        method: 'get',
+        path: `${resource.basePath}/{id}/audit`,
+        operationId: `list${resource.suffix}Audit`,
+        routeKind: 'resource-crud',
+        auth: 'permission',
+        requiredPermissions: permission('readAudit'),
+      },
+    );
+    return operations;
+  });
+}
+
+const procurementCrudExpectedResources: CrudExpectedResource[] = [
+  { basePath: '/api/procurement/supply-entities', suffix: 'SupplyEntities', permissionResource: 'procurement.supplyEntity', skipList: true },
+  { basePath: '/api/procurement/collection-points', suffix: 'CollectionPoints', permissionResource: 'procurement.collectionPoint', skipList: true },
+  { basePath: '/api/procurement/collection-units', suffix: 'CollectionUnits', permissionResource: 'procurement.collectionUnit', skipList: true, skipDetail: true },
+  { basePath: '/api/procurement/issuance-orders', suffix: 'IssuanceOrders', permissionResource: 'procurement.issuanceOrder', skipList: true },
+  { basePath: '/api/procurement/issuance-order-lines', suffix: 'IssuanceOrderLines', permissionResource: 'procurement.issuanceOrderLine' },
+  { basePath: '/api/procurement/collection-unit-fulfilments', suffix: 'CollectionUnitFulfilments', permissionResource: 'procurement.collectionUnitFulfilment' },
+  { basePath: '/api/procurement/collection-orders', suffix: 'CollectionOrders', permissionResource: 'procurement.collectionOrder', skipList: true },
+  { basePath: '/api/procurement/collection-receipts', suffix: 'CollectionReceipts', permissionResource: 'procurement.collectionReceipt', skipList: true },
+  { basePath: '/api/procurement/collection-receipt-lines', suffix: 'CollectionReceiptLines', permissionResource: 'procurement.collectionReceiptLine' },
+  { basePath: '/api/procurement/import-reports', suffix: 'ProcurementImportReports', permissionResource: 'procurement.importReport', skipList: true, skipCreate: true, skipUpdate: true },
+];
+
+const inventoryCrudExpectedResources: CrudExpectedResource[] = [
+  { basePath: '/api/inventory/references', suffix: 'References', permissionResource: 'inventory.reference' },
+  { basePath: '/api/inventory/locations', suffix: 'Locations', permissionResource: 'inventory.location', skipList: true },
+  { basePath: '/api/inventory/skus', suffix: 'Skus', permissionResource: 'inventory.sku', skipList: true },
+  { basePath: '/api/inventory/lots', suffix: 'Lots', permissionResource: 'inventory.lot', skipList: true, skipDetail: true },
+  { basePath: '/api/inventory/transactions', suffix: 'Transactions', permissionResource: 'inventory.transaction', skipList: true },
+  { basePath: '/api/inventory/balances', suffix: 'Balances', permissionResource: 'inventory.balance' },
+  { basePath: '/api/inventory/genealogy', suffix: 'Genealogy', permissionResource: 'inventory.genealogy' },
+  { basePath: '/api/inventory/work-order-consumptions', suffix: 'WorkOrderConsumptions', permissionResource: 'inventory.workOrderConsumption' },
+  { basePath: '/api/inventory/import-reports', suffix: 'InventoryImportReports', permissionResource: 'inventory.importReport', skipList: true, skipCreate: true, skipUpdate: true },
+];
 
 const expectedOperations: ExpectedOperation[] = [
   { method: 'get', path: '/api/health', operationId: 'getHealth', routeKind: 'health', auth: 'anonymous' },
@@ -84,24 +194,26 @@ const expectedOperations: ExpectedOperation[] = [
   { method: 'get', path: '/api/hets/{id}/inventory-trace', operationId: 'getHetInventoryTrace', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'post', path: '/api/hets/{id}/use', operationId: 'useHet', routeKind: 'lifecycle-action', auth: 'role', requiredRoles: ['admin', 'owner'] },
   { method: 'post', path: '/api/hets/{id}/finish', operationId: 'finishHet', routeKind: 'lifecycle-action', auth: 'role', requiredRoles: ['admin', 'owner'] },
-  { method: 'get', path: '/api/procurement/overview', operationId: 'getProcurementOverview', routeKind: 'read-model', auth: 'authenticated' },
-  { method: 'get', path: '/api/procurement/supply-entities', operationId: 'listSupplyEntities', routeKind: 'read-model', auth: 'authenticated' },
-  { method: 'get', path: '/api/procurement/collection-points', operationId: 'listCollectionPoints', routeKind: 'read-model', auth: 'authenticated' },
-  { method: 'get', path: '/api/procurement/collection-units', operationId: 'listCollectionUnits', routeKind: 'read-model', auth: 'authenticated' },
-  { method: 'get', path: '/api/procurement/collection-units/{id}', operationId: 'getCollectionUnit', routeKind: 'read-model', auth: 'authenticated' },
-  { method: 'get', path: '/api/procurement/collection-units/{id}/inventory-trace', operationId: 'getCollectionUnitInventoryTrace', routeKind: 'read-model', auth: 'authenticated' },
-  { method: 'get', path: '/api/procurement/issuance-orders', operationId: 'listIssuanceOrders', routeKind: 'read-model', auth: 'authenticated' },
-  { method: 'get', path: '/api/procurement/collection-orders', operationId: 'listCollectionOrders', routeKind: 'read-model', auth: 'authenticated' },
-  { method: 'get', path: '/api/procurement/collection-receipts', operationId: 'listCollectionReceipts', routeKind: 'read-model', auth: 'authenticated' },
-  { method: 'get', path: '/api/procurement/import-reports', operationId: 'listProcurementImportReports', routeKind: 'import-admin', auth: 'role', requiredRoles: ['admin', 'owner'] },
-  { method: 'get', path: '/api/inventory/overview', operationId: 'getInventoryOverview', routeKind: 'read-model', auth: 'authenticated' },
-  { method: 'get', path: '/api/inventory/skus', operationId: 'listInventorySkus', routeKind: 'read-model', auth: 'authenticated' },
-  { method: 'get', path: '/api/inventory/lots', operationId: 'listInventoryLots', routeKind: 'read-model', auth: 'authenticated' },
-  { method: 'get', path: '/api/inventory/lots/{id}', operationId: 'getInventoryLot', routeKind: 'read-model', auth: 'authenticated' },
-  { method: 'get', path: '/api/inventory/transactions', operationId: 'listInventoryTransactions', routeKind: 'read-model', auth: 'authenticated' },
-  { method: 'get', path: '/api/inventory/locations', operationId: 'listInventoryLocations', routeKind: 'read-model', auth: 'authenticated' },
-  { method: 'get', path: '/api/inventory/genealogy/{lotId}', operationId: 'getInventoryGenealogy', routeKind: 'read-model', auth: 'authenticated' },
-  { method: 'get', path: '/api/inventory/import-reports', operationId: 'listInventoryImportReports', routeKind: 'import-admin', auth: 'role', requiredRoles: ['admin', 'owner'] },
+  { method: 'get', path: '/api/procurement/overview', operationId: 'getProcurementOverview', routeKind: 'read-model', auth: 'permission', requiredPermissions: ['procurement.supplyEntity.read'] },
+  { method: 'get', path: '/api/procurement/supply-entities', operationId: 'listSupplyEntities', routeKind: 'resource-crud', auth: 'permission', requiredPermissions: ['procurement.supplyEntity.read'] },
+  { method: 'get', path: '/api/procurement/collection-points', operationId: 'listCollectionPoints', routeKind: 'resource-crud', auth: 'permission', requiredPermissions: ['procurement.collectionPoint.read'] },
+  { method: 'get', path: '/api/procurement/collection-units', operationId: 'listCollectionUnits', routeKind: 'resource-crud', auth: 'permission', requiredPermissions: ['procurement.collectionUnit.read'] },
+  { method: 'get', path: '/api/procurement/collection-units/{id}', operationId: 'getCollectionUnit', routeKind: 'resource-crud', auth: 'permission', requiredPermissions: ['procurement.collectionUnit.read'] },
+  { method: 'get', path: '/api/procurement/collection-units/{id}/inventory-trace', operationId: 'getCollectionUnitInventoryTrace', routeKind: 'read-model', auth: 'permission', requiredPermissions: ['procurement.issuanceOrder.read'] },
+  { method: 'get', path: '/api/procurement/issuance-orders', operationId: 'listIssuanceOrders', routeKind: 'resource-crud', auth: 'permission', requiredPermissions: ['procurement.issuanceOrder.read'] },
+  { method: 'get', path: '/api/procurement/collection-orders', operationId: 'listCollectionOrders', routeKind: 'resource-crud', auth: 'permission', requiredPermissions: ['procurement.collectionOrder.read'] },
+  { method: 'get', path: '/api/procurement/collection-receipts', operationId: 'listCollectionReceipts', routeKind: 'resource-crud', auth: 'permission', requiredPermissions: ['procurement.collectionReceipt.read'] },
+  { method: 'get', path: '/api/procurement/import-reports', operationId: 'listProcurementImportReports', routeKind: 'resource-crud', auth: 'permission', requiredPermissions: ['procurement.importReport.read'] },
+  { method: 'get', path: '/api/inventory/overview', operationId: 'getInventoryOverview', routeKind: 'read-model', auth: 'permission', requiredPermissions: ['inventory.sku.read'] },
+  { method: 'get', path: '/api/inventory/skus', operationId: 'listInventorySkus', routeKind: 'resource-crud', auth: 'permission', requiredPermissions: ['inventory.sku.read'] },
+  { method: 'get', path: '/api/inventory/lots', operationId: 'listInventoryLots', routeKind: 'resource-crud', auth: 'permission', requiredPermissions: ['inventory.lot.read'] },
+  { method: 'get', path: '/api/inventory/lots/{id}', operationId: 'getInventoryLot', routeKind: 'resource-crud', auth: 'permission', requiredPermissions: ['inventory.lot.read'] },
+  { method: 'get', path: '/api/inventory/transactions', operationId: 'listInventoryTransactions', routeKind: 'resource-crud', auth: 'permission', requiredPermissions: ['inventory.transaction.read'] },
+  { method: 'get', path: '/api/inventory/locations', operationId: 'listInventoryLocations', routeKind: 'resource-crud', auth: 'permission', requiredPermissions: ['inventory.location.read'] },
+  { method: 'get', path: '/api/inventory/lots/{lotId}/genealogy', operationId: 'getInventoryLotGenealogy', routeKind: 'read-model', auth: 'permission', requiredPermissions: ['inventory.genealogy.read'] },
+  { method: 'get', path: '/api/inventory/import-reports', operationId: 'listInventoryImportReports', routeKind: 'resource-crud', auth: 'permission', requiredPermissions: ['inventory.importReport.read'] },
+  ...crudExpectedOperations(procurementCrudExpectedResources),
+  ...crudExpectedOperations(inventoryCrudExpectedResources),
 ];
 
 const httpMethods = new Set<OpenAPIV3.HttpMethods>(['delete', 'get', 'head', 'options', 'patch', 'post', 'put', 'trace']);
@@ -207,6 +319,15 @@ describe('OpenAPI contract', () => {
       if (expected.requiredRoles) {
         expect(operation?.['x-required-roles']).toEqual(expected.requiredRoles);
       }
+
+      if (expected.requiredPermissions) {
+        expect(operation?.['x-required-permissions']).toEqual(expected.requiredPermissions);
+      }
+
+      if (expected.auth === 'permission') {
+        expect(expected.requiredPermissions, `${expected.operationId} expected requiredPermissions`).toBeDefined();
+        expect(operation?.['x-required-permissions'], `${expected.operationId} x-required-permissions`).toEqual(expected.requiredPermissions);
+      }
     }
 
     const login = doc.paths['/api/auth/login']?.post;
@@ -278,21 +399,25 @@ describe('OpenAPI contract', () => {
     const listCollectionUnits = pathItem(doc, '/api/procurement/collection-units')?.get;
     expect(listCollectionUnits?.tags).toEqual(['Procurement']);
     expect(listCollectionUnits?.security).toEqual([{ bearerAuth: [] }]);
-    expect(listCollectionUnits?.['x-route-kind']).toBe('read-model');
+    expect(listCollectionUnits?.['x-route-kind']).toBe('resource-crud');
     expect(listCollectionUnits?.description).toContain('status=received');
+    expect(listCollectionUnits?.['x-auth']).toBe('permission');
+    expect(listCollectionUnits?.['x-required-permissions']).toEqual(['procurement.collectionUnit.read']);
     expect(listCollectionUnits?.['x-method-policy']).toMatchObject({
-      resource: 'Procurement read model',
-      completeness: 'read-model-operational-mutations-deferred',
+      resource: 'Procurement',
+      completeness: 'guarded-crud-soft-delete',
       destructiveDeletes: 'not-exposed',
     });
-    expect(JSON.stringify(listCollectionUnits?.['x-method-policy'])).toContain('mutation workflows are not implemented yet');
+    expect(JSON.stringify(listCollectionUnits?.['x-method-policy'])).toContain('permission-gated CRUD');
 
     const procurementReports = pathItem(doc, '/api/procurement/import-reports')?.get;
     expect(procurementReports?.tags).toEqual(['Procurement']);
-    expect(procurementReports?.['x-route-kind']).toBe('import-admin');
+    expect(procurementReports?.['x-route-kind']).toBe('resource-crud');
+    expect(procurementReports?.['x-auth']).toBe('permission');
+    expect(procurementReports?.['x-required-permissions']).toEqual(['procurement.importReport.read']);
     expect(procurementReports?.['x-method-policy']).toMatchObject({
       resource: 'Import report',
-      completeness: 'read-only-admin-audit',
+      completeness: 'archive-restore-audit-only',
     });
 
     const collectionUnitTrace = pathItem(doc, '/api/procurement/collection-units/{id}/inventory-trace')?.get;
@@ -306,27 +431,33 @@ describe('OpenAPI contract', () => {
     const listInventoryLots = pathItem(doc, '/api/inventory/lots')?.get;
     expect(listInventoryLots?.tags).toEqual(['Inventory']);
     expect(listInventoryLots?.security).toEqual([{ bearerAuth: [] }]);
-    expect(listInventoryLots?.['x-route-kind']).toBe('read-model');
+    expect(listInventoryLots?.['x-route-kind']).toBe('resource-crud');
     expect(listInventoryLots?.description).toContain('inventoryType=HET');
+    expect(listInventoryLots?.['x-auth']).toBe('permission');
+    expect(listInventoryLots?.['x-required-permissions']).toEqual(['inventory.lot.read']);
     expect(listInventoryLots?.['x-method-policy']).toMatchObject({
-      resource: 'Inventory read model',
-      completeness: 'read-model-operational-mutations-deferred',
+      resource: 'Inventory',
+      completeness: 'guarded-crud-soft-delete',
       destructiveDeletes: 'not-exposed',
     });
-    expect(JSON.stringify(listInventoryLots?.['x-method-policy'])).toContain('controlled stock actions');
+    expect(JSON.stringify(listInventoryLots?.['x-method-policy'])).toContain('permission-gated CRUD');
 
     const getInventoryLot = pathItem(doc, '/api/inventory/lots/{id}')?.get;
     expect(getInventoryLot?.operationId).toBe('getInventoryLot');
     expect(getInventoryLot?.description).toContain('lot-1001');
-    expect(getInventoryLot?.['x-route-kind']).toBe('read-model');
+    expect(getInventoryLot?.['x-route-kind']).toBe('resource-crud');
+    expect(getInventoryLot?.['x-auth']).toBe('permission');
+    expect(getInventoryLot?.['x-required-permissions']).toEqual(['inventory.lot.read']);
     expect(getInventoryLot?.['x-method-policy']).toMatchObject({
-      resource: 'Inventory read model',
-      completeness: 'read-model-operational-mutations-deferred',
+      resource: 'Inventory',
+      completeness: 'guarded-crud-soft-delete',
     });
 
-    const inventoryGenealogy = pathItem(doc, '/api/inventory/genealogy/{lotId}')?.get;
-    expect(inventoryGenealogy?.operationId).toBe('getInventoryGenealogy');
+    const inventoryGenealogy = pathItem(doc, '/api/inventory/lots/{lotId}/genealogy')?.get;
+    expect(inventoryGenealogy?.operationId).toBe('getInventoryLotGenealogy');
     expect(inventoryGenealogy?.['x-route-kind']).toBe('read-model');
+    expect(inventoryGenealogy?.['x-auth']).toBe('permission');
+    expect(inventoryGenealogy?.['x-required-permissions']).toEqual(['inventory.genealogy.read']);
     expect(inventoryGenealogy?.['x-method-policy']).toMatchObject({
       resource: 'Inventory trace',
       completeness: 'read-only-trace',
@@ -383,6 +514,22 @@ describe('OpenAPI contract', () => {
       expect.objectContaining({ id: 'lot-1001', inventoryType: 'HET' }),
     );
     expect(jsonMedia(getInventoryLot?.responses['404'])?.examples).toBeDefined();
+
+    const generatedCrudExampleExpectations: Array<[string, string, Record<string, unknown>]> = [
+      ['post', '/api/procurement/issuance-order-lines', { issuanceOrderId: 'issue-1001', collectionUnitId: 'cu-1001' }],
+      ['post', '/api/procurement/collection-receipt-lines', { collectionReceiptId: 'receipt-1001', resultingHetId: 'het-1001' }],
+      ['post', '/api/inventory/balances', { inventorySkuId: 'sku-graft', inventoryLocationId: 'loc-clean-room' }],
+      ['post', '/api/inventory/genealogy', { parentInventoryLotId: 'lot-parent', childInventoryLotId: 'lot-child', relationshipType: 'consumed_into' }],
+      ['post', '/api/inventory/work-order-consumptions', { workOrderId: 'WO-1001', inventorySkuId: 'sku-graft' }],
+      ['patch', '/api/inventory/import-reports/{id}/restore', { source: 'inventory-legacy', report: { imported: 24, warnings: 2 } }],
+    ];
+
+    for (const [method, path, expectedExample] of generatedCrudExampleExpectations) {
+      const operation = pathItem(doc, path)?.[method as OpenAPIV3.HttpMethods] as OpenAPIV3.OperationObject | undefined;
+      const successStatus = Object.keys(operation?.responses ?? {}).find((status) => /^[23]/.test(status));
+      const example = successStatus ? jsonMedia(operation?.responses[successStatus])?.example : undefined;
+      expect(example, `${method.toUpperCase()} ${path} generated success example`).toEqual(expect.objectContaining(expectedExample));
+    }
   });
 
   it('documents method policy decisions for every generated operation', async () => {

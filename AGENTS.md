@@ -45,15 +45,16 @@ This file defines how Claude Code and other contributors should work in this rep
 
 - Woodpecker CI files live in `.woodpecker/`:
   - `.woodpecker/pr.yml` — fast PR checks (lint, typecheck, unit tests, build). No database.
-  - `.woodpecker/dev.yml` — full integration tests against a real PostgreSQL database for `dev` pushes on `jmacpro.noonoon.cc`.
+  - `.woodpecker/dev.yml` — full integration tests against a real PostgreSQL database for `dev` pushes on `jmacair.noonoon.cc`.
   - `.woodpecker/main.yml` — same integration checks for `main` pushes on `home-syno` / `ci.familyhub.id`; this is the main-branch production handoff check.
 - Backend tests are split into `vitest.unit.config.ts` and `vitest.integration.config.ts`.
 - Test files are excluded from `tsc` build output via `tsconfig.json`.
 
 ## Local DevOps / Woodpecker Workflow
 
-- PR and `dev` CI run in Woodpecker at `https://jmacpro.noonoon.cc/ci`.
+- PR and `dev` CI run in Woodpecker at `https://jmacair.noonoon.cc/ci`.
 - `main` CI runs on the `home-syno` Woodpecker instance at `https://ci.familyhub.id`.
+- Use `wpci local ...` for PR/dev CI inspection, for example `wpci local pipeline last jaaacki/ventas_workorder_app`.
 - Use `wpci home-syno ...` for main-branch CI inspection, for example `wpci home-syno pipeline last jaaacki/ventas_workorder_app`.
 - Persistent local infra is managed outside this repo under `~/Dev/docker`.
 - Agents must not run project package, test, build, database, or app-server commands on the host.

@@ -4,9 +4,17 @@ import type { JwtPayload } from '../plugins/auth.js';
 import * as procurementService from '../services/procurementService.js';
 import * as inventoryTraceService from '../services/inventoryTraceService.js';
 import { inventoryTraceSchema } from './inventoryTraceSchemas.js';
+import { registerCrudRoutes, type CrudRouteDefinition } from './crudRouteHelpers.js';
 
 const errorResponse = z.object({ error: z.string() });
 const dateish = z.union([z.date(), z.string()]);
+const softDeleteSchema = {
+  deleted: z.boolean(),
+  deletedAt: dateish.nullable(),
+  deletedById: z.string().nullable(),
+  createdById: z.string().nullable(),
+  updatedById: z.string().nullable(),
+};
 
 const procurementOverviewSchema = z.object({
   supplyEntities: z.number(),
@@ -29,6 +37,7 @@ const supplyEntitySchema = z.object({
   sourceSystem: z.string().nullable(),
   legacyGroupKey: z.string().nullable(),
   legacyClinicId: z.string().nullable(),
+  ...softDeleteSchema,
   createdAt: dateish,
   updatedAt: dateish,
 });
@@ -45,6 +54,7 @@ const collectionPointSchema = z.object({
   postalCode: z.string().nullable(),
   telephone: z.string().nullable(),
   personInCharge: z.string().nullable(),
+  ...softDeleteSchema,
   createdAt: dateish,
   updatedAt: dateish,
 });
@@ -66,7 +76,7 @@ const collectionUnitSchema = z.object({
   linkCompleteness: z.string().nullable(),
   semanticConfidence: z.string().nullable(),
   hiddenFromOperations: z.boolean(),
-  deleted: z.boolean(),
+  ...softDeleteSchema,
   createdAt: dateish,
   updatedAt: dateish,
 });
@@ -79,6 +89,7 @@ const issuanceOrderLineSchema = z.object({
   legacyHetId: z.string().nullable(),
   legacyHetNumber: z.string().nullable(),
   parcelTrackingNumber: z.string().nullable(),
+  ...softDeleteSchema,
   createdAt: dateish,
   updatedAt: dateish,
 });
@@ -93,6 +104,7 @@ const collectionUnitFulfilmentSchema = z.object({
   evidencePath: z.string().nullable(),
   remarks: z.string().nullable(),
   inferred: z.boolean(),
+  ...softDeleteSchema,
   createdAt: dateish,
   updatedAt: dateish,
 });
@@ -106,6 +118,7 @@ const collectionReceiptLineSchema = z.object({
   acceptanceStatus: z.string().nullable(),
   resultingHetId: z.string().nullable(),
   discrepancyReason: z.string().nullable(),
+  ...softDeleteSchema,
   createdAt: dateish,
   updatedAt: dateish,
 });
@@ -140,6 +153,7 @@ const issuanceOrderSchema = z.object({
   level: z.string().nullable(),
   remarks: z.string().nullable(),
   legacyRaw: z.unknown().nullable(),
+  ...softDeleteSchema,
   createdAt: dateish,
   updatedAt: dateish,
 });
@@ -160,6 +174,7 @@ const collectionOrderSchema = z.object({
   level: z.string().nullable(),
   remarks: z.string().nullable(),
   legacyRaw: z.unknown().nullable(),
+  ...softDeleteSchema,
   createdAt: dateish,
   updatedAt: dateish,
 });
@@ -176,6 +191,7 @@ const collectionReceiptSchema = z.object({
   legacyConflatedOrderReceipt: z.boolean(),
   acceptanceState: z.string().nullable(),
   legacyRaw: z.unknown().nullable(),
+  ...softDeleteSchema,
   createdAt: dateish,
   updatedAt: dateish,
 });
@@ -188,17 +204,121 @@ const importReportSchema = z.object({
   startedAt: dateish,
   finishedAt: dateish.nullable(),
   report: z.unknown(),
+  ...softDeleteSchema,
 });
 
 function tenantIdOf(req: { user: unknown }): string {
   return (req.user as JwtPayload).tenantId;
 }
 
+const includeDeletedQuery = z.object({ includeDeleted: z.coerce.boolean().optional() });
+
+const procurementCrudRoutes = [
+  {
+    key: 'supplyEntities',
+    path: 'supply-entities',
+    singular: 'supply entity',
+    plural: 'supply entities',
+    config: procurementService.procurementCrudResources.supplyEntities,
+    schema: supplyEntitySchema,
+    skipList: true,
+  },
+  {
+    key: 'collectionPoints',
+    path: 'collection-points',
+    singular: 'collection point',
+    plural: 'collection points',
+    config: procurementService.procurementCrudResources.collectionPoints,
+    schema: collectionPointSchema,
+    filters: ['supplyEntityId'],
+    skipList: true,
+  },
+  {
+    key: 'collectionUnits',
+    path: 'collection-units',
+    singular: 'collection unit',
+    plural: 'collection units',
+    config: procurementService.procurementCrudResources.collectionUnits,
+    schema: collectionUnitSchema.extend({ legacyRaw: z.unknown().nullable() }),
+    filters: ['status'],
+    skipList: true,
+    skipDetail: true,
+  },
+  {
+    key: 'issuanceOrders',
+    path: 'issuance-orders',
+    singular: 'issuance order',
+    plural: 'issuance orders',
+    config: procurementService.procurementCrudResources.issuanceOrders,
+    schema: issuanceOrderSchema,
+    skipList: true,
+  },
+  {
+    key: 'issuanceOrderLines',
+    path: 'issuance-order-lines',
+    singular: 'issuance order line',
+    plural: 'issuance order lines',
+    config: procurementService.procurementCrudResources.issuanceOrderLines,
+    schema: issuanceOrderLineSchema,
+    filters: ['issuanceOrderId', 'collectionUnitId'],
+  },
+  {
+    key: 'collectionUnitFulfilments',
+    path: 'collection-unit-fulfilments',
+    singular: 'collection unit fulfilment',
+    plural: 'collection unit fulfilments',
+    config: procurementService.procurementCrudResources.collectionUnitFulfilments,
+    schema: collectionUnitFulfilmentSchema,
+    filters: ['collectionUnitId'],
+  },
+  {
+    key: 'collectionOrders',
+    path: 'collection-orders',
+    singular: 'collection order',
+    plural: 'collection orders',
+    config: procurementService.procurementCrudResources.collectionOrders,
+    schema: collectionOrderSchema,
+    filters: ['supplyEntityId', 'status'],
+    skipList: true,
+  },
+  {
+    key: 'collectionReceipts',
+    path: 'collection-receipts',
+    singular: 'collection receipt',
+    plural: 'collection receipts',
+    config: procurementService.procurementCrudResources.collectionReceipts,
+    schema: collectionReceiptSchema,
+    filters: ['collectionOrderId'],
+    skipList: true,
+  },
+  {
+    key: 'collectionReceiptLines',
+    path: 'collection-receipt-lines',
+    singular: 'collection receipt line',
+    plural: 'collection receipt lines',
+    config: procurementService.procurementCrudResources.collectionReceiptLines,
+    schema: collectionReceiptLineSchema,
+    filters: ['collectionReceiptId', 'collectionUnitId'],
+  },
+  {
+    key: 'importReports',
+    path: 'import-reports',
+    operationSuffix: 'ProcurementImportReports',
+    singular: 'procurement import report',
+    plural: 'procurement import reports',
+    config: procurementService.procurementCrudResources.importReports,
+    schema: importReportSchema,
+    skipList: true,
+    skipCreate: true,
+    skipUpdate: true,
+  },
+] satisfies CrudRouteDefinition<procurementService.ProcurementCrudResourceKey>[];
+
 export const procurementRoutes: FastifyPluginAsyncZod = async function (app) {
   app.get(
     '/overview',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.requirePermission('procurement.supplyEntity', 'read')],
       schema: {
         tags: ['Procurement'],
         summary: 'Get procurement overview',
@@ -206,8 +326,9 @@ export const procurementRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'getProcurementOverview',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'read-model',
-        'x-auth': 'authenticated',
-        response: { 200: procurementOverviewSchema, 401: errorResponse },
+        'x-auth': 'permission',
+        'x-required-permissions': ['procurement.supplyEntity.read'],
+        response: { 200: procurementOverviewSchema, 401: errorResponse, 403: errorResponse },
       },
     },
     async (req) => procurementService.getProcurementOverview(tenantIdOf(req)),
@@ -216,89 +337,125 @@ export const procurementRoutes: FastifyPluginAsyncZod = async function (app) {
   app.get(
     '/supply-entities',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.requirePermission('procurement.supplyEntity', 'read')],
       schema: {
         tags: ['Procurement'],
         summary: 'List supply entities',
         description: 'Read supplier or clinic groups imported from the procurement source data.',
         operationId: 'listSupplyEntities',
         security: [{ bearerAuth: [] }],
-        'x-route-kind': 'read-model',
-        'x-auth': 'authenticated',
-        response: { 200: z.array(supplyEntitySchema), 401: errorResponse },
+        'x-route-kind': 'resource-crud',
+        'x-auth': 'permission',
+        'x-required-permissions': ['procurement.supplyEntity.read'],
+        querystring: includeDeletedQuery,
+        response: { 200: z.array(supplyEntitySchema), 401: errorResponse, 403: errorResponse },
       },
     },
-    async (req) => procurementService.listSupplyEntities(tenantIdOf(req)),
+    async (req, reply) => {
+      if (req.query.includeDeleted) {
+        await app.requireAnyPermission([{ resource: 'procurement.supplyEntity', action: 'readDeleted' }, { resource: 'procurement.supplyEntity', action: 'readAudit' }])(req, reply);
+        if (reply.sent) return;
+      }
+      return procurementService.listProcurementResource('supplyEntities', {
+        tenantId: tenantIdOf(req),
+        includeDeleted: req.query.includeDeleted,
+      });
+    },
   );
 
   app.get(
     '/collection-points',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.requirePermission('procurement.collectionPoint', 'read')],
       schema: {
         tags: ['Procurement'],
         summary: 'List collection points',
         description: 'Read collection points, optionally narrowed by supply entity. Example: GET /api/procurement/collection-points?supplyEntityId=clinic-1.',
         operationId: 'listCollectionPoints',
         security: [{ bearerAuth: [] }],
-        'x-route-kind': 'read-model',
-        'x-auth': 'authenticated',
-        querystring: z.object({ supplyEntityId: z.string().optional() }),
-        response: { 200: z.array(collectionPointSchema), 401: errorResponse },
+        'x-route-kind': 'resource-crud',
+        'x-auth': 'permission',
+        'x-required-permissions': ['procurement.collectionPoint.read'],
+        querystring: includeDeletedQuery.extend({ supplyEntityId: z.string().optional() }),
+        response: { 200: z.array(collectionPointSchema), 401: errorResponse, 403: errorResponse },
       },
     },
-    async (req) => procurementService.listCollectionPoints(tenantIdOf(req), req.query.supplyEntityId),
+    async (req, reply) => {
+      if (req.query.includeDeleted) {
+        await app.requireAnyPermission([{ resource: 'procurement.collectionPoint', action: 'readDeleted' }, { resource: 'procurement.collectionPoint', action: 'readAudit' }])(req, reply);
+        if (reply.sent) return;
+      }
+      return procurementService.listProcurementResource('collectionPoints', {
+        tenantId: tenantIdOf(req),
+        includeDeleted: req.query.includeDeleted,
+        filters: { supplyEntityId: req.query.supplyEntityId },
+      });
+    },
   );
 
   app.get(
     '/collection-units',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.requirePermission('procurement.collectionUnit', 'read')],
       schema: {
         tags: ['Procurement'],
         summary: 'List collection units',
         description: 'Read collection units with optional hidden/status/search filters. Example: GET /api/procurement/collection-units?status=received&q=HET&take=50.',
         operationId: 'listCollectionUnits',
         security: [{ bearerAuth: [] }],
-        'x-route-kind': 'read-model',
-        'x-auth': 'authenticated',
+        'x-route-kind': 'resource-crud',
+        'x-auth': 'permission',
+        'x-required-permissions': ['procurement.collectionUnit.read'],
         querystring: z.object({
           includeHidden: z.enum(['true', 'false']).optional(),
+          includeDeleted: z.coerce.boolean().optional(),
           status: z.string().optional(),
           q: z.string().optional(),
           take: z.coerce.number().int().min(1).max(500).optional(),
         }),
-        response: { 200: z.array(collectionUnitSchema), 401: errorResponse },
+        response: { 200: z.array(collectionUnitSchema), 401: errorResponse, 403: errorResponse },
       },
     },
-    async (req) =>
-      procurementService.listCollectionUnits({
+    async (req, reply) => {
+      if (req.query.includeDeleted) {
+        await app.requireAnyPermission([{ resource: 'procurement.collectionUnit', action: 'readDeleted' }, { resource: 'procurement.collectionUnit', action: 'readAudit' }])(req, reply);
+        if (reply.sent) return;
+      }
+      return procurementService.listCollectionUnits({
         tenantId: tenantIdOf(req),
         includeHidden: req.query.includeHidden === 'true',
+        includeDeleted: req.query.includeDeleted,
         status: req.query.status,
         q: req.query.q,
         take: req.query.take,
-      }),
+      });
+    },
   );
 
   app.get(
     '/collection-units/:id',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.requirePermission('procurement.collectionUnit', 'read')],
       schema: {
         tags: ['Procurement'],
         summary: 'Get collection unit',
         description: 'Read one collection unit with issuance, fulfilment, receipt, and HET trace context.',
         operationId: 'getCollectionUnit',
         security: [{ bearerAuth: [] }],
-        'x-route-kind': 'read-model',
-        'x-auth': 'authenticated',
+        'x-route-kind': 'resource-crud',
+        'x-auth': 'permission',
+        'x-required-permissions': ['procurement.collectionUnit.read'],
         params: z.object({ id: z.string() }),
-        response: { 200: collectionUnitDetailSchema, 401: errorResponse, 404: errorResponse },
+        querystring: includeDeletedQuery,
+        response: { 200: collectionUnitDetailSchema, 401: errorResponse, 403: errorResponse, 404: errorResponse },
       },
     },
     async (req, reply) => {
-      const unit = await procurementService.getCollectionUnit(req.params.id, tenantIdOf(req));
+      if (req.query.includeDeleted) {
+        await app.requireAnyPermission([{ resource: 'procurement.collectionUnit', action: 'readDeleted' }, { resource: 'procurement.collectionUnit', action: 'readAudit' }])(req, reply);
+        if (reply.sent) return;
+      }
+      const unit = await procurementService.getCollectionUnit(req.params.id, tenantIdOf(req), req.query.includeDeleted);
       if (!unit) return reply.status(404).send({ error: 'Collection unit not found' });
       return unit;
     },
@@ -307,7 +464,7 @@ export const procurementRoutes: FastifyPluginAsyncZod = async function (app) {
   app.get(
     '/collection-units/:id/inventory-trace',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.requirePermission('procurement.issuanceOrder', 'read')],
       schema: {
         tags: ['Procurement', 'Inventory'],
         summary: 'Get collection unit inventory trace',
@@ -315,9 +472,10 @@ export const procurementRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'getCollectionUnitInventoryTrace',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'read-model',
-        'x-auth': 'authenticated',
+        'x-auth': 'permission',
+        'x-required-permissions': ['procurement.issuanceOrder.read'],
         params: z.object({ id: z.string() }),
-        response: { 200: inventoryTraceSchema, 401: errorResponse, 404: errorResponse },
+        response: { 200: inventoryTraceSchema, 401: errorResponse, 403: errorResponse, 404: errorResponse },
       },
     },
     async (req, reply) => {
@@ -330,73 +488,128 @@ export const procurementRoutes: FastifyPluginAsyncZod = async function (app) {
   app.get(
     '/issuance-orders',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.requirePermission('procurement.issuanceOrder', 'read')],
       schema: {
         tags: ['Procurement'],
         summary: 'List issuance orders',
-        description: 'Read imported issuance orders. This is currently a read model, not a mutation workflow.',
+        description: 'Read imported issuance orders. Mutations are managed through permission-gated CRUD, archive, restore, and audit endpoints.',
         operationId: 'listIssuanceOrders',
         security: [{ bearerAuth: [] }],
-        'x-route-kind': 'read-model',
-        'x-auth': 'authenticated',
-        response: { 200: z.array(issuanceOrderSchema), 401: errorResponse },
+        'x-route-kind': 'resource-crud',
+        'x-auth': 'permission',
+        'x-required-permissions': ['procurement.issuanceOrder.read'],
+        querystring: includeDeletedQuery,
+        response: { 200: z.array(issuanceOrderSchema), 401: errorResponse, 403: errorResponse },
       },
     },
-    async (req) => procurementService.listIssuanceOrders(tenantIdOf(req)),
+    async (req, reply) => {
+      if (req.query.includeDeleted) {
+        await app.requireAnyPermission([{ resource: 'procurement.issuanceOrder', action: 'readDeleted' }, { resource: 'procurement.issuanceOrder', action: 'readAudit' }])(req, reply);
+        if (reply.sent) return;
+      }
+      return procurementService.listProcurementResource('issuanceOrders', {
+        tenantId: tenantIdOf(req),
+        includeDeleted: req.query.includeDeleted,
+      });
+    },
   );
 
   app.get(
     '/collection-orders',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.requirePermission('procurement.collectionOrder', 'read')],
       schema: {
         tags: ['Procurement'],
         summary: 'List collection orders',
-        description: 'Read imported collection orders. This is currently a read model, not a mutation workflow.',
+        description: 'Read imported collection orders. Mutations are managed through permission-gated CRUD, archive, restore, and audit endpoints.',
         operationId: 'listCollectionOrders',
         security: [{ bearerAuth: [] }],
-        'x-route-kind': 'read-model',
-        'x-auth': 'authenticated',
-        response: { 200: z.array(collectionOrderSchema), 401: errorResponse },
+        'x-route-kind': 'resource-crud',
+        'x-auth': 'permission',
+        'x-required-permissions': ['procurement.collectionOrder.read'],
+        querystring: includeDeletedQuery,
+        response: { 200: z.array(collectionOrderSchema), 401: errorResponse, 403: errorResponse },
       },
     },
-    async (req) => procurementService.listCollectionOrders(tenantIdOf(req)),
+    async (req, reply) => {
+      if (req.query.includeDeleted) {
+        await app.requireAnyPermission([{ resource: 'procurement.collectionOrder', action: 'readDeleted' }, { resource: 'procurement.collectionOrder', action: 'readAudit' }])(req, reply);
+        if (reply.sent) return;
+      }
+      return procurementService.listProcurementResource('collectionOrders', {
+        tenantId: tenantIdOf(req),
+        includeDeleted: req.query.includeDeleted,
+      });
+    },
   );
 
   app.get(
     '/collection-receipts',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.requirePermission('procurement.collectionReceipt', 'read')],
       schema: {
         tags: ['Procurement'],
         summary: 'List collection receipts',
-        description: 'Read imported collection receipts. Acceptance/release mutations are not implemented in this endpoint.',
+        description: 'Read collection receipts. Receipt records are managed through permission-gated CRUD, archive, restore, and audit endpoints.',
         operationId: 'listCollectionReceipts',
         security: [{ bearerAuth: [] }],
-        'x-route-kind': 'read-model',
-        'x-auth': 'authenticated',
-        response: { 200: z.array(collectionReceiptSchema), 401: errorResponse },
+        'x-route-kind': 'resource-crud',
+        'x-auth': 'permission',
+        'x-required-permissions': ['procurement.collectionReceipt.read'],
+        querystring: includeDeletedQuery,
+        response: { 200: z.array(collectionReceiptSchema), 401: errorResponse, 403: errorResponse },
       },
     },
-    async (req) => procurementService.listCollectionReceipts(tenantIdOf(req)),
+    async (req, reply) => {
+      if (req.query.includeDeleted) {
+        await app.requireAnyPermission([{ resource: 'procurement.collectionReceipt', action: 'readDeleted' }, { resource: 'procurement.collectionReceipt', action: 'readAudit' }])(req, reply);
+        if (reply.sent) return;
+      }
+      return procurementService.listProcurementResource('collectionReceipts', {
+        tenantId: tenantIdOf(req),
+        includeDeleted: req.query.includeDeleted,
+      });
+    },
   );
 
   app.get(
     '/import-reports',
     {
-      onRequest: [app.requireRole('admin', 'owner')],
+      onRequest: [app.requirePermission('procurement.importReport', 'read')],
       schema: {
         tags: ['Procurement'],
         summary: 'List procurement import reports',
-        description: 'Read recent procurement import audit reports. Admin or owner role required.',
+        description: 'Read recent procurement import audit reports. Requires procurement import-report read permission.',
         operationId: 'listProcurementImportReports',
         security: [{ bearerAuth: [] }],
-        'x-route-kind': 'import-admin',
-        'x-auth': 'role',
-        'x-required-roles': ['admin', 'owner'],
+        'x-route-kind': 'resource-crud',
+        'x-auth': 'permission',
+        'x-required-permissions': ['procurement.importReport.read'],
+        querystring: includeDeletedQuery,
         response: { 200: z.array(importReportSchema), 401: errorResponse, 403: errorResponse },
       },
     },
-    async (req) => procurementService.listImportReports(tenantIdOf(req)),
+    async (req, reply) => {
+      if (req.query.includeDeleted) {
+        await app.requireAnyPermission([{ resource: 'procurement.importReport', action: 'readDeleted' }, { resource: 'procurement.importReport', action: 'readAudit' }])(req, reply);
+        if (reply.sent) return;
+      }
+      return procurementService.listImportReports({
+        tenantId: tenantIdOf(req),
+        includeDeleted: req.query.includeDeleted,
+      });
+    },
   );
+
+  for (const definition of procurementCrudRoutes) {
+    registerCrudRoutes(app, 'Procurement', definition, {
+      list: procurementService.listProcurementResource,
+      get: procurementService.getProcurementResource,
+      create: procurementService.createProcurementResource,
+      update: procurementService.updateProcurementResource,
+      archive: procurementService.archiveProcurementResource,
+      restore: procurementService.restoreProcurementResource,
+      audit: procurementService.listProcurementResourceAudit,
+    });
+  }
 };

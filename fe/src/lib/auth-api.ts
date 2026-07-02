@@ -2,11 +2,21 @@ import api from './api';
 
 export interface Role {
   id: string;
-  key: 'owner' | 'admin' | 'user';
+  key:
+    | 'owner'
+    | 'admin'
+    | 'production_manager'
+    | 'procurement_manager'
+    | 'inventory_manager'
+    | 'qa_manager'
+    | 'operator'
+    | 'viewer'
+    | 'user';
   name: string;
   description: string | null;
   builtIn: boolean;
   sortOrder: number;
+  permissions?: string[];
   createdAt: string;
   updatedAt: string;
 }

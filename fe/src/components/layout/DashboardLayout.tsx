@@ -27,6 +27,8 @@ import {
   Warehouse,
   ArrowRight,
   ShieldCheck,
+  ListChecks,
+  Ban,
   Moon,
   Sun,
 } from 'lucide-react';
@@ -59,12 +61,14 @@ const navGroups: NavGroup[] = [
     heading: 'Production',
     items: [
       { label: 'Board', href: '/dashboard/work-orders', icon: Columns3, roles: ALL_ROLES, keywords: ['work orders', 'wo', 'phases', 'kanban', 'batches'] },
+      { label: 'My queue', href: '/dashboard/my-queue', icon: ListChecks, roles: ALL_ROLES, keywords: ['tasks', 'operator', 'my work', 'assigned', 'next action'] },
     ],
   },
   {
     heading: 'Quality',
     items: [
-      { label: 'Release queue', href: '/dashboard/qa', icon: ShieldCheck, roles: ALL_ROLES, keywords: ['qa', 'sterilisation', 'bet', 'release', 'quarantine'], badgeKey: 'release' },
+      { label: 'Release queue', href: '/dashboard/qa', icon: ShieldCheck, roles: ALL_ROLES, keywords: ['qa', 'sterilisation', 'bet', 'release'], badgeKey: 'release' },
+      { label: 'Quarantine', href: '/dashboard/quarantine', icon: Ban, roles: ALL_ROLES, keywords: ['held', 'bet fail', 'reject', 'hold', 'quarantine'] },
     ],
   },
   {

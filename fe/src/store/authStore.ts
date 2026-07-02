@@ -10,11 +10,12 @@ interface AuthState {
   clearAuth: () => void;
   setLoading: (loading: boolean) => void;
   setUser: (user: User) => void;
+  hasPermission: (permission: string) => boolean;
 }
 
 const storedToken = localStorage.getItem('wo_token');
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   token: storedToken,
   user: null,
   isLoading: true,
@@ -29,4 +30,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
   setLoading: (isLoading) => set({ isLoading }),
   setUser: (user) => set({ user }),
+  hasPermission: (permission) => {
+    const permissions = get().user?.role?.permissions ?? [];
+    return permissions.includes(permission);
+  },
 }));

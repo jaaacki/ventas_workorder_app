@@ -15,6 +15,7 @@ const roleSchema = z.object({
   description: z.string().nullable(),
   builtIn: z.boolean(),
   sortOrder: z.number(),
+  permissions: z.array(z.string()).optional(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
@@ -42,6 +43,43 @@ async function getUserRole(): Promise<{ id: string; key: string }> {
 function sanitizeUser<T extends { passwordHash?: string | null }>(staff: T): Omit<T, 'passwordHash'> {
   const { passwordHash: _p, ...rest } = staff;
   return rest as Omit<T, 'passwordHash'>;
+}
+
+const roleWithPermissionsInclude = {
+  permissions: { include: { permission: true } },
+} as const;
+
+function serializeRoleWithPermissions<
+  T extends {
+    permissions?: { permission: { key: string } }[];
+  } | null,
+>(role: T) {
+  if (!role) return null;
+  const { permissions: rolePermissions = [], ...rest } = role;
+  return {
+    ...rest,
+    permissions: rolePermissions.map((entry) => entry.permission.key).sort(),
+  };
+}
+
+function serializeRequiredRoleWithPermissions<
+  T extends {
+    permissions?: { permission: { key: string } }[];
+  },
+>(role: T) {
+  const serialized = serializeRoleWithPermissions(role);
+  if (!serialized) throw new Error('Role not found');
+  return serialized;
+}
+
+function serializeUser<T extends { passwordHash?: string | null; role?: { permissions?: { permission: { key: string } }[] } | null }>(
+  staff: T,
+) {
+  const user = sanitizeUser(staff);
+  return {
+    ...user,
+    role: serializeRoleWithPermissions(user.role ?? null),
+  };
 }
 
 export const authRoutes: FastifyPluginAsyncZod = async function (app) {
@@ -72,7 +110,7 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
       const { email, password } = req.body;
       const staff = await prisma.staff.findUnique({
         where: { email },
-        include: { role: true },
+        include: { role: { include: roleWithPermissionsInclude } },
       });
       if (!staff || !staff.passwordHash || !staff.role) {
         return reply.status(401).send({ error: 'Invalid credentials' });
@@ -88,7 +126,7 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
         tenantId: tenantIdOrDefault(staff.tenantId),
         name: staff.name,
       });
-      return { token, user: sanitizeUser(staff) };
+      return { token, user: serializeUser(staff) };
     }
   );
 
@@ -134,10 +172,10 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
           tenantId: tenantIdOrDefault((req.user as JwtPayload).tenantId),
           roleId: assignedRoleId,
         },
-        include: { role: true },
+        include: { role: { include: roleWithPermissionsInclude } },
       });
       reply.status(201);
-      return sanitizeUser(staff);
+      return serializeUser(staff);
     }
   );
 
@@ -162,9 +200,9 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
     async (req) => {
       const staff = await prisma.staff.findFirstOrThrow({
         where: { id: (req.user as JwtPayload).id, tenantId: tenantIdOrDefault((req.user as JwtPayload).tenantId) },
-        include: { role: true },
+        include: { role: { include: roleWithPermissionsInclude } },
       });
-      return sanitizeUser(staff);
+      return serializeUser(staff);
     }
   );
 
@@ -210,7 +248,8 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
       },
     },
     async () => {
-      return prisma.role.findMany({ orderBy: { sortOrder: 'asc' } });
+      const roles = await prisma.role.findMany({ include: roleWithPermissionsInclude, orderBy: { sortOrder: 'asc' } });
+      return roles.map(serializeRequiredRoleWithPermissions);
     }
   );
 
@@ -275,10 +314,10 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
     async (req) => {
       const staffList = await prisma.staff.findMany({
         where: { tenantId: tenantIdOrDefault((req.user as JwtPayload).tenantId) },
-        include: { role: true },
+        include: { role: { include: roleWithPermissionsInclude } },
         orderBy: { createdAt: 'desc' },
       });
-      return staffList.map((s) => sanitizeUser(s));
+      return staffList.map((s) => serializeUser(s));
     }
   );
 
@@ -318,8 +357,8 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
       return prisma.staff.update({
         where: { id: req.params.id },
         data: { roleId: req.body.roleId },
-        include: { role: true },
-      }).then((s) => sanitizeUser(s));
+        include: { role: { include: roleWithPermissionsInclude } },
+      }).then((s) => serializeUser(s));
     }
   );
 
@@ -354,8 +393,8 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
       return prisma.staff.update({
         where: { id: req.params.id },
         data: { active: req.body.active },
-        include: { role: true },
-      }).then((s) => sanitizeUser(s));
+        include: { role: { include: roleWithPermissionsInclude } },
+      }).then((s) => serializeUser(s));
     }
   );
 };

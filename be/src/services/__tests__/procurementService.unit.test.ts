@@ -42,16 +42,16 @@ describe('procurementService tenant scoping', () => {
 
     await procurementService.getProcurementOverview(tenantId);
 
-    expect(mocks.supplyEntity.count).toHaveBeenCalledWith({ where: { tenantId } });
-    expect(mocks.collectionPoint.count).toHaveBeenCalledWith({ where: { tenantId } });
+    expect(mocks.supplyEntity.count).toHaveBeenCalledWith({ where: { tenantId, deleted: false } });
+    expect(mocks.collectionPoint.count).toHaveBeenCalledWith({ where: { tenantId, deleted: false } });
     expect(mocks.collectionUnit.count).toHaveBeenCalledWith({ where: { tenantId, deleted: false } });
     expect(mocks.collectionUnit.count).toHaveBeenCalledWith({
       where: { tenantId, deleted: false, hiddenFromOperations: false },
     });
-    expect(mocks.collectionUnit.count).toHaveBeenCalledWith({ where: { tenantId, hiddenFromOperations: true } });
-    expect(mocks.issuanceOrder.count).toHaveBeenCalledWith({ where: { tenantId } });
-    expect(mocks.collectionOrder.count).toHaveBeenCalledWith({ where: { tenantId } });
-    expect(mocks.collectionReceipt.count).toHaveBeenCalledWith({ where: { tenantId } });
+    expect(mocks.collectionUnit.count).toHaveBeenCalledWith({ where: { tenantId, deleted: false, hiddenFromOperations: true } });
+    expect(mocks.issuanceOrder.count).toHaveBeenCalledWith({ where: { tenantId, deleted: false } });
+    expect(mocks.collectionOrder.count).toHaveBeenCalledWith({ where: { tenantId, deleted: false } });
+    expect(mocks.collectionReceipt.count).toHaveBeenCalledWith({ where: { tenantId, deleted: false } });
     expect(mocks.het.count).toHaveBeenCalledWith({ where: { tenantId, collectionUnitId: { not: null } } });
   });
 
@@ -70,11 +70,11 @@ describe('procurementService tenant scoping', () => {
     await procurementService.listIssuanceOrders(tenantId);
     await procurementService.listCollectionOrders(tenantId);
     await procurementService.listCollectionReceipts(tenantId);
-    await procurementService.listImportReports(tenantId);
+    await procurementService.listImportReports({ tenantId });
 
-    expect(mocks.supplyEntity.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId } }));
+    expect(mocks.supplyEntity.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId, deleted: false } }));
     expect(mocks.collectionPoint.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { tenantId, supplyEntityId: 'supply-1' } }),
+      expect.objectContaining({ where: { tenantId, deleted: false, supplyEntityId: 'supply-1' } }),
     );
     expect(mocks.collectionUnit.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -87,11 +87,11 @@ describe('procurementService tenant scoping', () => {
         take: 25,
       }),
     );
-    expect(mocks.issuanceOrder.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId } }));
-    expect(mocks.collectionOrder.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId } }));
-    expect(mocks.collectionReceipt.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId } }));
+    expect(mocks.issuanceOrder.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId, deleted: false } }));
+    expect(mocks.collectionOrder.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId, deleted: false } }));
+    expect(mocks.collectionReceipt.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId, deleted: false } }));
     expect(mocks.procurementImportReport.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { tenantId } }),
+      expect.objectContaining({ where: { tenantId, deleted: false } }),
     );
   });
 
@@ -105,16 +105,16 @@ describe('procurementService tenant scoping', () => {
     await procurementService.getCollectionUnit('unit-1', tenantId);
 
     expect(mocks.collectionUnit.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'unit-1', tenantId } }),
+      expect.objectContaining({ where: { id: 'unit-1', tenantId, deleted: false } }),
     );
     expect(mocks.issuanceOrderLine.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { tenantId, collectionUnitId: 'unit-1' } }),
+      expect.objectContaining({ where: { tenantId, collectionUnitId: 'unit-1', deleted: false } }),
     );
     expect(mocks.collectionUnitFulfilment.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { tenantId, collectionUnitId: 'unit-1' } }),
+      expect.objectContaining({ where: { tenantId, collectionUnitId: 'unit-1', deleted: false } }),
     );
     expect(mocks.collectionReceiptLine.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { tenantId, collectionUnitId: 'unit-1' } }),
+      expect.objectContaining({ where: { tenantId, collectionUnitId: 'unit-1', deleted: false } }),
     );
     expect(mocks.het.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId, collectionUnitId: 'unit-1' } }),

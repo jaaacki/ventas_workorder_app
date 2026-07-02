@@ -4,7 +4,7 @@
 when:
   event: push
   branch: [main]
-  # instance: MAIN runs only on home-syno (Synology Woodpecker, ci.familyhub.id). PR/DEV run on jmacpro. See issue #31.
+  # instance: MAIN runs only on home-syno (Synology Woodpecker, ci.familyhub.id). PR/DEV run on jmacair. See issue #31 and #100.
   instance: [ci.familyhub.id]
 
 variables:

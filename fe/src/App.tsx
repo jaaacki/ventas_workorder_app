@@ -16,6 +16,7 @@ import QaQueuePage from './pages/QaQueuePage';
 import QuarantinePage from './pages/QuarantinePage';
 import ProcurementPage from './pages/ProcurementPage';
 import CollectionUnitDetailPage from './pages/CollectionUnitDetailPage';
+import HetDetailPage from './pages/HetDetailPage';
 import InventoryPage from './pages/InventoryPage';
 import InventoryLotDetailPage from './pages/InventoryLotDetailPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -124,6 +125,16 @@ function App() {
               <ProtectedRoute roles={['owner', 'admin', 'user']}>
                 <DashboardLayout>
                   <CollectionUnitDetailPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/hets/:id"
+            element={
+              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+                <DashboardLayout>
+                  <HetDetailPage />
                 </DashboardLayout>
               </ProtectedRoute>
             }

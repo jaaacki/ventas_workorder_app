@@ -19,6 +19,7 @@ import CollectionUnitDetailPage from './pages/CollectionUnitDetailPage';
 import HetDetailPage from './pages/HetDetailPage';
 import InventoryPage from './pages/InventoryPage';
 import InventoryLotDetailPage from './pages/InventoryLotDetailPage';
+import TraceabilityPage from './pages/TraceabilityPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 function App() {
@@ -165,6 +166,16 @@ function App() {
               <ProtectedRoute roles={['owner', 'admin', 'user']}>
                 <DashboardLayout>
                   <InventoryPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/traceability"
+            element={
+              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+                <DashboardLayout>
+                  <TraceabilityPage />
                 </DashboardLayout>
               </ProtectedRoute>
             }

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchWorkflows, type WorkflowSummary } from '@/lib/workflows-api';
 import { useAuthStore } from '@/store/authStore';
@@ -26,19 +26,17 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
     enabled: isAuthenticated,
   });
 
-  const [activeWorkflowId, setActiveWorkflowIdState] = useState<string | null>(
-    () => localStorage.getItem(STORAGE_KEY),
-  );
+  const [storedId, setStoredId] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY));
 
-  // Default to the first workflow once loaded, or reset if the stored id vanished.
-  useEffect(() => {
-    if (!workflows.length) return;
-    const stillExists = activeWorkflowId && workflows.some((w) => w.id === activeWorkflowId);
-    if (!stillExists) setActiveWorkflowIdState(workflows[0].id);
-  }, [workflows, activeWorkflowId]);
+  // Derive the effective active id during render (no effect): the stored choice when it
+  // still exists, otherwise the first available workflow.
+  const activeWorkflowId = useMemo(() => {
+    if (storedId && workflows.some((w) => w.id === storedId)) return storedId;
+    return workflows[0]?.id ?? null;
+  }, [storedId, workflows]);
 
   const setActiveWorkflowId = (id: string) => {
-    setActiveWorkflowIdState(id);
+    setStoredId(id);
     localStorage.setItem(STORAGE_KEY, id);
   };
 

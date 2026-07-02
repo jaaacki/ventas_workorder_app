@@ -806,7 +806,7 @@ const methodPolicies: Record<string, MethodPolicy> = {
     allowedMethods: ['POST'],
     omittedMethods: [{ method: 'PATCH/DELETE', reason: 'Final release disposition is a controlled QA action; corrections should be audit-backed rather than destructive.' }],
     destructiveDeletes: 'not-exposed',
-    notes: 'Records final release, quarantine, or rejection disposition only after a work order reaches final-phase release readiness.',
+    notes: 'Admin/owner action that records final release, quarantine, or rejection only after final-phase production is finished and required photo, output, serial, equipment, HET, and sterilisation/BET gates pass.',
   },
   recordWorkOrderSerial: {
     resource: 'Work order BOM serial evidence',

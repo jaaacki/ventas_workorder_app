@@ -100,8 +100,11 @@ const workOrderSchema = z.object({
   advanceRequirements: z.array(z.object({ key: z.string(), label: z.string(), met: z.boolean(), parityGap: z.boolean().optional() })),
   missingAdvanceRequirements: z.array(z.string()),
   parityGaps: z.array(z.string()),
+  imageCaptured: z.boolean(),
+  outputQuantityCaptured: z.boolean(),
   serialCheckDone: z.boolean(),
   serialRequiredCount: z.number(),
+  equipmentCheckDone: z.boolean(),
   requiredSerials: z.array(z.object({
     bomRefId: z.string(),
     description: z.string().nullable(),
@@ -187,7 +190,7 @@ const equipmentBodySchema = z.object({
 });
 
 const photoEvidenceBodySchema = z.object({
-  imageDataUrl: z.string().trim().min(1),
+  imageDataUrl: z.string().trim().min(1).max(7_000_000),
 });
 
 const releaseBodySchema = z.object({
@@ -457,15 +460,16 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
   app.post(
     '/:id/release',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.requireRole('admin', 'owner')],
       schema: {
         tags: ['Work Orders'],
         summary: 'Record work order release disposition',
-        description: 'Record final QA release disposition for a final-phase work order that has finished production.',
+        description: 'Record final QA release disposition for a final-phase work order that has finished production and all required evidence. Admin or owner role required.',
         operationId: 'recordWorkOrderRelease',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',
-        'x-auth': 'authenticated',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
         params: z.object({ id: z.string() }),
         body: releaseBodySchema,
         response: {

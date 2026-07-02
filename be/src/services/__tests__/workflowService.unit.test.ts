@@ -4,13 +4,14 @@ const mocks = vi.hoisted(() => ({
   workflow: {
     findMany: vi.fn(),
     findFirst: vi.fn(),
+    findFirstOrThrow: vi.fn(),
     create: vi.fn(),
-    update: vi.fn(),
+    updateMany: vi.fn(),
   },
   phase: {
     findMany: vi.fn(),
   },
-  workflowPhase: { deleteMany: vi.fn() },
+  workflowPhase: { createMany: vi.fn(), deleteMany: vi.fn() },
   $transaction: vi.fn(),
 }));
 
@@ -123,7 +124,9 @@ describe('workflowService', () => {
   it('updateWorkflow replaces phase bindings atomically', async () => {
     mocks.workflow.findFirst.mockResolvedValue({ id: 'w1' });
     mocks.workflowPhase.deleteMany.mockResolvedValue({ count: 2 });
-    mocks.workflow.update.mockResolvedValue({ id: 'w1', phases: [] });
+    mocks.workflow.updateMany.mockResolvedValue({ count: 1 });
+    mocks.workflowPhase.createMany.mockResolvedValue({ count: 1 });
+    mocks.workflow.findFirstOrThrow.mockResolvedValue({ id: 'w1', phases: [] });
     await workflowService.updateWorkflow(
       'w1',
       { phases: [{ phaseId: 'p2', sortOrder: 0 }] },
@@ -135,30 +138,34 @@ describe('workflowService', () => {
       select: { id: true },
     });
     expect(mocks.workflowPhase.deleteMany).toHaveBeenCalledWith({ where: { workflowId: 'w1' } });
-    expect(mocks.workflow.update).toHaveBeenCalledWith(
+    expect(mocks.workflow.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'w1' },
+        where: { id: 'w1', tenantId: 'ventas' },
         data: expect.objectContaining({
           updatedById: 'actor1',
-          phases: { create: [{ phaseId: 'p2', sortOrder: 0 }] },
         }),
       }),
     );
+    expect(mocks.workflowPhase.createMany).toHaveBeenCalledWith({
+      data: [{ workflowId: 'w1', phaseId: 'p2', sortOrder: 0 }],
+    });
   });
 
   it('updateWorkflow leaves phase bindings untouched when phases not provided', async () => {
     mocks.workflow.findFirst.mockResolvedValue({ id: 'w1' });
-    mocks.workflow.update.mockResolvedValue({ id: 'w1' });
+    mocks.workflow.updateMany.mockResolvedValue({ count: 1 });
+    mocks.workflow.findFirstOrThrow.mockResolvedValue({ id: 'w1' });
     await workflowService.updateWorkflow('w1', { active: false }, 'actor1');
     expect(mocks.workflowPhase.deleteMany).not.toHaveBeenCalled();
-    const call = mocks.workflow.update.mock.calls[0][0] as { data: Record<string, unknown> };
-    expect(call.data.phases).toBeUndefined();
+    expect(mocks.workflowPhase.createMany).not.toHaveBeenCalled();
+    const call = mocks.workflow.updateMany.mock.calls[0][0] as { data: Record<string, unknown> };
     expect(call.data.active).toBe(false);
   });
 
   it('updateWorkflow scopes the preflight lookup to the caller tenant', async () => {
     mocks.workflow.findFirst.mockResolvedValue({ id: 'w1' });
-    mocks.workflow.update.mockResolvedValue({ id: 'w1' });
+    mocks.workflow.updateMany.mockResolvedValue({ count: 1 });
+    mocks.workflow.findFirstOrThrow.mockResolvedValue({ id: 'w1' });
     await workflowService.updateWorkflow('w1', { active: false }, 'actor1', 'tenant-a');
     expect(mocks.workflow.findFirst).toHaveBeenCalledWith({
       where: { id: 'w1', tenantId: 'tenant-a' },
@@ -184,6 +191,6 @@ describe('workflowService', () => {
       select: { id: true },
     });
     expect(mocks.workflowPhase.deleteMany).not.toHaveBeenCalled();
-    expect(mocks.workflow.update).not.toHaveBeenCalled();
+    expect(mocks.workflow.updateMany).not.toHaveBeenCalled();
   });
 });

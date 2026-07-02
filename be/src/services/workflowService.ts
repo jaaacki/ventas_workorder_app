@@ -137,18 +137,26 @@ export async function updateWorkflow(id: string, input: UpdateWorkflowInput, act
       await assertTenantPhasesExist(tx, replacePhases, scopedTenantId);
       await tx.workflowPhase.deleteMany({ where: { workflowId: id } });
     }
-    return tx.workflow.update({
-      where: { id },
+    const updated = await tx.workflow.updateMany({
+      where: { id, tenantId: scopedTenantId },
       data: {
         ...(input.name !== undefined && { name: input.name }),
         ...(input.description !== undefined && { description: input.description }),
         ...(input.active !== undefined && { active: input.active }),
         updatedById: actorId,
-        ...(replacePhases !== undefined &&
-          replacePhases.length > 0 && {
-            phases: { create: phaseCreateMany(replacePhases) },
-          }),
       },
+    });
+    if (updated.count === 0) {
+      throw new Prisma.PrismaClientKnownRequestError('Workflow not found', {
+        code: 'P2025',
+        clientVersion: 'unknown',
+      });
+    }
+    if (replacePhases !== undefined && replacePhases.length > 0) {
+      await tx.workflowPhase.createMany({ data: phaseCreateMany(replacePhases).map((phase) => ({ ...phase, workflowId: id })) });
+    }
+    return tx.workflow.findFirstOrThrow({
+      where: { id, tenantId: scopedTenantId },
       include: workflowDetailInclude,
     });
   });

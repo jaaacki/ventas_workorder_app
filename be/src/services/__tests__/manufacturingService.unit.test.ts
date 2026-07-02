@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   },
   workOrder: {
     findFirst: vi.fn(),
-    update: vi.fn(),
+    updateMany: vi.fn(),
   },
   $transaction: vi.fn(),
 }));
@@ -33,6 +33,7 @@ describe('manufacturingService', () => {
   it('generateBatchRecord creates a Manufacturer with a MANU- manuNumber and links the work order', async () => {
     mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo1', tenantId: 'ventas' });
     mocks.manufacturer.create.mockResolvedValue({ id: 'm1', manuNumber: 'MANU-XYZ' });
+    mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
 
     const result = await manufacturingService.generateBatchRecord('wo1', 'actor1');
 
@@ -47,11 +48,12 @@ describe('manufacturingService', () => {
     expect(createCall.data.createdById).toBe('actor1');
     expect(createCall.data.updatedById).toBe('actor1');
 
-    const updateCall = mocks.workOrder.update.mock.calls[0][0] as {
-      where: { id: string };
+    const updateCall = mocks.workOrder.updateMany.mock.calls[0][0] as {
+      where: { id: string; tenantId: string };
       data: { manuId: string; manuNumber: string; updatedById: string };
     };
     expect(updateCall.where.id).toBe('wo1');
+    expect(updateCall.where.tenantId).toBe('ventas');
     expect(updateCall.data.manuId).toBe('m1');
     expect(updateCall.data.manuNumber).toMatch(/^MANU-/);
     expect(updateCall.data.updatedById).toBe('actor1');
@@ -65,12 +67,13 @@ describe('manufacturingService', () => {
     });
 
     expect(mocks.manufacturer.create).not.toHaveBeenCalled();
-    expect(mocks.workOrder.update).not.toHaveBeenCalled();
+    expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
   });
 
   it('generateBatchRecord scopes work order lookup and manufacturer creation to the caller tenant', async () => {
     mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo1', tenantId: 'tenant-a' });
     mocks.manufacturer.create.mockResolvedValue({ id: 'm1', manuNumber: 'MANU-XYZ' });
+    mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
 
     await manufacturingService.generateBatchRecord('wo1', 'actor1', 'tenant-a');
 

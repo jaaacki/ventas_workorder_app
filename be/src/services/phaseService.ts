@@ -111,16 +111,8 @@ export async function createPhase(input: CreatePhaseInput, actorId: string, tena
 
 export async function updatePhase(id: string, input: UpdatePhaseInput, actorId: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
-  const phase = await prisma.phase.findFirst({
+  const updated = await prisma.phase.updateMany({
     where: { id, tenantId: scopedTenantId },
-    select: { id: true },
-  });
-  if (!phase) {
-    throw notFound('Phase not found');
-  }
-
-  return prisma.phase.update({
-    where: { id },
     data: {
       ...(input.phaseName !== undefined && { phaseName: input.phaseName }),
       ...(input.phaseShort !== undefined && { phaseShort: input.phaseShort }),
@@ -130,21 +122,24 @@ export async function updatePhase(id: string, input: UpdatePhaseInput, actorId: 
       ...(input.keyText !== undefined && { keyText: input.keyText }),
       updatedById: actorId,
     },
+  });
+  if (updated.count === 0) {
+    throw notFound('Phase not found');
+  }
+
+  return prisma.phase.findFirstOrThrow({
+    where: { id, tenantId: scopedTenantId },
     select: phaseSelect,
   });
 }
 
 export async function deletePhase(id: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
-  const phase = await prisma.phase.findFirst({
-    where: { id, tenantId: scopedTenantId },
-    select: { id: true },
-  });
-  if (!phase) {
+  const deleted = await prisma.phase.deleteMany({ where: { id, tenantId: scopedTenantId } });
+  if (deleted.count === 0) {
     throw notFound('Phase not found');
   }
 
-  await prisma.phase.delete({ where: { id } });
   return { success: true as const };
 }
 

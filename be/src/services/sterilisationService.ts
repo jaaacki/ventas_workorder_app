@@ -77,13 +77,19 @@ export async function createSterilisation(
     });
 
     // Track the latest sterilisation on the work order.
-    await tx.workOrder.update({
-      where: { id: input.workOrderId },
+    const updatedWorkOrder = await tx.workOrder.updateMany({
+      where: { id: input.workOrderId, tenantId: scopedTenantId },
       data: {
         steralisationCurrentId: created.id,
         updatedById: actorId,
       },
     });
+    if (updatedWorkOrder.count === 0) {
+      throw new Prisma.PrismaClientKnownRequestError('Work order not found', {
+        code: 'P2025',
+        clientVersion: 'unknown',
+      });
+    }
 
     return created;
   });
@@ -117,12 +123,21 @@ export async function setSterilisationResult(
         clientVersion: 'unknown',
       });
     }
-    return await prisma.sterilise.update({
-      where: { id },
+    const updated = await prisma.sterilise.updateMany({
+      where: { id, tenantId: scopedTenantId },
       data: {
         result,
         updatedById: actorId,
       },
+    });
+    if (updated.count === 0) {
+      throw new Prisma.PrismaClientKnownRequestError('Sterilise not found', {
+        code: 'P2025',
+        clientVersion: 'unknown',
+      });
+    }
+    return await prisma.sterilise.findFirstOrThrow({
+      where: { id, tenantId: scopedTenantId },
       include: steriliseDetailInclude,
     });
   } catch (err) {

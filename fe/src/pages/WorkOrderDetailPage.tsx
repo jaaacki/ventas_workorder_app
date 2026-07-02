@@ -41,6 +41,8 @@ import {
 import { statusTone, workflowLabel } from '@/lib/work-order-ui';
 import { WorkOrderWorkspace } from './WorkOrdersPage';
 
+const MAX_PHOTO_EVIDENCE_BYTES = 5 * 1024 * 1024;
+
 function formatDate(value?: string | null) {
   return value ? new Date(value).toLocaleString() : '-';
 }
@@ -240,6 +242,16 @@ function PhotoEvidencePanel({
     }
     if (!file.type.startsWith('image/')) {
       toast.error('Select an image file');
+      event.target.value = '';
+      return;
+    }
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      toast.error('Use a PNG, JPEG, or WebP image');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > MAX_PHOTO_EVIDENCE_BYTES) {
+      toast.error('Image must be 5 MB or smaller');
       event.target.value = '';
       return;
     }

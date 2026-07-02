@@ -3,10 +3,11 @@ import { describe, expect, it, beforeEach, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   phase: {
     create: vi.fn(),
-    delete: vi.fn(),
+    deleteMany: vi.fn(),
     findFirst: vi.fn(),
+    findFirstOrThrow: vi.fn(),
     findMany: vi.fn(),
-    update: vi.fn(),
+    updateMany: vi.fn(),
   },
   procedure: {
     findFirst: vi.fn(),
@@ -115,52 +116,43 @@ describe('phaseService', () => {
   });
 
   it('updates a tenant phase after ownership preflight', async () => {
-    mocks.phase.findFirst.mockResolvedValue({ id: 'phase-1' });
-    mocks.phase.update.mockResolvedValue({ id: 'phase-1', description: 'Updated' });
+    mocks.phase.updateMany.mockResolvedValue({ count: 1 });
+    mocks.phase.findFirstOrThrow.mockResolvedValue({ id: 'phase-1', description: 'Updated' });
 
     await updatePhase('phase-1', { description: 'Updated' }, 'actor1', 'tenant-a');
 
-    expect(mocks.phase.findFirst).toHaveBeenCalledWith({
-      where: { id: 'phase-1', tenantId: 'tenant-a' },
-      select: { id: true },
-    });
-    expect(mocks.phase.update).toHaveBeenCalledWith(
+    expect(mocks.phase.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'phase-1' },
+        where: { id: 'phase-1', tenantId: 'tenant-a' },
         data: expect.objectContaining({ description: 'Updated', updatedById: 'actor1' }),
       }),
     );
   });
 
   it('rejects update when the phase is outside the caller tenant', async () => {
-    mocks.phase.findFirst.mockResolvedValue(null);
+    mocks.phase.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(updatePhase('phase-1', { description: 'Updated' }, 'actor1', 'tenant-a')).rejects.toMatchObject({
       code: 'P2025',
     });
 
-    expect(mocks.phase.update).not.toHaveBeenCalled();
+    expect(mocks.phase.findFirstOrThrow).not.toHaveBeenCalled();
   });
 
   it('deletes an unused phase after ownership preflight', async () => {
-    mocks.phase.findFirst.mockResolvedValue({ id: 'phase-1' });
-    mocks.phase.delete.mockResolvedValue({ id: 'phase-1' });
+    mocks.phase.deleteMany.mockResolvedValue({ count: 1 });
 
     await expect(deletePhase('phase-1', 'tenant-a')).resolves.toEqual({ success: true });
 
-    expect(mocks.phase.findFirst).toHaveBeenCalledWith({
-      where: { id: 'phase-1', tenantId: 'tenant-a' },
-      select: { id: true },
-    });
-    expect(mocks.phase.delete).toHaveBeenCalledWith({ where: { id: 'phase-1' } });
+    expect(mocks.phase.deleteMany).toHaveBeenCalledWith({ where: { id: 'phase-1', tenantId: 'tenant-a' } });
   });
 
   it('rejects delete when the phase is outside the caller tenant', async () => {
-    mocks.phase.findFirst.mockResolvedValue(null);
+    mocks.phase.deleteMany.mockResolvedValue({ count: 0 });
 
     await expect(deletePhase('phase-1', 'tenant-a')).rejects.toMatchObject({ code: 'P2025' });
 
-    expect(mocks.phase.delete).not.toHaveBeenCalled();
+    expect(mocks.phase.deleteMany).toHaveBeenCalledWith({ where: { id: 'phase-1', tenantId: 'tenant-a' } });
   });
 
   it('lists procedure and equipment bindings after tenant phase preflight', async () => {

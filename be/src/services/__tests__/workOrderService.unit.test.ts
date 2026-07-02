@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     findFirstOrThrow: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   },
   workOrderAuditEvent: {
     create: vi.fn(),
@@ -17,9 +18,11 @@ const mocks = vi.hoisted(() => ({
   },
   workOrderPhaseEquip: {
     create: vi.fn(),
+    deleteMany: vi.fn(),
   },
   woSerial: {
     upsert: vi.fn(),
+    deleteMany: vi.fn(),
   },
   sterilise: {
     findFirst: vi.fn(),
@@ -34,6 +37,11 @@ vi.mock('../../db/prisma.js', () => ({
     workOrderPhaseEquip: mocks.workOrderPhaseEquip,
     woSerial: mocks.woSerial,
     sterilise: mocks.sterilise,
+    $transaction: vi.fn((callback) => callback({
+      workOrder: mocks.workOrder,
+      workOrderPhaseEquip: mocks.workOrderPhaseEquip,
+      woSerial: mocks.woSerial,
+    })),
   },
 }));
 
@@ -65,7 +73,7 @@ describe('workOrderService', () => {
       id: 'wo-1',
       operationalStatus: 'Blocked',
       lifecycleState: 'NotStarted',
-      readinessBlockers: ['HET not assigned'],
+      readinessBlockers: ['HET not assigned', 'Work-order image captured', 'Output quantity recorded'],
       counts: { serials: 0, equipment: 0, sterilisationRecords: 0 },
     });
     const call = mocks.workOrder.findMany.mock.calls[0][0] as { include: unknown; orderBy: { createdAt: string } };
@@ -147,6 +155,7 @@ describe('workOrderService', () => {
         phaseOrder: 30,
         prodStart: startedAt,
         prodEnd: finishedAt,
+        outputQuantity: { toString: () => '1.0000' },
         workflow: {
           phases: [
             { sortOrder: 30, phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 30 } },
@@ -249,9 +258,11 @@ describe('workOrderService', () => {
       phaseId: 'phase-1',
       phaseOrder: 10,
       hetId: 'het-1',
-      prodStart: null,
+      prodStart: new Date('2026-07-01T09:00:00Z'),
       prodEnd: null,
       prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: null,
       phase: { bom: { lines: [{ id: 'bom-line-1', hasSerial: true }] } },
       woSerials: [],
     };
@@ -316,17 +327,18 @@ describe('workOrderService', () => {
       phaseId: 'phase-1',
       phaseOrder: 10,
       hetId: 'het-1',
-      prodStart: null,
+      prodStart: new Date('2026-07-01T09:00:00Z'),
       prodEnd: null,
       prodDuration: null,
       outputQuantity: null,
+      releaseStatus: null,
     };
     const updated = {
       ...workOrder,
       outputQuantity: { toString: () => '2.5000' },
     };
     mocks.workOrder.findFirst.mockResolvedValue(workOrder);
-    mocks.workOrder.update.mockResolvedValue(updated);
+    mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
     mocks.workOrder.findFirstOrThrow.mockResolvedValue({
       ...updated,
       workflow: { phases: [] },
@@ -347,14 +359,14 @@ describe('workOrderService', () => {
     expect(mocks.workOrder.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'wo-1', tenantId: 'tenant-a' } }),
     );
-    expect(mocks.workOrder.update).toHaveBeenCalledWith({
-      where: { id: 'wo-1' },
+    expect(mocks.workOrder.updateMany).toHaveBeenCalledWith({
+      where: { id: 'wo-1', tenantId: 'tenant-a' },
       data: {
         outputQuantity: expect.objectContaining({ toString: expect.any(Function) }),
         updatedById: 'actor1',
       },
     });
-    expect(mocks.workOrder.update.mock.calls[0][0].data.outputQuantity.toString()).toBe('2.5');
+    expect(mocks.workOrder.updateMany.mock.calls[0][0].data.outputQuantity.toString()).toBe('2.5');
     expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -376,7 +388,7 @@ describe('workOrderService', () => {
     ).rejects.toThrow('cannot record output quantity: quantity must be greater than zero');
 
     expect(mocks.workOrder.findFirst).not.toHaveBeenCalled();
-    expect(mocks.workOrder.update).not.toHaveBeenCalled();
+    expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
     expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
   });
 
@@ -388,18 +400,19 @@ describe('workOrderService', () => {
       phaseId: 'phase-1',
       phaseOrder: 10,
       hetId: 'het-1',
-      prodStart: null,
+      prodStart: new Date('2026-07-01T09:00:00Z'),
       prodEnd: null,
       prodDuration: null,
-      outputQuantity: null,
+      outputQuantity: { toString: () => '1.0000', gt: () => true },
       imagePath: null,
+      releaseStatus: null,
     };
     const updated = {
       ...workOrder,
       imagePath: 'data:image/png;base64,AAAA',
     };
     mocks.workOrder.findFirst.mockResolvedValue(workOrder);
-    mocks.workOrder.update.mockResolvedValue(updated);
+    mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
     mocks.workOrder.findFirstOrThrow.mockResolvedValue({
       ...updated,
       workflow: { phases: [] },
@@ -420,8 +433,8 @@ describe('workOrderService', () => {
     expect(mocks.workOrder.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'wo-1', tenantId: 'tenant-a' } }),
     );
-    expect(mocks.workOrder.update).toHaveBeenCalledWith({
-      where: { id: 'wo-1' },
+    expect(mocks.workOrder.updateMany).toHaveBeenCalledWith({
+      where: { id: 'wo-1', tenantId: 'tenant-a' },
       data: {
         imagePath: 'data:image/png;base64,AAAA',
         updatedById: 'actor1',
@@ -445,10 +458,10 @@ describe('workOrderService', () => {
   it('recordWorkOrderPhotoEvidence rejects non-image data URLs before writing', async () => {
     await expect(
       recordWorkOrderPhotoEvidence('wo-1', { imageDataUrl: 'data:text/plain;base64,AAAA' }, 'actor1', 'tenant-a'),
-    ).rejects.toThrow('cannot record photo evidence: image data must be a base64 data URL');
+    ).rejects.toThrow('cannot record photo evidence: image data must be a png, jpeg, or webp base64 data URL');
 
     expect(mocks.workOrder.findFirst).not.toHaveBeenCalled();
-    expect(mocks.workOrder.update).not.toHaveBeenCalled();
+    expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
     expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
   });
 
@@ -465,7 +478,7 @@ describe('workOrderService', () => {
       prodStart: startedAt,
       prodEnd: finishedAt,
       prodDuration: null,
-      outputQuantity: null,
+      outputQuantity: { toString: () => '1.0000', gt: () => true },
       releaseStatus: null,
       releaseDecisionAt: null,
       workflow: {
@@ -489,7 +502,7 @@ describe('workOrderService', () => {
     };
     mocks.workOrder.findFirst.mockResolvedValue(workOrder);
     mocks.workOrder.findMany.mockResolvedValue([]);
-    mocks.workOrder.update.mockResolvedValue(updated);
+    mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
     mocks.workOrder.findFirstOrThrow.mockResolvedValue(updated);
 
     const result = await recordWorkOrderRelease(
@@ -499,8 +512,8 @@ describe('workOrderService', () => {
       'tenant-a',
     );
 
-    expect(mocks.workOrder.update).toHaveBeenCalledWith({
-      where: { id: 'wo-1' },
+    expect(mocks.workOrder.updateMany).toHaveBeenCalledWith({
+      where: { id: 'wo-1', tenantId: 'tenant-a' },
       data: expect.objectContaining({
         releaseStatus: 'released',
         releaseDecisionById: 'actor1',
@@ -555,7 +568,7 @@ describe('workOrderService', () => {
       recordWorkOrderRelease('wo-1', { releaseStatus: 'released' }, 'actor1', 'tenant-a'),
     ).rejects.toThrow('cannot release: work order is not ready for final release');
 
-    expect(mocks.workOrder.update).not.toHaveBeenCalled();
+    expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
     expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
   });
 
@@ -591,7 +604,7 @@ describe('workOrderService', () => {
       recordWorkOrderRelease('wo-1', { releaseStatus: 'released' }, 'actor1', 'tenant-a'),
     ).rejects.toThrow('cannot release: work order already has a release disposition');
 
-    expect(mocks.workOrder.update).not.toHaveBeenCalled();
+    expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
     expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
   });
 
@@ -603,10 +616,11 @@ describe('workOrderService', () => {
       phaseId: 'phase-1',
       phaseOrder: 10,
       hetId: 'het-1',
-      prodStart: null,
+      prodStart: new Date('2026-07-01T09:00:00Z'),
       prodEnd: null,
       prodDuration: null,
       outputQuantity: null,
+      releaseStatus: null,
       phase: { phaseEquips: [{ phaseEquipId: 'equip-1' }] },
       phaseEquips: [],
     };
@@ -661,10 +675,11 @@ describe('workOrderService', () => {
       phaseId: 'phase-1',
       phaseOrder: 10,
       hetId: 'het-1',
-      prodStart: null,
+      prodStart: new Date('2026-07-01T09:00:00Z'),
       prodEnd: null,
       prodDuration: null,
       outputQuantity: null,
+      releaseStatus: null,
       phase: { phaseEquips: [{ phaseEquipId: 'equip-other' }] },
       phaseEquips: [],
     });
@@ -685,10 +700,11 @@ describe('workOrderService', () => {
       phaseId: 'phase-1',
       phaseOrder: 10,
       hetId: 'het-1',
-      prodStart: null,
+      prodStart: new Date('2026-07-01T09:00:00Z'),
       prodEnd: null,
       prodDuration: null,
       outputQuantity: null,
+      releaseStatus: null,
       phase: { phaseEquips: [{ phaseEquipId: 'equip-1' }] },
       phaseEquips: [{ phaseEquipId: 'equip-1' }],
     };
@@ -726,9 +742,11 @@ describe('workOrderService', () => {
       phaseId: 'phase-1',
       phaseOrder: 10,
       hetId: 'het-1',
-      prodStart: null,
+      prodStart: new Date('2026-07-01T09:00:00Z'),
       prodEnd: null,
       prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: null,
       phase: { bom: { lines: [{ id: 'other-line', hasSerial: true }] } },
       woSerials: [],
     });
@@ -871,7 +889,8 @@ describe('workOrderService', () => {
       prodStart: null,
       prodEnd: null,
     });
-    mocks.workOrder.update.mockResolvedValue({
+    mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
+    mocks.workOrder.findFirstOrThrow.mockResolvedValueOnce({
       id: 'wo-1',
       tenantId: 'ventas',
       workflowId: 'w1',
@@ -880,8 +899,7 @@ describe('workOrderService', () => {
       hetId: 'h1',
       prodStart: new Date('2026-06-30T08:00:00Z'),
       prodEnd: null,
-    });
-    mocks.workOrder.findFirstOrThrow.mockResolvedValue({
+    }).mockResolvedValue({
       id: 'wo-1',
       hetId: 'h1',
       prodStart: new Date('2026-06-30T08:00:00Z'),
@@ -894,11 +912,11 @@ describe('workOrderService', () => {
 
     const result = await startWorkOrderPhase('wo-1', 'actor1');
 
-    const updateCall = mocks.workOrder.update.mock.calls[0][0] as {
-      where: { id: string };
+    const updateCall = mocks.workOrder.updateMany.mock.calls[0][0] as {
+      where: { id: string; tenantId: string };
       data: { prodStart: Date; startSignById: string; updatedById: string };
     };
-    expect(updateCall.where).toEqual({ id: 'wo-1' });
+    expect(updateCall.where).toEqual({ id: 'wo-1', tenantId: 'ventas' });
     expect(updateCall.data.prodStart).toBeInstanceOf(Date);
     expect(updateCall.data.startSignById).toBe('actor1');
     expect(updateCall.data.updatedById).toBe('actor1');
@@ -926,7 +944,8 @@ describe('workOrderService', () => {
       prodStart: null,
       prodEnd: null,
     });
-    mocks.workOrder.update.mockResolvedValue({
+    mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
+    mocks.workOrder.findFirstOrThrow.mockResolvedValueOnce({
       id: 'wo-1',
       tenantId: 'tenant-a',
       workflowId: 'w1',
@@ -935,8 +954,7 @@ describe('workOrderService', () => {
       hetId: 'h1',
       prodStart: new Date('2026-06-30T08:00:00Z'),
       prodEnd: null,
-    });
-    mocks.workOrder.findFirstOrThrow.mockResolvedValue({
+    }).mockResolvedValue({
       id: 'wo-1',
       hetId: 'h1',
       prodStart: new Date('2026-06-30T08:00:00Z'),
@@ -963,6 +981,7 @@ describe('workOrderService', () => {
         prodEnd: true,
         prodDuration: true,
         outputQuantity: true,
+        releaseStatus: true,
       },
     });
     expect(mocks.workOrder.findFirstOrThrow).toHaveBeenCalledWith(
@@ -988,7 +1007,7 @@ describe('workOrderService', () => {
     await expect(startWorkOrderPhase('wo-1', 'actor1')).rejects.toThrow(
       'cannot start: HET not assigned',
     );
-    expect(mocks.workOrder.update).not.toHaveBeenCalled();
+    expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
   });
 
   it('finishWorkOrderPhase records finish timestamp and signer', async () => {
@@ -1006,7 +1025,8 @@ describe('workOrderService', () => {
         prodEnd: null,
         prodDuration: null,
       });
-      mocks.workOrder.update.mockResolvedValue({
+      mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
+      mocks.workOrder.findFirstOrThrow.mockResolvedValueOnce({
         id: 'wo-1',
         tenantId: 'ventas',
         workflowId: 'w1',
@@ -1016,8 +1036,7 @@ describe('workOrderService', () => {
         prodStart: new Date('2026-06-30T08:00:00Z'),
         prodEnd: new Date('2026-06-30T09:00:00Z'),
         prodDuration: { toString: () => '60.0000' },
-      });
-      mocks.workOrder.findFirstOrThrow.mockResolvedValue({
+      }).mockResolvedValue({
         id: 'wo-1',
         hetId: 'h1',
         prodStart: new Date('2026-06-30T08:00:00Z'),
@@ -1030,11 +1049,11 @@ describe('workOrderService', () => {
 
       const result = await finishWorkOrderPhase('wo-1', 'actor1');
 
-      const updateCall = mocks.workOrder.update.mock.calls[0][0] as {
-        where: { id: string };
+      const updateCall = mocks.workOrder.updateMany.mock.calls[0][0] as {
+        where: { id: string; tenantId: string };
         data: { prodEnd: Date; prodDuration: { toString: () => string }; endSignById: string; updatedById: string };
       };
-      expect(updateCall.where).toEqual({ id: 'wo-1' });
+      expect(updateCall.where).toEqual({ id: 'wo-1', tenantId: 'ventas' });
       expect(updateCall.data.prodEnd).toBeInstanceOf(Date);
       expect(updateCall.data.prodEnd.toISOString()).toBe('2026-06-30T09:00:00.000Z');
       expect(updateCall.data.prodDuration.toString()).toBe('60');
@@ -1070,7 +1089,7 @@ describe('workOrderService', () => {
     await expect(finishWorkOrderPhase('wo-1', 'actor1')).rejects.toThrow(
       'cannot finish: phase not started',
     );
-    expect(mocks.workOrder.update).not.toHaveBeenCalled();
+    expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
   });
 
   it('advanceWorkOrder moves the work order to the next phase', async () => {
@@ -1085,6 +1104,9 @@ describe('workOrderService', () => {
         hetId: 'h1',
         prodStart: new Date('2026-06-30T08:00:00Z'),
         prodEnd: new Date('2026-06-30T09:00:00Z'),
+        outputQuantity: { toString: () => '1.0000', gt: () => true },
+        imagePath: 'data:image/png;base64,AAAA',
+        releaseStatus: null,
         workflow: {
           phases: [
             { phaseId: 'p1', sortOrder: 0, phase: { phaseName: 'Mix' } },
@@ -1093,45 +1115,87 @@ describe('workOrderService', () => {
         },
       });
 
-    mocks.workOrder.update.mockResolvedValue({
+    mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
+    mocks.workOrder.findMany.mockResolvedValue([]);
+    mocks.workOrder.findFirstOrThrow.mockResolvedValueOnce({
       id: 'wo-1',
       tenantId: 'ventas',
       workflowId: 'w1',
-      phaseId: 'p2',
-      phaseOrder: 1,
+      phaseId: 'p1',
+      phaseOrder: 0,
       hetId: 'h1',
       prodStart: new Date('2026-06-30T08:00:00Z'),
       prodEnd: new Date('2026-06-30T09:00:00Z'),
-    });
-    mocks.workOrder.findFirstOrThrow.mockResolvedValue({
-      id: 'wo-1',
-      phaseId: 'p2',
-      phaseOrder: 1,
-      hetId: 'h1',
-      prodStart: new Date('2026-06-30T08:00:00Z'),
-      prodEnd: new Date('2026-06-30T09:00:00Z'),
+      prodDuration: null,
+      outputQuantity: { toString: () => '1.0000', gt: () => true },
+      imagePath: 'data:image/png;base64,AAAA',
+      releaseStatus: null,
       workflow: {
         phases: [
           { sortOrder: 0, phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 0 } },
           { sortOrder: 1, phase: { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', phaseOrder: 1 } },
         ],
       },
-      phase: { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', phaseOrder: 1 },
+      phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 0, bom: { lines: [] }, phaseEquips: [] },
       sterilises: [],
       woSerials: [],
       phaseEquips: [],
+      batchHets: [],
+    }).mockResolvedValueOnce({
+      id: 'wo-1',
+      tenantId: 'ventas',
+      workflowId: 'w1',
+      phaseId: 'p2',
+      phaseOrder: 1,
+      hetId: 'h1',
+      prodStart: null,
+      prodEnd: null,
+      prodDuration: null,
+      outputQuantity: null,
+      imagePath: null,
+      releaseStatus: null,
+    }).mockResolvedValueOnce({
+      id: 'wo-1',
+      tenantId: 'ventas',
+      workflowId: 'w1',
+      phaseId: 'p2',
+      phaseOrder: 1,
+      hetId: 'h1',
+      prodStart: null,
+      prodEnd: null,
+      prodDuration: null,
+      outputQuantity: null,
+      imagePath: null,
+      releaseStatus: null,
+      workflow: {
+        phases: [
+          { sortOrder: 0, phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 0 } },
+          { sortOrder: 1, phase: { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', phaseOrder: 1 } },
+        ],
+      },
+      phase: { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', phaseOrder: 1, bom: { lines: [] }, phaseEquips: [] },
+      sterilises: [],
+      woSerials: [],
+      phaseEquips: [],
+      batchHets: [],
     });
 
     const result = await advanceWorkOrder('wo-1', 'actor1');
 
-    const updateCall = mocks.workOrder.update.mock.calls[0][0] as {
-      where: { id: string };
-      data: { phaseId: string; phaseOrder: number; updatedById: string };
+    const updateCall = mocks.workOrder.updateMany.mock.calls[0][0] as {
+      where: { id: string; tenantId: string };
+      data: { phaseId: string; phaseOrder: number; updatedById: string; prodStart: null; prodEnd: null; outputQuantity: null; imagePath: null };
     };
-    expect(updateCall.where).toEqual({ id: 'wo-1' });
+    expect(updateCall.where).toEqual({ id: 'wo-1', tenantId: 'ventas' });
     expect(updateCall.data.phaseId).toBe('p2');
     expect(updateCall.data.phaseOrder).toBe(1);
+    expect(updateCall.data.prodStart).toBeNull();
+    expect(updateCall.data.prodEnd).toBeNull();
+    expect(updateCall.data.outputQuantity).toBeNull();
+    expect(updateCall.data.imagePath).toBeNull();
     expect(updateCall.data.updatedById).toBe('actor1');
+    expect(mocks.woSerial.deleteMany).toHaveBeenCalledWith({ where: { workOrderId: 'wo-1', tenantId: 'ventas' } });
+    expect(mocks.workOrderPhaseEquip.deleteMany).toHaveBeenCalledWith({ where: { workOrderId: 'wo-1' } });
     expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -1162,7 +1226,7 @@ describe('workOrderService', () => {
     await expect(advanceWorkOrder('wo-1', 'actor1')).rejects.toThrow(
       'cannot advance: HET not assigned',
     );
-    expect(mocks.workOrder.update).not.toHaveBeenCalled();
+    expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
   });
 
   it('advanceWorkOrder blocks unfinished phases before changing phase', async () => {
@@ -1183,7 +1247,7 @@ describe('workOrderService', () => {
     await expect(advanceWorkOrder('wo-1', 'actor1')).rejects.toThrow(
       'cannot advance: phase not finished',
     );
-    expect(mocks.workOrder.update).not.toHaveBeenCalled();
+    expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
   });
 
   it('listWorkOrders does not mark normal in-progress work as blocked', async () => {
@@ -1204,7 +1268,7 @@ describe('workOrderService', () => {
     expect(result[0]).toMatchObject({
       lifecycleState: 'InProgress',
       operationalStatus: 'InProgress',
-      readinessBlockers: [],
+      readinessBlockers: ['Work-order image captured', 'Output quantity recorded'],
     });
   });
 
@@ -1233,7 +1297,7 @@ describe('workOrderService', () => {
     expect(result[0]).toMatchObject({
       lifecycleState: 'InProgress',
       operationalStatus: 'Blocked',
-      readinessBlockers: ['HET not assigned', 'Release phase not finished'],
+      readinessBlockers: ['HET not assigned', 'Release phase not finished', 'Work-order image captured', 'Output quantity recorded'],
     });
   });
 
@@ -1252,7 +1316,7 @@ describe('workOrderService', () => {
     await expect(advanceWorkOrder('wo-1', 'actor1')).rejects.toThrow(
       'work order is at its final phase',
     );
-    expect(mocks.workOrder.update).not.toHaveBeenCalled();
+    expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
   });
 
   it('derives legacy AppSheet buckets from HET phase progress', async () => {
@@ -1374,6 +1438,7 @@ describe('workOrderService', () => {
         phaseOrder: 6,
         phaseShort: 'P6',
         imagePath: null,
+        outputQuantity: null,
         prodStart: new Date('2026-06-30T08:00:00Z'),
         prodEnd: new Date('2026-06-30T09:00:00Z'),
         workflow: { phases: [] },
@@ -1393,7 +1458,7 @@ describe('workOrderService', () => {
       legacyStateBucket: '2. Next Phase',
       serialCheckDone: true,
       canAdvanceLegacy: false,
-      missingAdvanceRequirements: ['Work-order image captured'],
+      missingAdvanceRequirements: ['Work-order image captured', 'Output quantity recorded'],
       parityGaps: [],
     });
   });
@@ -1406,6 +1471,7 @@ describe('workOrderService', () => {
         phaseOrder: 6,
         phaseShort: 'P6',
         imagePath: 'data:image/png;base64,AAAA',
+        outputQuantity: { toString: () => '1.0000', gt: () => true },
         prodStart: new Date('2026-06-30T08:00:00Z'),
         prodEnd: new Date('2026-06-30T09:00:00Z'),
         workflow: { phases: [] },

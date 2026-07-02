@@ -18,6 +18,8 @@ type WorkOrderAuditAction =
   | 'work_order.phase_finished'
   | 'work_order.phase_advanced';
 
+const MAX_PHOTO_EVIDENCE_DECODED_BYTES = 5 * 1024 * 1024;
+
 interface WorkOrderAuditState extends Prisma.InputJsonObject {
   id: string;
   tenantId: string;
@@ -120,6 +122,22 @@ const workOrderAuditSelect = {
   createdAt: true,
 } satisfies Prisma.WorkOrderAuditEventSelect;
 
+const workOrderAuditSnapshotSelect = {
+  id: true,
+  tenantId: true,
+  workflowId: true,
+  phaseId: true,
+  phaseOrder: true,
+  hetId: true,
+  prodStart: true,
+  prodEnd: true,
+  prodDuration: true,
+  outputQuantity: true,
+  releaseStatus: true,
+  releaseDecisionAt: true,
+  imagePath: true,
+} satisfies Prisma.WorkOrderSelect;
+
 function auditState(
   workOrder: Pick<
     WorkOrder,
@@ -160,9 +178,74 @@ function auditState(
   };
 }
 
+async function updateTenantWorkOrderForAudit(
+  client: Pick<Prisma.TransactionClient, 'workOrder'>,
+  id: string,
+  tenantId: string,
+  data: Prisma.WorkOrderUncheckedUpdateManyInput,
+) {
+  const updated = await client.workOrder.updateMany({
+    where: { id, tenantId },
+    data,
+  });
+  if (updated.count === 0) {
+    throw new Prisma.PrismaClientKnownRequestError('Work order not found', {
+      code: 'P2025',
+      clientVersion: 'unknown',
+    });
+  }
+  return client.workOrder.findFirstOrThrow({
+    where: { id, tenantId },
+    select: workOrderAuditSnapshotSelect,
+  });
+}
+
 function elapsedMinutes(start: Date, end: Date) {
   const elapsedMs = Math.max(0, end.getTime() - start.getTime());
   return new Prisma.Decimal((elapsedMs / 60000).toFixed(4));
+}
+
+function validatePhotoEvidenceDataUrl(imageDataUrl: string) {
+  const match = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=\s]+)$/i.exec(imageDataUrl);
+  if (!match) {
+    throw new Error('cannot record photo evidence: image data must be a png, jpeg, or webp base64 data URL');
+  }
+
+  const base64 = match[2].replace(/\s/g, '');
+  if (!base64 || base64.length % 4 !== 0) {
+    throw new Error('cannot record photo evidence: image data is not valid base64');
+  }
+
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+  const decodedBytes = (base64.length / 4) * 3 - padding;
+  if (decodedBytes > MAX_PHOTO_EVIDENCE_DECODED_BYTES) {
+    throw new Error('cannot record photo evidence: image data exceeds 5 MB');
+  }
+}
+
+function assertCanRecordPhaseEvidence(workOrder: Pick<WorkOrder, 'prodStart'> & { releaseStatus?: string | null }, evidenceName: string) {
+  if (workOrder.releaseStatus) {
+    throw new Error(`cannot record ${evidenceName}: work order already has a release disposition`);
+  }
+  if (!workOrder.prodStart) {
+    throw new Error(`cannot record ${evidenceName}: phase not started`);
+  }
+}
+
+function dispositionLifecycleState(releaseStatus: string) {
+  if (releaseStatus === 'released') return 'Released';
+  if (releaseStatus === 'quarantined') return 'Quarantined';
+  if (releaseStatus === 'rejected') return 'Rejected';
+  return 'ReleaseDispositionRecorded';
+}
+
+function positiveDecimalish(value: { toString: () => string } | null | undefined) {
+  if (!value) return false;
+  try {
+    return new Prisma.Decimal(value.toString()).gt(0);
+  } catch {
+    return false;
+  }
 }
 
 async function recordWorkOrderAuditEvent(input: {
@@ -262,9 +345,9 @@ function isGatePhase(phaseName?: string | null) {
 }
 
 function getLifecycleState(workOrder: OperationalWorkOrder, atFinalPhase: boolean) {
+  if (workOrder.releaseStatus) return dispositionLifecycleState(workOrder.releaseStatus);
   if (!workOrder.prodStart) return 'NotStarted';
   if (!workOrder.prodEnd) return 'InProgress';
-  if (workOrder.releaseStatus === 'released') return 'Released';
   if (atFinalPhase) return 'ReleasePending';
   return 'ReadyToAdvance';
 }
@@ -337,6 +420,8 @@ function getLegacyWorkOrderState(workOrder: OperationalWorkOrder, context: Legac
   );
   const combinedHetCheck = (workOrder.batchHets?.length ?? 0) > 0;
   const imageCaptured = Boolean(workOrder.imagePath);
+  const outputQuantityCaptured = positiveDecimalish(workOrder.outputQuantity);
+  const equipmentCheckDone = allowedPhaseEquips.every(({ phaseEquip }) => capturedPhaseEquipIds.has(phaseEquip.id));
   let legacyStateBucket: LegacyStateBucket;
   let legacyProductionState: string;
 
@@ -368,7 +453,9 @@ function getLegacyWorkOrderState(workOrder: OperationalWorkOrder, context: Legac
     { key: 'prod_start', label: 'Production started', met: Boolean(workOrder.prodStart) },
     { key: 'prod_end', label: 'Production finished', met: Boolean(workOrder.prodEnd) },
     { key: 'image', label: 'Work-order image captured', met: imageCaptured },
+    { key: 'output_quantity', label: 'Output quantity recorded', met: outputQuantityCaptured },
     { key: 'serial_check', label: 'Serial/BOM entries complete', met: serialCheckDone },
+    { key: 'equipment_check', label: 'Allowed equipment recorded', met: equipmentCheckDone },
   ];
 
   if (phaseOrder != null && phaseOrder <= 5) {
@@ -390,8 +477,11 @@ function getLegacyWorkOrderState(workOrder: OperationalWorkOrder, context: Legac
       .filter((requirement) => !requirement.met)
       .map((requirement) => requirement.label),
     parityGaps: [],
+    imageCaptured,
+    outputQuantityCaptured,
     serialCheckDone,
     serialRequiredCount,
+    equipmentCheckDone,
     requiredSerials: serialRequiredLines.map((line) => {
       const captured = workOrder.woSerials?.find((serial) => serial.bomRef?.id === line.id);
       return {
@@ -422,12 +512,17 @@ function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder, context: 
   const phaseEquips = workOrder.phaseEquips ?? [];
   const hasPassingSterilisation = sterilises.some((s) => s.result === true);
   const blockers: string[] = [];
+  const evidenceBlockers: string[] = [];
   const legacyState = getLegacyWorkOrderState(workOrder, context);
 
   if (!workOrder.hetId) blockers.push('HET not assigned');
   if (isGatePhase(workOrder.phase?.phaseName) && !hasPassingSterilisation) {
     blockers.push('Sterilisation/BET pass required');
   }
+  if (!legacyState.imageCaptured) evidenceBlockers.push('Work-order image captured');
+  if (!legacyState.outputQuantityCaptured) evidenceBlockers.push('Output quantity recorded');
+  if (!legacyState.serialCheckDone) evidenceBlockers.push('Serial/BOM entries complete');
+  if (!legacyState.equipmentCheckDone) evidenceBlockers.push('Allowed equipment recorded');
   if (atFinalPhase && !workOrder.prodEnd) blockers.push('Release phase not finished');
 
   const phaseTimeline = phases.map((p, index) => ({
@@ -453,8 +548,8 @@ function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder, context: 
     releaseDecisionById: workOrder.releaseDecisionById ?? null,
     releaseRemarks: workOrder.releaseRemarks ?? null,
     lifecycleState: getLifecycleState(workOrder, atFinalPhase),
-    operationalStatus: blockers.length ? 'Blocked' : workOrder.releaseStatus ?? (atFinalPhase ? 'ReleasePending' : getLifecycleState(workOrder, atFinalPhase)),
-    readinessBlockers: blockers,
+    operationalStatus: blockers.length && !workOrder.releaseStatus ? 'Blocked' : workOrder.releaseStatus ?? (atFinalPhase ? 'ReleasePending' : getLifecycleState(workOrder, atFinalPhase)),
+    readinessBlockers: [...blockers, ...evidenceBlockers],
     currentPhaseLabel: workOrder.phase?.phaseName ?? workOrder.phaseShort ?? `Phase ${workOrder.phaseOrder ?? '-'}`,
     ...legacyState,
     phaseTimeline,
@@ -493,7 +588,7 @@ export async function listQaWorkOrderQueue(tenantId?: string | null) {
     workOrder.readinessBlockers.includes('Sterilisation/BET pass required'),
   );
   const quarantine = workOrders.filter((workOrder) => workOrder.legacyStateBucket === '3. In Quarantine');
-  const release = workOrders.filter((workOrder) => workOrder.lifecycleState === 'ReleasePending');
+  const release = workOrders.filter((workOrder) => workOrder.lifecycleState === 'ReleasePending' && workOrder.readinessBlockers.length === 0);
 
   return {
     counts: {
@@ -558,6 +653,7 @@ export async function recordWorkOrderSerial(
       prodEnd: true,
       prodDuration: true,
       outputQuantity: true,
+      releaseStatus: true,
       phase: {
         select: {
           bom: {
@@ -580,6 +676,7 @@ export async function recordWorkOrderSerial(
       clientVersion: 'unknown',
     });
   }
+  assertCanRecordPhaseEvidence(workOrder, 'serial');
 
   const requiredBomLine = workOrder.phase?.bom?.lines.find((line) => line.id === input.bomRefId && line.hasSerial);
   if (!requiredBomLine) {
@@ -644,6 +741,7 @@ export async function recordWorkOrderOutputQuantity(
       prodEnd: true,
       prodDuration: true,
       outputQuantity: true,
+      releaseStatus: true,
     },
   });
 
@@ -653,13 +751,11 @@ export async function recordWorkOrderOutputQuantity(
       clientVersion: 'unknown',
     });
   }
+  assertCanRecordPhaseEvidence(workOrder, 'output quantity');
 
-  const updated = await prisma.workOrder.update({
-    where: { id },
-    data: {
-      outputQuantity,
-      updatedById: actorId,
-    },
+  const updated = await updateTenantWorkOrderForAudit(prisma, id, scopedTenantId, {
+    outputQuantity,
+    updatedById: actorId,
   });
 
   await recordWorkOrderAuditEvent({
@@ -685,9 +781,7 @@ export async function recordWorkOrderPhotoEvidence(
   if (!imageDataUrl) {
     throw new Error('cannot record photo evidence: image data is required');
   }
-  if (!/^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(imageDataUrl)) {
-    throw new Error('cannot record photo evidence: image data must be a base64 data URL');
-  }
+  validatePhotoEvidenceDataUrl(imageDataUrl);
 
   const scopedTenantId = tenantIdOrDefault(tenantId);
   const workOrder = await prisma.workOrder.findFirst({
@@ -704,6 +798,7 @@ export async function recordWorkOrderPhotoEvidence(
       prodDuration: true,
       outputQuantity: true,
       imagePath: true,
+      releaseStatus: true,
     },
   });
 
@@ -713,13 +808,11 @@ export async function recordWorkOrderPhotoEvidence(
       clientVersion: 'unknown',
     });
   }
+  assertCanRecordPhaseEvidence(workOrder, 'photo evidence');
 
-  const updated = await prisma.workOrder.update({
-    where: { id },
-    data: {
-      imagePath: imageDataUrl,
-      updatedById: actorId,
-    },
+  const updated = await updateTenantWorkOrderForAudit(prisma, id, scopedTenantId, {
+    imagePath: imageDataUrl,
+    updatedById: actorId,
   });
 
   await recordWorkOrderAuditEvent({
@@ -762,16 +855,17 @@ export async function recordWorkOrderRelease(
   if (decorated.lifecycleState !== 'ReleasePending') {
     throw new Error('cannot release: work order is not ready for final release');
   }
+  if (decorated.readinessBlockers.length > 0 || decorated.missingAdvanceRequirements.length > 0) {
+    const blockers = Array.from(new Set([...decorated.readinessBlockers, ...decorated.missingAdvanceRequirements]));
+    throw new Error(`cannot release: missing ${blockers.join(', ')}`);
+  }
 
-  const updated = await prisma.workOrder.update({
-    where: { id },
-    data: {
-      releaseStatus: input.releaseStatus,
-      releaseDecisionAt: new Date(),
-      releaseDecisionById: actorId,
-      releaseRemarks: input.remarks?.trim() || null,
-      updatedById: actorId,
-    },
+  const updated = await updateTenantWorkOrderForAudit(prisma, id, scopedTenantId, {
+    releaseStatus: input.releaseStatus,
+    releaseDecisionAt: new Date(),
+    releaseDecisionById: actorId,
+    releaseRemarks: input.remarks?.trim() || null,
+    updatedById: actorId,
   });
 
   await recordWorkOrderAuditEvent({
@@ -807,6 +901,7 @@ export async function recordWorkOrderEquipment(
       prodEnd: true,
       prodDuration: true,
       outputQuantity: true,
+      releaseStatus: true,
       phase: {
         select: {
           phaseEquips: {
@@ -824,6 +919,7 @@ export async function recordWorkOrderEquipment(
       clientVersion: 'unknown',
     });
   }
+  assertCanRecordPhaseEvidence(workOrder, 'equipment');
 
   const allowed = workOrder.phase?.phaseEquips.some((equipment) => equipment.phaseEquipId === input.phaseEquipId);
   if (!allowed) {
@@ -890,6 +986,7 @@ export async function startWorkOrderPhase(id: string, actorId: string, signature
       prodEnd: true,
       prodDuration: true,
       outputQuantity: true,
+      releaseStatus: true,
     },
   });
 
@@ -899,20 +996,20 @@ export async function startWorkOrderPhase(id: string, actorId: string, signature
       clientVersion: 'unknown',
     });
   }
+  if (workOrder.releaseStatus) {
+    throw new Error('cannot start: work order already has a release disposition');
+  }
 
   if (!workOrder.hetId) {
     throw new Error('cannot start: HET not assigned');
   }
 
   if (!workOrder.prodStart) {
-    const updated = await prisma.workOrder.update({
-      where: { id },
-      data: {
-        prodStart: new Date(),
-        startSignPath: signatureDataUrl,
-        startSignById: actorId,
-        updatedById: actorId,
-      },
+    const updated = await updateTenantWorkOrderForAudit(prisma, id, scopedTenantId, {
+      prodStart: new Date(),
+      startSignPath: signatureDataUrl,
+      startSignById: actorId,
+      updatedById: actorId,
     });
     await recordWorkOrderAuditEvent({
       tenantId: scopedTenantId,
@@ -943,6 +1040,7 @@ export async function finishWorkOrderPhase(id: string, actorId: string, signatur
       prodEnd: true,
       prodDuration: true,
       outputQuantity: true,
+      releaseStatus: true,
     },
   });
 
@@ -952,6 +1050,9 @@ export async function finishWorkOrderPhase(id: string, actorId: string, signatur
       clientVersion: 'unknown',
     });
   }
+  if (workOrder.releaseStatus) {
+    throw new Error('cannot finish: work order already has a release disposition');
+  }
 
   if (!workOrder.prodStart) {
     throw new Error('cannot finish: phase not started');
@@ -959,15 +1060,12 @@ export async function finishWorkOrderPhase(id: string, actorId: string, signatur
 
   if (!workOrder.prodEnd) {
     const finishedAt = new Date();
-    const updated = await prisma.workOrder.update({
-      where: { id },
-      data: {
-        prodEnd: finishedAt,
-        prodDuration: elapsedMinutes(workOrder.prodStart, finishedAt),
-        endSignPath: signatureDataUrl,
-        endSignById: actorId,
-        updatedById: actorId,
-      },
+    const updated = await updateTenantWorkOrderForAudit(prisma, id, scopedTenantId, {
+      prodEnd: finishedAt,
+      prodDuration: elapsedMinutes(workOrder.prodStart, finishedAt),
+      endSignPath: signatureDataUrl,
+      endSignById: actorId,
+      updatedById: actorId,
     });
     await recordWorkOrderAuditEvent({
       tenantId: scopedTenantId,
@@ -1007,6 +1105,9 @@ export async function advanceWorkOrder(id: string, actorId: string, tenantId?: s
   if (!workOrder.hetId) {
     throw new Error('cannot advance: HET not assigned');
   }
+  if (workOrder.releaseStatus) {
+    throw new Error('cannot advance: work order already has a release disposition');
+  }
 
   if (!workOrder.prodStart) {
     throw new Error('cannot advance: phase not started');
@@ -1030,15 +1131,33 @@ export async function advanceWorkOrder(id: string, actorId: string, tenantId?: s
     }
   }
 
+  const decorated = await getDecoratedWorkOrderOrThrow(id, scopedTenantId);
+  if (decorated.missingAdvanceRequirements.length > 0) {
+    throw new Error(`cannot advance: missing ${decorated.missingAdvanceRequirements.join(', ')}`);
+  }
+  if (decorated.readinessBlockers.length > 0) {
+    throw new Error(`cannot advance: ${decorated.readinessBlockers.join(', ')}`);
+  }
+
   const nextPhase = orderedPhases[currentIndex + 1];
 
-  const updated = await prisma.workOrder.update({
-    where: { id },
-    data: {
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.woSerial.deleteMany({ where: { workOrderId: id, tenantId: scopedTenantId } });
+    await tx.workOrderPhaseEquip.deleteMany({ where: { workOrderId: id } });
+    return updateTenantWorkOrderForAudit(tx, id, scopedTenantId, {
       phaseId: nextPhase.phaseId,
       phaseOrder: nextPhase.sortOrder,
+      prodStart: null,
+      startSignPath: null,
+      startSignById: null,
+      prodEnd: null,
+      endSignPath: null,
+      endSignById: null,
+      prodDuration: null,
+      outputQuantity: null,
+      imagePath: null,
       updatedById: actorId,
-    },
+    });
   });
   await recordWorkOrderAuditEvent({
     tenantId: scopedTenantId,

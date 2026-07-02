@@ -129,8 +129,11 @@ export interface WorkOrderSummary {
   advanceRequirements: WorkOrderAdvanceRequirement[];
   missingAdvanceRequirements: string[];
   parityGaps: string[];
+  imageCaptured: boolean;
+  outputQuantityCaptured: boolean;
   serialCheckDone: boolean;
   serialRequiredCount: number;
+  equipmentCheckDone: boolean;
   requiredSerials: WorkOrderRequiredSerial[];
   allowedEquipment: WorkOrderAllowedEquipment[];
   combinedHetCheck: boolean;

@@ -43,14 +43,20 @@ export async function generateBatchRecord(workOrderId: string, actorId: string, 
       include: manufacturerDetailInclude,
     });
 
-    await tx.workOrder.update({
-      where: { id: workOrderId },
+    const updated = await tx.workOrder.updateMany({
+      where: { id: workOrderId, tenantId: scopedTenantId },
       data: {
         manuId: manufacturer.id,
         manuNumber,
         updatedById: actorId,
       },
     });
+    if (updated.count === 0) {
+      throw new Prisma.PrismaClientKnownRequestError('Work order not found', {
+        code: 'P2025',
+        clientVersion: 'unknown',
+      });
+    }
 
     return manufacturer;
   });

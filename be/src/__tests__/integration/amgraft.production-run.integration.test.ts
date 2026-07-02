@@ -130,6 +130,24 @@ describe('AmGraft production run (integration)', () => {
       expect.objectContaining({ phaseEquipId: ctx.phaseEquipId, recorded: false }),
     ]);
 
+    const completeCurrentPhase = async () => {
+      await startWorkOrderPhase(wo.id, ctx.actorId);
+      const finished = await finishWorkOrderPhase(wo.id, ctx.actorId);
+      expect(finished.prodDuration).not.toBeNull();
+      expect(Number(finished.prodDuration)).toBeGreaterThanOrEqual(0);
+      const withOutput = await recordWorkOrderOutputQuantity(wo.id, { outputQuantity: '1.0000' }, ctx.actorId);
+      expect(Number(withOutput.outputQuantity)).toBe(1);
+      const withPhoto = await recordWorkOrderPhotoEvidence(
+        wo.id,
+        { imageDataUrl: 'data:image/png;base64,AAAA' },
+        ctx.actorId,
+      );
+      expect(withPhoto.imagePath).toBe('data:image/png;base64,AAAA');
+      expect(withPhoto.missingAdvanceRequirements).not.toContain('Work-order image captured');
+      expect(withPhoto.missingAdvanceRequirements).not.toContain('Output quantity recorded');
+    };
+
+    await startWorkOrderPhase(wo.id, ctx.actorId);
     const serialised = await recordWorkOrderSerial(
       wo.id,
       { bomRefId: ctx.bomLineId, serialNumber: `${ctx.bomLineId}:SN-001` },
@@ -152,28 +170,18 @@ describe('AmGraft production run (integration)', () => {
     expect(withBatch?.manuNumber).toBe(batch.manuNumber);
 
     // 3. Complete Preparation, then advance to Production.
-    await startWorkOrderPhase(wo.id, ctx.actorId);
-    const finishedPreparation = await finishWorkOrderPhase(wo.id, ctx.actorId);
-    expect(finishedPreparation.prodDuration).not.toBeNull();
-    expect(Number(finishedPreparation.prodDuration)).toBeGreaterThanOrEqual(0);
-    const withOutput = await recordWorkOrderOutputQuantity(wo.id, { outputQuantity: '1.0000' }, ctx.actorId);
-    expect(Number(withOutput.outputQuantity)).toBe(1);
-    const withPhoto = await recordWorkOrderPhotoEvidence(
-      wo.id,
-      { imageDataUrl: 'data:image/png;base64,AAAA' },
-      ctx.actorId,
-    );
-    expect(withPhoto.imagePath).toBe('data:image/png;base64,AAAA');
-    expect(withPhoto.missingAdvanceRequirements).not.toContain('Work-order image captured');
+    await completeCurrentPhase();
     let cur = await advanceWorkOrder(wo.id, ctx.actorId);
     expect(cur.phaseOrder).toBe(1);
     expect(cur.phase?.phaseName).toBe('Production');
 
     // 4. Advance to Sterilisation.
+    await completeCurrentPhase();
     cur = await advanceWorkOrder(wo.id, ctx.actorId);
     expect(cur.phase?.phaseName).toBe('Sterilisation');
 
     // 5. Gate: cannot leave Sterilisation without a passing result.
+    await completeCurrentPhase();
     await expect(advanceWorkOrder(wo.id, ctx.actorId)).rejects.toThrow(/sterilisation\/BET gate/i);
 
     // 6. Record OUT then a passing IN.
@@ -185,6 +193,7 @@ describe('AmGraft production run (integration)', () => {
     expect(cur.phase?.phaseName).toBe('BET Verification');
 
     // 8. -> Release (final).
+    await completeCurrentPhase();
     cur = await advanceWorkOrder(wo.id, ctx.actorId);
     expect(cur.phase?.phaseName).toBe('Release');
 

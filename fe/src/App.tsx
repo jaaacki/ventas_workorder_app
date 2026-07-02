@@ -11,7 +11,9 @@ import RolesPage from './pages/RolesPage';
 import WorkflowsPage from './pages/WorkflowsPage';
 import WorkOrdersPage from './pages/WorkOrdersPage';
 import WorkOrderDetailPage from './pages/WorkOrderDetailPage';
+import MyQueuePage from './pages/MyQueuePage';
 import QaQueuePage from './pages/QaQueuePage';
+import QuarantinePage from './pages/QuarantinePage';
 import ProcurementPage from './pages/ProcurementPage';
 import CollectionUnitDetailPage from './pages/CollectionUnitDetailPage';
 import InventoryPage from './pages/InventoryPage';
@@ -87,11 +89,31 @@ function App() {
             }
           />
           <Route
+            path="/dashboard/my-queue"
+            element={
+              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+                <DashboardLayout>
+                  <MyQueuePage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/dashboard/qa"
             element={
               <ProtectedRoute roles={['owner', 'admin', 'user']}>
                 <DashboardLayout>
                   <QaQueuePage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/quarantine"
+            element={
+              <ProtectedRoute roles={['owner', 'admin', 'user']}>
+                <DashboardLayout>
+                  <QuarantinePage />
                 </DashboardLayout>
               </ProtectedRoute>
             }

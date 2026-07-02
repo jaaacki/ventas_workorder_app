@@ -38,11 +38,12 @@ import { importAll, tableConfigs } from '../importCsv.js';
 let tmpDir: string;
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'import-test-'));
-  // Reset mocks
+  // Reset mocks. findMany must resolve to an array (buildStaffEmailMap iterates it);
+  // the others default to null ("would be created" for the dry-run findUnique probe).
   for (const m of Object.values(mocks)) {
-    for (const fn of Object.values(m) as any[]) {
+    for (const [name, fn] of Object.entries(m) as [string, any][]) {
       if (typeof fn?.mockReset === 'function') fn.mockReset();
-      if (typeof fn?.mockResolvedValue === 'function') fn.mockResolvedValue(null);
+      if (typeof fn?.mockResolvedValue === 'function') fn.mockResolvedValue(name === 'findMany' ? [] : null);
     }
   }
 });

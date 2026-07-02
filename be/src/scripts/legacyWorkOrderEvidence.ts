@@ -73,7 +73,7 @@ function normaliseSignerEmail(email: string | undefined | null): string | undefi
 
 /** Build a lowercased-email -> staff.id lookup for resolving legacy signer emails. */
 export async function buildStaffEmailMap(db: Db = prisma): Promise<Map<string, string>> {
-  const staff = await db.staff.findMany({ select: { id: true, email: true } });
+  const staff = (await db.staff.findMany({ select: { id: true, email: true } })) ?? [];
   const map = new Map<string, string>();
   for (const s of staff) {
     if (s.email) map.set(s.email.trim().toLowerCase(), s.id);

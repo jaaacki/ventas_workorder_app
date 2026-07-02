@@ -5,6 +5,7 @@ import { fetchWorkOrders, fetchQaWorkOrderQueue, type WorkOrderSummary } from '@
 import { useAuthStore } from '@/store/authStore';
 import { useWorkflowContext } from '@/store/workflowContext';
 import { humanStatus, toneToBadgeVariant } from '@/lib/format';
+import { unitsLabel, nextActionLabel, productLabel } from '@/lib/work-order-ui';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,30 +20,6 @@ function relativeAge(value: string | null | undefined): string | null {
   const hours = Math.round(mins / 60);
   if (hours < 48) return `${hours}h`;
   return `${Math.round(hours / 24)}d`;
-}
-
-function unitsLabel(wo: WorkOrderSummary): string | null {
-  const qty = wo.het?.quantity;
-  return qty != null ? `${qty} unit${qty === 1 ? '' : 's'}` : null;
-}
-
-function productLabel(wo: WorkOrderSummary): string {
-  return wo.workflow?.name || 'AmGraft';
-}
-
-function nextActionLabel(wo: WorkOrderSummary): string {
-  switch (wo.lifecycleState) {
-    case 'NotStarted':
-      return `Start ${wo.currentPhaseLabel}`;
-    case 'InProgress':
-      return `Finish ${wo.currentPhaseLabel}`;
-    case 'ReadyToAdvance':
-      return `Advance from ${wo.currentPhaseLabel}`;
-    case 'ReleasePending':
-      return `Release ${productLabel(wo)}`;
-    default:
-      return wo.currentPhaseLabel;
-  }
 }
 
 function StatusBadge({ code }: { code: string }) {
@@ -73,7 +50,7 @@ function ReadyToReleaseCard({ items }: { items: WorkOrderSummary[] }) {
                   <div className="min-w-0">
                     <div className="truncate text-sm font-semibold text-foreground">{wo.woNumber || wo.id}</div>
                     <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {[productLabel(wo), unitsLabel(wo), wo.currentPhaseLabel].filter(Boolean).join(' · ')}
+                      {[productLabel(wo), unitsLabel(wo.het?.quantity), wo.currentPhaseLabel].filter(Boolean).join(' · ')}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-3">
@@ -219,6 +196,7 @@ export default function DashboardHome() {
     (wo) =>
       inLine(wo) &&
       wo.operationalStatus !== 'Blocked' &&
+      wo.readinessBlockers.length === 0 &&
       (['NotStarted', 'InProgress', 'ReadyToAdvance'] as string[]).includes(wo.lifecycleState),
   );
 

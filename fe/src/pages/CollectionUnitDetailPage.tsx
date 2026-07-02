@@ -7,16 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PageHeader, EmptyState } from '@/components/tailadmin';
 import { SummaryStrip, DetailGrid, SourceRecord } from '@/components/detail';
-import { humanStatus, toneToBadgeVariant } from '@/lib/format';
+import { humanStatus, toneToBadgeVariant, formatDate } from '@/lib/format';
 import {
   fetchCollectionUnit,
   fetchCollectionUnitInventoryTrace,
   type CollectionUnitDetail,
 } from '@/lib/procurement-api';
-
-function formatDate(value?: string | null) {
-  return value ? new Date(value).toLocaleString() : null;
-}
 
 function unitTitle(unit: CollectionUnitDetail) {
   return unit.unitNumber || unit.legacyHetId || unit.id;

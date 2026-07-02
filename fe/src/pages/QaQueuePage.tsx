@@ -25,6 +25,7 @@ import {
   type WorkOrderSummary,
 } from '@/lib/work-orders-api';
 import { useWorkflowContext } from '@/store/workflowContext';
+import { unitsLabel, productLabel } from '@/lib/work-order-ui';
 
 interface BetResult {
   reading: string | number | null;
@@ -32,25 +33,19 @@ interface BetResult {
 }
 
 // The BET gate (handoff Execution Model §7): surface the reading + pass/fail from the
-// sterilisation records, most recent one carrying a reading.
+// sterilisation records. The backend returns them newest-first (createdAt desc), so the
+// first record carrying a reading/result is the most recent.
 function betResult(wo: WorkOrderSummary): BetResult {
-  const withReading = [...wo.sterilises]
-    .reverse()
-    .find((record) => record.betReading != null || record.result != null);
+  const withReading = wo.sterilises.find((record) => record.betReading != null || record.result != null);
   if (!withReading) return { reading: null, status: 'pending' };
   const status = withReading.result == null ? 'pending' : withReading.result ? 'pass' : 'fail';
   return { reading: withReading.betReading, status };
 }
 
-function unitsLabel(wo: WorkOrderSummary): string {
-  const qty = wo.het?.quantity;
-  return qty != null ? `${qty} unit${qty === 1 ? '' : 's'}` : '—';
-}
-
 function ReleaseDialog({ workOrder }: { workOrder: WorkOrderSummary }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const product = workOrder.workflow?.name || 'AmGraft';
+  const product = productLabel(workOrder);
 
   const releaseMutation = useMutation({
     mutationFn: () => recordWorkOrderRelease(workOrder.id, { releaseStatus: 'released' }),
@@ -73,7 +68,7 @@ function ReleaseDialog({ workOrder }: { workOrder: WorkOrderSummary }) {
         <DialogHeader>
           <DialogTitle>Release {workOrder.woNumber || workOrder.id}?</DialogTitle>
           <DialogDescription>
-            Release {product} · {unitsLabel(workOrder)}? This records the final QA sign-off and moves the
+            Release {product} · {unitsLabel(workOrder.het?.quantity) ?? '—'}? This records the final QA sign-off and moves the
             batch to finished goods.
           </DialogDescription>
         </DialogHeader>
@@ -147,8 +142,8 @@ export default function QaQueuePage() {
                     {release.map((wo) => (
                       <TableRow key={wo.id}>
                         <TableCell className="font-medium text-foreground">{wo.woNumber || wo.id}</TableCell>
-                        <TableCell className="text-muted-foreground">{wo.workflow?.name || 'AmGraft'}</TableCell>
-                        <TableCell className="text-muted-foreground">{unitsLabel(wo)}</TableCell>
+                        <TableCell className="text-muted-foreground">{productLabel(wo)}</TableCell>
+                        <TableCell className="text-muted-foreground">{unitsLabel(wo.het?.quantity) ?? '—'}</TableCell>
                         <TableCell className="text-muted-foreground">{wo.currentPhaseLabel}</TableCell>
                         <TableCell className="text-right">
                           <ReleaseDialog workOrder={wo} />

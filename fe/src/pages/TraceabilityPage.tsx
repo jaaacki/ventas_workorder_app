@@ -168,7 +168,11 @@ export default function TraceabilityPage() {
                     Parents
                   </div>
                   <div className="space-y-2">
-                    {genealogy?.parents.length ? (
+                    {genealogyQuery.isLoading ? (
+                      <p className="text-xs text-muted-foreground">Loading…</p>
+                    ) : genealogyQuery.isError ? (
+                      <p className="text-xs text-muted-foreground">Genealogy unavailable.</p>
+                    ) : genealogy?.parents.length ? (
                       genealogy.parents.map((edge) => {
                         const node = relatedLot(edge, 'parent');
                         return <LotNode key={edge.id} id={node.id} label={node.label} relationship={edge.relationshipType} onWalk={setSelectedLotId} />;
@@ -200,7 +204,11 @@ export default function TraceabilityPage() {
                     Children
                   </div>
                   <div className="space-y-2">
-                    {genealogy?.children.length ? (
+                    {genealogyQuery.isLoading ? (
+                      <p className="text-xs text-muted-foreground">Loading…</p>
+                    ) : genealogyQuery.isError ? (
+                      <p className="text-xs text-muted-foreground">Genealogy unavailable.</p>
+                    ) : genealogy?.children.length ? (
                       genealogy.children.map((edge) => {
                         const node = relatedLot(edge, 'child');
                         return <LotNode key={edge.id} id={node.id} label={node.label} relationship={edge.relationshipType} onWalk={setSelectedLotId} />;

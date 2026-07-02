@@ -15,3 +15,28 @@ export function statusTone(status: string): 'brand' | 'success' | 'warning' | 'e
   if (status === 'Blocked') return 'warning';
   return 'neutral';
 }
+
+export function productLabel(workOrder: Pick<WorkOrderSummary, 'workflow'>) {
+  return workOrder.workflow?.name || 'AmGraft';
+}
+
+/** Human unit count, or null when unknown (callers apply their own placeholder). */
+export function unitsLabel(quantity: number | null | undefined): string | null {
+  return quantity != null ? `${quantity} unit${quantity === 1 ? '' : 's'}` : null;
+}
+
+/** The next operator action for a work order, based on its lifecycle state. */
+export function nextActionLabel(workOrder: WorkOrderSummary): string {
+  switch (workOrder.lifecycleState) {
+    case 'NotStarted':
+      return `Start ${workOrder.currentPhaseLabel}`;
+    case 'InProgress':
+      return `Finish ${workOrder.currentPhaseLabel}`;
+    case 'ReadyToAdvance':
+      return `Advance from ${workOrder.currentPhaseLabel}`;
+    case 'ReleasePending':
+      return `Release ${productLabel(workOrder)}`;
+    default:
+      return workOrder.currentPhaseLabel;
+  }
+}

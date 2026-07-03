@@ -104,17 +104,25 @@ export async function backfillLegacyCoherence(options: {
     // 2b. Bind the workflow to exactly the phases its work orders sit on,
     //     ordered by phaseOrder. Replaces any prior (demo) bindings. Data-driven
     //     so it works for any product line, not a hardcoded phase list.
+    //     sortOrder is a dense ROW_NUMBER, not the raw phaseOrder: workflowPhase
+    //     has a unique (workflowId, sortOrder) and legacy phaseOrder is not
+    //     unique across phase sets (e.g. a demo phase and a legacy step can share
+    //     an order), so binding on raw phaseOrder would collide. The board only
+    //     needs the ordering, not the exact values.
     await tx.$executeRaw`DELETE FROM "workflowPhase" WHERE "workflowId" = ${workflowId}`;
     report.totals.phasesBound = await tx.$executeRaw`
       INSERT INTO "workflowPhase" ("workflowId", "phaseId", "sortOrder")
-      SELECT ${workflowId}, p.id, p."phaseOrder"
-      FROM "phase" p
-      WHERE p."tenantId" = ${tenantId}
-        AND p."phaseOrder" IS NOT NULL
-        AND EXISTS (
-          SELECT 1 FROM "workOrder" o
-          WHERE o."phaseId" = p.id AND o."workflowId" = ${workflowId} AND o."deleted" = false
-        )`;
+      SELECT ${workflowId}, ranked.id, ranked.rn
+      FROM (
+        SELECT p.id, (row_number() OVER (ORDER BY p."phaseOrder", p.id))::int AS rn
+        FROM "phase" p
+        WHERE p."tenantId" = ${tenantId}
+          AND p."phaseOrder" IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM "workOrder" o
+            WHERE o."phaseId" = p.id AND o."workflowId" = ${workflowId} AND o."deleted" = false
+          )
+      ) ranked`;
 
     // 3. Chain each HET run: previousWoId = prior-phase work order,
     //    nextPhaseId = next phase. Unique-safe: one work order per phase per HET.

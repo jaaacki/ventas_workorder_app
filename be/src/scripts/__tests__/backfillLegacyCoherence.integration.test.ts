@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma } from '../../db/prisma.js';
 import { backfillLegacyCoherence } from '../backfillLegacyCoherence.js';
-import { DEFAULT_TENANT_ID } from '../../services/tenant.js';
 
 // Retrofits chain coherence onto unwired legacy work orders (workflowId /
 // previousWoId / nextPhaseId / releaseStatus all NULL, phases unbound, finished-
@@ -10,7 +9,9 @@ import { DEFAULT_TENANT_ID } from '../../services/tenant.js';
 
 const code = `TESTCOH-${Date.now().toString(36).toUpperCase()}`;
 const ctx = {
-  tenantId: DEFAULT_TENANT_ID,
+  // Own tenant so the backfill's tenant-scoped orphan-attach only ever sees this
+  // test's work orders, never residue from other integration files sharing the DB.
+  tenantId: `TENANT-${code}`,
   workflowId: '',
   phaseIds: [] as string[],
   hetIds: [] as string[],
@@ -22,6 +23,10 @@ const ctx = {
 const phaseNames = ['Collection', 'Production', 'Release'];
 
 beforeAll(async () => {
+  // Dedicated tenant (tenantId is an FK) so every fixture row — and the
+  // backfill's tenant-scoped orphan-attach — is isolated from other suites.
+  await prisma.tenant.create({ data: { id: ctx.tenantId, slug: ctx.tenantId, name: `Test ${code}` } });
+
   const workflow = await prisma.workflow.create({
     data: { tenantId: ctx.tenantId, name: `Test ${code}`, code, active: true },
   });
@@ -92,6 +97,7 @@ afterAll(async () => {
   await prisma.workflowPhase.deleteMany({ where: { workflowId: ctx.workflowId } }).catch(() => undefined);
   await prisma.phase.deleteMany({ where: { id: { in: ctx.phaseIds } } }).catch(() => undefined);
   await prisma.workflow.deleteMany({ where: { id: ctx.workflowId } }).catch(() => undefined);
+  await prisma.tenant.deleteMany({ where: { id: ctx.tenantId } }).catch(() => undefined);
   await prisma.$disconnect();
 });
 

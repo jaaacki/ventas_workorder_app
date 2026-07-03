@@ -66,6 +66,11 @@ export async function syncHetInventory(options: {
     include: {
       collectionUnit: true,
       workOrderHets: { select: { workOrderId: true } },
+      // Every per-phase work order that carries this HET as its primary hetId.
+      // Under the chain model a run's middle phases (production/sterilisation/BET)
+      // are referenced by neither usedById/finishedById nor the batch-HET join,
+      // so without this the consumption bridge would drop them.
+      workOrders: { select: { id: true } },
     },
     orderBy: { id: 'asc' },
   });
@@ -119,6 +124,7 @@ export async function syncHetInventory(options: {
       ...(het.usedById ? [het.usedById] : []),
       ...(het.finishedById ? [het.finishedById] : []),
       ...het.workOrderHets.map((row) => row.workOrderId),
+      ...het.workOrders.map((row) => row.id),
     ]);
     if (workOrderIds.size === 0) {
       report.totals.skippedNoWorkOrder++;

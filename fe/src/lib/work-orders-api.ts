@@ -50,7 +50,10 @@ export type WorkOrderLifecycleState =
   | 'InProgress'
   | 'ReadyToAdvance'
   | 'ReleasePending'
-  | 'Released';
+  | 'Released'
+  | 'Quarantined'
+  | 'Rejected'
+  | 'Completed';
 
 export interface WorkOrderSterilisationRef {
   id: string;

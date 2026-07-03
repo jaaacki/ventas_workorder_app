@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -94,6 +94,11 @@ function workOrderColumnId(workOrder: WorkOrderSummary): string {
 function groupByPhase(workOrders: WorkOrderSummary[], columns: PhaseColumn[]) {
   const grouped = new Map<string, WorkOrderSummary[]>(columns.map((column) => [column.id, []]));
   for (const workOrder of workOrders) {
+    // Superseded chain steps (the HET moved on to the next phase's work order)
+    // are history, not active board work — they stay visible on the HET detail.
+    // Keyed off the first-class lifecycle field rather than the legacy bucket
+    // label so the board tracks the intended semantic, not a string constant.
+    if (workOrder.lifecycleState === 'Completed') continue;
     const key = workOrderColumnId(workOrder);
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)?.push(workOrder);
@@ -168,6 +173,20 @@ function SignaturePad({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawingRef = useRef(false);
 
+  // Paint an opaque white "paper" background so dark ink stays visible in both
+  // themes and in the exported PNG. The canvas backdrop is dark-gray in dark
+  // mode (dark:bg-gray-900), which matches the ink colour and hides it, and a
+  // transparent bitmap would render the signature invisible on any dark viewer.
+  // Runs on mount and whenever the value resets to '' (e.g. after submit).
+  useEffect(() => {
+    if (value) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }, [value]);
+
   const writePoint = (event: PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -207,7 +226,8 @@ function SignaturePad({
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     onChange('');
   };
 
@@ -618,7 +638,9 @@ export default function WorkOrdersPage() {
     mutationFn: advanceWorkOrder,
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['work-orders'] });
-      toast.success(`Advanced ${updated.woNumber || updated.id}`);
+      // Advance completes the current work order and returns the next phase's
+      // newly initialised work order — follow the chain.
+      toast.success(`Advanced to ${updated.woNumber || updated.id}`);
       openWorkOrder(updated.id);
     },
     onError: (e: AxiosError<{ error?: string }>) =>

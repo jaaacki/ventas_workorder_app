@@ -48,6 +48,9 @@ const STATUS_MAP: Record<string, { label: string; tone: StatusTone }> = {
   ReadyToAdvance: { label: 'Ready to advance', tone: 'secondary' },
   ReleasePending: { label: 'Ready to release', tone: 'default' },
   Released: { label: 'Released', tone: 'default' },
+  Quarantined: { label: 'In quarantine', tone: 'destructive' },
+  Rejected: { label: 'Rejected', tone: 'destructive' },
+  Completed: { label: 'Completed', tone: 'neutral' },
   // operationalStatus extras
   Blocked: { label: 'Blocked', tone: 'destructive' },
   // releaseStatus

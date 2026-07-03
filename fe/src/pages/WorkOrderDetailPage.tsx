@@ -1,5 +1,5 @@
 import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 import { toast } from 'sonner';
@@ -548,6 +548,7 @@ function SerialEvidencePanel({
 
 export default function WorkOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const workOrderQuery = useQuery({
@@ -620,7 +621,13 @@ export default function WorkOrderDetailPage() {
     mutationFn: () => advanceWorkOrder(id!),
     onSuccess: (updated) => {
       updateCachedWorkOrder(updated);
-      toast.success(`Advanced ${workOrderTitle(updated)}`);
+      // Advancing completes this work order and initialises the next phase as a
+      // new one — follow the chain to the spawned work order.
+      queryClient.invalidateQueries({ queryKey: ['work-order', id] });
+      toast.success(`Advanced to ${workOrderTitle(updated)}`);
+      if (updated.id !== id) {
+        navigate(`/dashboard/work-orders/${updated.id}`);
+      }
     },
     onError: (e: AxiosError<{ error?: string }>) =>
       toast.error(e.response?.data?.error || 'Failed to advance work order'),

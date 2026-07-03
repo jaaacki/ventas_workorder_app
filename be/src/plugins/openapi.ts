@@ -416,7 +416,15 @@ const successExamples: Record<string, unknown> = {
   },
   startWorkOrderPhase: { ...workOrderExample, prodStart: '2026-07-01T09:00:00.000Z' },
   finishWorkOrderPhase: { ...workOrderExample, prodEnd: '2026-07-01T11:00:00.000Z', prodDuration: '120' },
-  advanceWorkOrder: { ...workOrderExample, phaseId: 'phase-sterilisation', phaseOrder: 20 },
+  advanceWorkOrder: {
+    ...workOrderExample,
+    id: 'WO-1002',
+    woNumber: 'WO-1002',
+    previousWoId: 'WO-1001',
+    phaseId: 'phase-sterilisation',
+    phaseOrder: 20,
+    prodStart: null,
+  },
   createSterilisation: {
     id: 'sterilise-1001',
     workOrderId: 'WO-1001',
@@ -887,7 +895,7 @@ const methodPolicies: Record<string, MethodPolicy> = {
     allowedMethods: ['POST'],
     omittedMethods: [{ method: 'PATCH/DELETE', reason: 'Advancement is guarded by lifecycle checks and should not be replaced by generic mutation.' }],
     destructiveDeletes: 'not-exposed',
-    notes: 'Moves a work order to the next configured phase when gates pass.',
+    notes: 'Completes the current work order and initialises the next phase as a new work order (chained via previousWoId) when gates pass.',
   },
   createSterilisation: {
     resource: 'Sterilisation/BET record',

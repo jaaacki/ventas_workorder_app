@@ -118,11 +118,23 @@ describe('inventoryTraceService', () => {
       usedById: 'wo-use',
       finishedById: 'wo-finish',
     });
+    // The per-phase work-order chain carrying this HET (middle steps are not
+    // referenced by usedById/finishedById and must still be traced).
+    mocks.workOrder.findMany.mockResolvedValueOnce([{ id: 'wo-use' }, { id: 'wo-middle' }, { id: 'wo-finish' }]);
 
     await getHetInventoryTrace('het-1', tenantId);
 
     expect(mocks.het.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'het-1', tenantId, deleted: false } }),
+    );
+    expect(mocks.workOrder.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId,
+          deleted: false,
+          OR: [{ hetId: 'het-1' }, { batchHets: { some: { hetId: 'het-1' } } }],
+        }),
+      }),
     );
     expect(mocks.inventoryLot.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -133,7 +145,7 @@ describe('inventoryTraceService', () => {
             { legacyHetId: 'het-1' },
             { legacyHetId: 'HET-0001' },
             { collectionUnitId: 'unit-1' },
-            { workOrderId: { in: ['wo-use', 'wo-finish'] } },
+            { workOrderId: { in: ['wo-use', 'wo-finish', 'wo-middle'] } },
           ]),
         }),
       }),

@@ -78,7 +78,6 @@ const tenantScopedModels = new Set([
   'bomLine',
   'het',
   'workflow',
-  'phase',
   'phaseEquip',
   'workOrder',
   'woSerial',
@@ -280,23 +279,8 @@ export const tableConfigs: TableConfig[] = [
       updatedOn: { field: 'updatedAt', type: 'date' },
     },
   },
-  {
-    fileName: 'phase.csv',
-    model: 'phase',
-    sourceIdColumn: 'phaseId',
-    columnMap: {
-      phaseId: { field: 'id', type: 'text' },
-      phaseName: { field: 'phaseName', type: 'text' },
-      phaseShort: { field: 'phaseShort', type: 'text' },
-      phaseOrder: { field: 'sortOrder', type: 'number' },
-      order: { field: 'sortOrder', type: 'number' },
-      description: { field: 'description', type: 'text' },
-      bomId: { field: 'bomId', type: 'text' },
-      keyText: { field: 'keyText', type: 'text' },
-      createdOn: { field: 'createdAt', type: 'date' },
-      updatedOn: { field: 'updatedAt', type: 'date' },
-    },
-  },
+  // Legacy `phase` import removed: phases are now workflow-owned (require a
+  // workflowId) and come from the seed / configurator, not the legacy CSV.
   {
     fileName: 'phaseEquip.csv',
     model: 'phaseEquip',
@@ -319,7 +303,8 @@ export const tableConfigs: TableConfig[] = [
     columnMap: {
       woId: { field: 'id', type: 'text' },
       hetId: { field: 'hetId', type: 'text' },
-      phaseId: { field: 'phaseId', type: 'text' },
+      // Legacy phaseId / nextPhase FKs dropped: phases are workflow-owned now and
+      // are not imported from the legacy CSV, so work orders import unphased.
       phaseOrder: { field: 'phaseOrder', type: 'number' },
       phaseShort: { field: 'phaseShort', type: 'text' },
       prodStart: { field: 'prodStart', type: 'date' },
@@ -339,7 +324,6 @@ export const tableConfigs: TableConfig[] = [
       reportPdf: { field: 'reportPdfPath', type: 'text' },
       delete: { field: 'deleted', type: 'boolean' },
       forceField: { field: 'forceField', type: 'number' },
-      nextPhase: { field: 'nextPhaseId', type: 'text' },
       createdOn: { field: 'createdAt', type: 'date' },
       updatedOn: { field: 'updatedAt', type: 'date' },
     },

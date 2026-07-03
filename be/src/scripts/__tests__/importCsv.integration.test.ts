@@ -58,7 +58,7 @@ function writeCsv(name: string, header: string[], rows: string[][]): void {
 }
 
 describe('importCsv — D3 idempotency + validation report', () => {
-  it('imports all 11 entities in tableConfigs order', async () => {
+  it('imports all 10 entities in tableConfigs order', async () => {
     // Write minimal valid CSVs for every entity. Empty body is OK for entities
     // we don't care about — the importer logs "file not found" as a warning.
     writeCsv('staff.csv', ['email', 'name', 'bitrixId', 'active'], [
@@ -68,7 +68,6 @@ describe('importCsv — D3 idempotency + validation report', () => {
     writeCsv('bom.csv', ['bomId', 'bomName'], [['BOM-1', 'BOM A']]);
     writeCsv('bomLine.csv', ['bomLineId', 'bomId'], [['BOL-1', 'BOM-1']]);
     writeCsv('het.csv', ['hetId'], [['HET-1']]);
-    writeCsv('phase.csv', ['phaseId'], [['PHS-1']]);
     writeCsv('phaseEquip.csv', ['phaseEquipId'], [['PHQ-1']]);
     writeCsv('workOrder.csv', ['woId', 'phaseId'], [['WKO-1', 'PHS-1']]);
     writeCsv('woSerial.csv', ['woSerialId'], [['WSR-1']]);
@@ -80,7 +79,7 @@ describe('importCsv — D3 idempotency + validation report', () => {
     expect(report.perEntity.staff.upserted).toBe(1);
     expect(report.perEntity.workOrder.upserted).toBe(1);
     expect(report.perEntity.sterilise.upserted).toBe(1);
-    expect(report.totals.upserted).toBeGreaterThanOrEqual(11);
+    expect(report.totals.upserted).toBeGreaterThanOrEqual(10);
     expect(report.errored).toEqual([]);
   });
 
@@ -90,7 +89,6 @@ describe('importCsv — D3 idempotency + validation report', () => {
     writeCsv('bom.csv', ['bomId'], [['BOM-1']]);
     writeCsv('bomLine.csv', ['bomLineId'], [['BOL-1']]);
     writeCsv('het.csv', ['hetId'], [['HET-1']]);
-    writeCsv('phase.csv', ['phaseId'], [['PHS-1']]);
     writeCsv('phaseEquip.csv', ['phaseEquipId'], [['PHQ-1']]);
     writeCsv('workOrder.csv', ['woId'], [['WKO-1']]);
     writeCsv('woSerial.csv', ['woSerialId'], [['WSR-1']]);
@@ -115,7 +113,6 @@ describe('importCsv — D3 idempotency + validation report', () => {
     writeCsv('bom.csv', ['bomId'], [['BOM-1']]);
     writeCsv('bomLine.csv', ['bomLineId'], [['BOL-1']]);
     writeCsv('het.csv', ['hetId'], [['HET-1']]);
-    writeCsv('phase.csv', ['phaseId'], [['PHS-1']]);
     writeCsv('phaseEquip.csv', ['phaseEquipId'], [['PHQ-1']]);
     writeCsv('workOrder.csv', ['woId'], [['WKO-1']]);
     writeCsv('woSerial.csv', ['woSerialId'], [['WSR-1']]);
@@ -135,7 +132,6 @@ describe('importCsv — D3 idempotency + validation report', () => {
     writeCsv('bom.csv', ['bomId'], [['BOM-1']]);
     writeCsv('bomLine.csv', ['bomLineId'], [['BOL-1']]);
     writeCsv('het.csv', ['hetId'], [['HET-1']]);
-    writeCsv('phase.csv', ['phaseId'], [['PHS-1']]);
     writeCsv('phaseEquip.csv', ['phaseEquipId'], [['PHQ-1']]);
     writeCsv('workOrder.csv', ['woId'], [['WKO-1']]);
     writeCsv('woSerial.csv', ['woSerialId'], [['WSR-1']]);
@@ -159,7 +155,6 @@ describe('importCsv — D3 idempotency + validation report', () => {
     writeCsv('bom.csv', ['bomId'], [['BOM-1']]);
     writeCsv('bomLine.csv', ['bomLineId'], [['BOL-1']]);
     writeCsv('het.csv', ['hetId'], [['HET-X']]);
-    writeCsv('phase.csv', ['phaseId'], [['PHS-1']]);
     writeCsv('phaseEquip.csv', ['phaseEquipId'], [['PHQ-1']]);
     writeCsv('staff.csv', ['email'], [['a@b.c']]);
     writeCsv('woSerial.csv', ['woSerialId'], [['WSR-1']]);
@@ -183,10 +178,10 @@ describe('importCsv — D3 idempotency + validation report', () => {
 });
 
 describe('importCsv — tableConfigs single-source-of-truth contract', () => {
-  it('exports 11 entries matching seed_data/README.md', () => {
+  it('exports 10 entries matching seed_data/README.md', () => {
     const expected = [
       'staff.csv', 'manufacturer.csv', 'bom.csv', 'bomLine.csv',
-      'het.csv', 'phase.csv', 'phaseEquip.csv', 'workOrder.csv', 'woSerial.csv',
+      'het.csv', 'phaseEquip.csv', 'workOrder.csv', 'woSerial.csv',
       'sterilise.csv', 'printLabels.csv',
     ];
     const actual = tableConfigs.map((c) => c.fileName).sort();

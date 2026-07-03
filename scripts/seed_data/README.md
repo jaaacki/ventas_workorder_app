@@ -8,11 +8,9 @@ The CSV importer (`be/src/scripts/importCsv.ts`) looks for these files:
 
 - `staff.csv`
 - `manufacturer.csv`
-- `procedure.csv`
 - `bom.csv`
 - `bomLine.csv`
 - `het.csv`
-- `phase.csv`
 - `phaseEquip.csv`
 - `workOrder.csv`
 - `woSerial.csv`

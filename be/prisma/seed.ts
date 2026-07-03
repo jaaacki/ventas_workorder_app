@@ -130,39 +130,46 @@ async function seedAmGraftWorkflow() {
     blocksCombine?: boolean;
     steps: Array<{ code: string; name: string }>;
   }> = [
+    // The canonical AmGraft phase grouping mirrors the legacy production sheet:
+    // 16 phases, each grouping 1+ consecutive steps. phaseShort is the grouped
+    // step codes; a work order sits on a phase. blocksCombine covers the pre-mill
+    // steps (before C12); isGate covers the EtO/BET sterilisation gates.
+    { phaseShort: 'A1', phaseName: 'HET Collection', blocksCombine: true, steps: [{ code: 'A1', name: 'HET Collection' }] },
+    { phaseShort: 'A2', phaseName: 'HET Transfer', blocksCombine: true, steps: [{ code: 'A2', name: 'HET Transfer' }] },
     {
-      phaseShort: 'A',
-      phaseName: 'Material Acquisition',
+      phaseShort: 'A3, A4, A5',
+      phaseName: 'Retrieve, Decoronate, Split Root',
       blocksCombine: true,
       steps: [
-        { code: 'A1', name: 'HET Collection' },
-        { code: 'A2', name: 'HET Transfer' },
         { code: 'A3', name: 'Retrieve' },
         { code: 'A4', name: 'Decoronate' },
         { code: 'A5', name: 'Split Root' },
       ],
     },
     {
-      phaseShort: 'B',
-      phaseName: 'Cleaning & Disinfection',
+      phaseShort: 'B6, B7, B8',
+      phaseName: 'Washing',
       blocksCombine: true,
       steps: [
         { code: 'B6', name: 'Washing' },
         { code: 'B7', name: 'Washing' },
         { code: 'B8', name: 'Washing' },
+      ],
+    },
+    {
+      phaseShort: 'B9, B10, B11',
+      phaseName: 'Burring, Washing, Autoclave',
+      blocksCombine: true,
+      steps: [
         { code: 'B9', name: 'Burring' },
         { code: 'B10', name: 'Washing' },
         { code: 'B11', name: 'Autoclave' },
       ],
     },
+    { phaseShort: 'C12', phaseName: 'Milling & Sieving', steps: [{ code: 'C12', name: 'Milling & Sieving' }] },
     {
-      phaseShort: 'C',
-      phaseName: 'Material Processing',
-      steps: [{ code: 'C12', name: 'Milling & Sieving' }],
-    },
-    {
-      phaseShort: 'D',
-      phaseName: 'Cleaning II',
+      phaseShort: 'D13, D14, D15, D16',
+      phaseName: 'Cleaning',
       steps: [
         { code: 'D13', name: 'Cleaning' },
         { code: 'D14', name: 'Cleaning' },
@@ -170,43 +177,31 @@ async function seedAmGraftWorkflow() {
         { code: 'D16', name: 'Cleaning' },
       ],
     },
+    { phaseShort: 'E17', phaseName: 'Freezing', steps: [{ code: 'E17', name: 'Freezing' }] },
+    { phaseShort: 'E18', phaseName: 'Lyophilising', steps: [{ code: 'E18', name: 'Lyophilising' }] },
+    { phaseShort: 'F19', phaseName: 'Dispenser', steps: [{ code: 'F19', name: 'Dispenser' }] },
     {
-      phaseShort: 'E',
-      phaseName: 'Preservation',
+      phaseShort: 'F20, F21, F22',
+      phaseName: 'Sealing & Send Out',
       steps: [
-        { code: 'E17', name: 'Freezing' },
-        { code: 'E18', name: 'Lyophilising' },
-      ],
-    },
-    {
-      phaseShort: 'F',
-      phaseName: 'Packaging',
-      steps: [
-        { code: 'F19', name: 'Dispenser' },
         { code: 'F20', name: 'Sealing Inner' },
         { code: 'F21', name: 'Sealing Outer' },
         { code: 'F22', name: 'Send Out' },
       ],
     },
+    { phaseShort: 'G23', phaseName: 'Pack for Terminal Sterilisation', steps: [{ code: 'G23', name: 'Packing for EtO' }] },
+    { phaseShort: 'G24', phaseName: 'EtO Sterilisation', isGate: true, steps: [{ code: 'G24', name: 'Terminal Sterilisation (EtO)' }] },
     {
-      phaseShort: 'G',
-      phaseName: 'QC & Sterilisation',
+      phaseShort: 'G25, G26',
+      phaseName: 'BET Test & Final QC',
       isGate: true,
       steps: [
-        { code: 'G23', name: 'Packing for EtO' },
-        { code: 'G24', name: 'Terminal Sterilisation (EtO)' },
         { code: 'G25', name: 'BET Test' },
         { code: 'G26', name: 'Pass/Fail Handling' },
       ],
     },
-    {
-      phaseShort: 'H',
-      phaseName: 'Finalisation',
-      steps: [
-        { code: 'H27', name: 'Labelling & Verification' },
-        { code: 'H28', name: 'Release to Inventory' },
-      ],
-    },
+    { phaseShort: 'H27', phaseName: 'Labelling & Verification', steps: [{ code: 'H27', name: 'Labelling & Verification' }] },
+    { phaseShort: 'H28', phaseName: 'Release to Inventory', steps: [{ code: 'H28', name: 'Release to Inventory' }] },
   ];
 
   const workflow = await prisma.workflow.upsert({

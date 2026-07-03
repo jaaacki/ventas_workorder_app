@@ -18,6 +18,7 @@ function buildAuthTestApp() {
   app.register(jwt, { secret: 'test-secret-at-least-16-chars' });
   app.register(authPlugin);
   app.after(() => {
+    app.get('/role', { onRequest: [app.requireRole('admin', 'owner')] }, async () => ({ ok: true }));
     app.get('/permission', { onRequest: [app.requirePermission('inventory.lot', 'read')] }, async () => ({ ok: true }));
     app.get(
       '/any-permission',
@@ -42,6 +43,20 @@ describe('auth permission helpers', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it('rejects an unauthenticated request to a requireRole route with a clean 401', async () => {
+    const app = buildAuthTestApp();
+    await app.ready();
+    try {
+      // No Authorization header: authenticate sends 401; requireRole must return
+      // via the reply.sent guard instead of dereferencing the undefined user.
+      const response = await app.inject({ method: 'GET', url: '/role' });
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toEqual({ error: 'Unauthorized' });
+    } finally {
+      await app.close();
+    }
   });
 
   it('allows requests with the required role permission', async () => {

@@ -5,6 +5,8 @@ import '@fastify/jwt';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { Env } from '../config/env.js';
 import type { JwtPayload } from '../plugins/auth.js';
+import { prisma } from '../db/prisma.js';
+import { tenantIdOrDefault } from '../services/tenant.js';
 
 export const AUTH_COOKIE_NAME = 'auth_token';
 
@@ -65,12 +67,25 @@ export async function maybeSlidingRefresh(request: FastifyRequest, reply: Fastif
     const remaining = user.exp - now;
     if (lifetime <= 0 || remaining > lifetime / 2) return;
 
+    // Past half-life: re-validate against the DB so deactivation and role changes
+    // take effect at the refresh boundary rather than riding the stale token claim
+    // indefinitely. This read runs at most once per half-life per active session
+    // (each refresh resets the token clock), not per request.
+    const staff = await prisma.staff.findFirst({
+      where: { id: user.id, tenantId: tenantIdOrDefault(user.tenantId) },
+      include: { role: true },
+    });
+    if (!staff || !staff.active) {
+      clearAuthCookie(reply, config);
+      return;
+    }
+
     const token = await reply.jwtSign({
-      id: user.id,
-      role: user.role,
-      email: user.email,
-      tenantId: user.tenantId,
-      name: user.name,
+      id: staff.id,
+      role: staff.role?.key ?? user.role,
+      email: staff.email,
+      tenantId: tenantIdOrDefault(staff.tenantId),
+      name: staff.name,
     });
     issueAuthCookie(reply, token, config);
   } catch (err) {

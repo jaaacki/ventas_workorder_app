@@ -192,7 +192,7 @@ export const masterDataRoutes: FastifyPluginAsyncZod = async function (app) {
     },
   }, async (req, reply) => {
     try {
-      return await masterDataService.deleteProcedure(req.params.id, tenantIdOf(req));
+      return await masterDataService.deleteProcedure(req.params.id, actorIdOf(req), tenantIdOf(req));
     } catch (err) {
       const handled = handleKnownError(reply, err, { notFound: 'Procedure not found', conflict: 'Procedure is in use and cannot be deleted' });
       if (handled) return handled;
@@ -289,7 +289,7 @@ export const masterDataRoutes: FastifyPluginAsyncZod = async function (app) {
     },
   }, async (req, reply) => {
     try {
-      return await masterDataService.deleteBom(req.params.id, tenantIdOf(req));
+      return await masterDataService.deleteBom(req.params.id, actorIdOf(req), tenantIdOf(req));
     } catch (err) {
       const handled = handleKnownError(reply, err, { notFound: 'BOM not found', conflict: 'BOM is in use and cannot be deleted' });
       if (handled) return handled;
@@ -502,7 +502,7 @@ export const masterDataRoutes: FastifyPluginAsyncZod = async function (app) {
     },
   }, async (req, reply) => {
     try {
-      return await masterDataService.deletePhaseEquipment(req.params.id, tenantIdOf(req));
+      return await masterDataService.deletePhaseEquipment(req.params.id, actorIdOf(req), tenantIdOf(req));
     } catch (err) {
       const handled = handleKnownError(reply, err, { notFound: 'Phase equipment not found', conflict: 'Phase equipment is in use and cannot be deleted' });
       if (handled) return handled;

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   },
   workOrder: { findFirst: vi.fn() },
   workOrderHet: { upsert: vi.fn() },
+  auditLog: { create: vi.fn() },
   $transaction: vi.fn(),
 }));
 
@@ -18,6 +19,7 @@ vi.mock('../../db/prisma.js', () => ({
     het: mocks.het,
     workOrder: mocks.workOrder,
     workOrderHet: mocks.workOrderHet,
+    auditLog: mocks.auditLog,
     $transaction: mocks.$transaction.mockImplementation(
       async (fn: (tx: unknown) => Promise<unknown>) =>
         fn({ het: mocks.het, workOrderHet: mocks.workOrderHet }),
@@ -64,6 +66,9 @@ describe('hetService', () => {
       update: {},
     });
     expect(result).toEqual({ id: 'h1', usedById: 'wo1' });
+    expect(mocks.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ entityType: 'Het', entityId: 'h1', action: 'use', actorId: 'actor1' }),
+    }));
   });
 
   it('useHet scopes work order and HET preflight checks to the caller tenant', async () => {

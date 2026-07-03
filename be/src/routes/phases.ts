@@ -155,7 +155,7 @@ export const phaseRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req, reply) => {
       try {
-        const binding = await phaseService.addPhaseProcedure(req.params.id, req.body.procedureId, tenantIdOf(req));
+        const binding = await phaseService.addPhaseProcedure(req.params.id, req.body.procedureId, actorIdOf(req), tenantIdOf(req));
         return reply.status(201).send(binding);
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
@@ -185,7 +185,7 @@ export const phaseRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req, reply) => {
       try {
-        return await phaseService.deletePhaseProcedure(req.params.id, req.params.procedureId, tenantIdOf(req));
+        return await phaseService.deletePhaseProcedure(req.params.id, req.params.procedureId, actorIdOf(req), tenantIdOf(req));
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
           return reply.status(404).send({ error: 'Phase procedure binding not found' });
@@ -243,7 +243,7 @@ export const phaseRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req, reply) => {
       try {
-        const binding = await phaseService.addPhaseEquipment(req.params.id, req.body.phaseEquipId, tenantIdOf(req));
+        const binding = await phaseService.addPhaseEquipment(req.params.id, req.body.phaseEquipId, actorIdOf(req), tenantIdOf(req));
         return reply.status(201).send(binding);
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
@@ -273,7 +273,7 @@ export const phaseRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req, reply) => {
       try {
-        return await phaseService.deletePhaseEquipment(req.params.id, req.params.phaseEquipId, tenantIdOf(req));
+        return await phaseService.deletePhaseEquipment(req.params.id, req.params.phaseEquipId, actorIdOf(req), tenantIdOf(req));
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
           return reply.status(404).send({ error: 'Phase equipment binding not found' });
@@ -370,7 +370,7 @@ export const phaseRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req, reply) => {
       try {
-        return await phaseService.deletePhase(req.params.id, tenantIdOf(req));
+        return await phaseService.deletePhase(req.params.id, actorIdOf(req), tenantIdOf(req));
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError) {
           if (err.code === 'P2025') return reply.status(404).send({ error: 'Phase not found' });

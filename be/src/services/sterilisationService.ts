@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { tenantIdOrDefault } from './tenant.js';
+import { writeAuditLog } from './auditLogService.js';
 
 export interface CreateSterilisationInput {
   workOrderId: string;
@@ -94,6 +95,7 @@ export async function createSterilisation(
     return created;
   });
 
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Sterilise', entityId: sterilise.id, action: 'create', after: sterilise, metadata: { workOrderId: input.workOrderId } });
   return sterilise;
 }
 
@@ -123,6 +125,10 @@ export async function setSterilisationResult(
         clientVersion: 'unknown',
       });
     }
+    const before = await prisma.sterilise.findFirst({
+      where: { id, tenantId: scopedTenantId },
+      include: steriliseDetailInclude,
+    });
     const updated = await prisma.sterilise.updateMany({
       where: { id, tenantId: scopedTenantId },
       data: {
@@ -136,10 +142,12 @@ export async function setSterilisationResult(
         clientVersion: 'unknown',
       });
     }
-    return await prisma.sterilise.findFirstOrThrow({
+    const after = await prisma.sterilise.findFirstOrThrow({
       where: { id, tenantId: scopedTenantId },
       include: steriliseDetailInclude,
     });
+    await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Sterilise', entityId: id, action: 'update', before, after, metadata: { result } });
+    return after;
   } catch (err) {
     // P2025 = record to update not found; surface a clear message so the route
     // can map it to 404.

@@ -931,19 +931,19 @@ describe('route tenant propagation', () => {
       );
 
       await injectJson('DELETE', '/api/phases/phase-1');
-      expect(mocks.phaseService.deletePhase).toHaveBeenCalledWith('phase-1', tenantId);
+      expect(mocks.phaseService.deletePhase).toHaveBeenCalledWith('phase-1', adminActorId, tenantId);
 
       await injectJson('POST', '/api/phases/phase-1/procedures', { procedureId: 'procedure-1' });
-      expect(mocks.phaseService.addPhaseProcedure).toHaveBeenCalledWith('phase-1', 'procedure-1', tenantId);
+      expect(mocks.phaseService.addPhaseProcedure).toHaveBeenCalledWith('phase-1', 'procedure-1', adminActorId, tenantId);
 
       await injectJson('DELETE', '/api/phases/phase-1/procedures/procedure-1');
-      expect(mocks.phaseService.deletePhaseProcedure).toHaveBeenCalledWith('phase-1', 'procedure-1', tenantId);
+      expect(mocks.phaseService.deletePhaseProcedure).toHaveBeenCalledWith('phase-1', 'procedure-1', adminActorId, tenantId);
 
       await injectJson('POST', '/api/phases/phase-1/equipment', { phaseEquipId: 'equip-1' });
-      expect(mocks.phaseService.addPhaseEquipment).toHaveBeenCalledWith('phase-1', 'equip-1', tenantId);
+      expect(mocks.phaseService.addPhaseEquipment).toHaveBeenCalledWith('phase-1', 'equip-1', adminActorId, tenantId);
 
       await injectJson('DELETE', '/api/phases/phase-1/equipment/equip-1');
-      expect(mocks.phaseService.deletePhaseEquipment).toHaveBeenCalledWith('phase-1', 'equip-1', tenantId);
+      expect(mocks.phaseService.deletePhaseEquipment).toHaveBeenCalledWith('phase-1', 'equip-1', adminActorId, tenantId);
 
       await injectJson('POST', '/api/master-data/procedures', {
         procedureName: 'Intake checklist',
@@ -964,7 +964,7 @@ describe('route tenant propagation', () => {
       );
 
       await injectJson('DELETE', '/api/master-data/procedures/procedure-1');
-      expect(mocks.masterDataService.deleteProcedure).toHaveBeenCalledWith('procedure-1', tenantId);
+      expect(mocks.masterDataService.deleteProcedure).toHaveBeenCalledWith('procedure-1', adminActorId, tenantId);
 
       await injectJson('POST', '/api/master-data/boms', { bomName: 'Intake BOM' });
       expect(mocks.masterDataService.createBom).toHaveBeenCalledWith(
@@ -982,7 +982,7 @@ describe('route tenant propagation', () => {
       );
 
       await injectJson('DELETE', '/api/master-data/boms/bom-1');
-      expect(mocks.masterDataService.deleteBom).toHaveBeenCalledWith('bom-1', tenantId);
+      expect(mocks.masterDataService.deleteBom).toHaveBeenCalledWith('bom-1', adminActorId, tenantId);
 
       await injectJson('POST', '/api/master-data/bom-lines', {
         bomId: 'bom-1',
@@ -1026,7 +1026,7 @@ describe('route tenant propagation', () => {
       );
 
       await injectJson('DELETE', '/api/master-data/phase-equipment/equip-1');
-      expect(mocks.masterDataService.deletePhaseEquipment).toHaveBeenCalledWith('equip-1', tenantId);
+      expect(mocks.masterDataService.deletePhaseEquipment).toHaveBeenCalledWith('equip-1', adminActorId, tenantId);
 
       await injectJson('POST', '/api/work-orders', { workflowId: 'workflow-1', hetId: 'het-1' });
       expect(mocks.workOrderService.createWorkOrder).toHaveBeenCalledWith(

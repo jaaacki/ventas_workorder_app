@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { tenantIdOrDefault } from './tenant.js';
+import { writeAuditLog } from './auditLogService.js';
 
 export interface WorkflowPhaseInput {
   phaseId: string;
@@ -102,7 +103,7 @@ export async function createWorkflow(input: CreateWorkflowInput, actorId: string
   const phases = input.phases ?? [];
   const scopedTenantId = tenantIdOrDefault(tenantId);
   await assertTenantPhasesExist(prisma, phases, scopedTenantId);
-  return prisma.workflow.create({
+  const created = await prisma.workflow.create({
     data: {
       tenantId: scopedTenantId,
       name: input.name,
@@ -116,12 +117,15 @@ export async function createWorkflow(input: CreateWorkflowInput, actorId: string
     },
     include: workflowDetailInclude,
   });
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Workflow', entityId: created.id, action: 'create', after: created });
+  return created;
 }
 
 export async function updateWorkflow(id: string, input: UpdateWorkflowInput, actorId: string, tenantId?: string | null) {
   const replacePhases = input.phases;
   const scopedTenantId = tenantIdOrDefault(tenantId);
-  return prisma.$transaction(async (tx) => {
+  const before = await prisma.workflow.findFirst({ where: { id, tenantId: scopedTenantId }, include: workflowDetailInclude });
+  const after = await prisma.$transaction(async (tx) => {
     const workflow = await tx.workflow.findFirst({
       where: { id, tenantId: scopedTenantId },
       select: { id: true },
@@ -160,4 +164,6 @@ export async function updateWorkflow(id: string, input: UpdateWorkflowInput, act
       include: workflowDetailInclude,
     });
   });
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Workflow', entityId: id, action: 'update', before, after });
+  return after;
 }

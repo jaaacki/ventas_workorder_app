@@ -12,7 +12,11 @@ function toJson(value: unknown): Prisma.InputJsonValue | typeof Prisma.JsonNull 
 
 export async function writeAuditLog(input: {
   tenantId?: string | null;
+  // Callers with the full JWT pass `actor`; service-layer callers that only hold
+  // the actor id (routes pass actorId into services) use `actorId`/`actorEmail`.
   actor?: JwtPayload | null;
+  actorId?: string | null;
+  actorEmail?: string | null;
   entityType: string;
   entityId: string;
   action: AuditAction;
@@ -23,8 +27,8 @@ export async function writeAuditLog(input: {
   return prisma.auditLog.create({
     data: {
       tenantId: tenantIdOrDefault(input.tenantId),
-      actorId: input.actor?.id,
-      actorEmail: input.actor?.email,
+      actorId: input.actor?.id ?? input.actorId ?? undefined,
+      actorEmail: input.actor?.email ?? input.actorEmail ?? undefined,
       entityType: input.entityType,
       entityId: input.entityId,
       action: input.action,

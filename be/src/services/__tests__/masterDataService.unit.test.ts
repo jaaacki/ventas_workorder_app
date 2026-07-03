@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
     findMany: vi.fn(),
     updateMany: vi.fn(),
   },
+  auditLog: { create: vi.fn() },
 }));
 
 vi.mock('../../db/prisma.js', () => ({
@@ -39,6 +40,7 @@ vi.mock('../../db/prisma.js', () => ({
     bom: mocks.bom,
     bomLine: mocks.bomLine,
     phaseEquip: mocks.phaseEquip,
+    auditLog: mocks.auditLog,
   },
 }));
 
@@ -69,6 +71,12 @@ describe('masterDataService', () => {
     await createBom({ bomName: 'Intake BOM' }, 'actor1', 'tenant-a');
     await createPhaseEquipment({ equipId: 'EQ-1', name: 'Heat sealer' }, 'actor1', 'tenant-a');
 
+    // Every create writes an audit-log entry attributed to the actor.
+    expect(mocks.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ tenantId: 'tenant-a', actorId: 'actor1', entityType: 'Procedure', entityId: 'procedure-1', action: 'create' }),
+    }));
+    expect(mocks.auditLog.create).toHaveBeenCalledTimes(3);
+
     expect(mocks.procedure.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ tenantId: 'tenant-a', procedureName: 'Intake checklist', createdById: 'actor1', updatedById: 'actor1' }),
     }));
@@ -86,7 +94,7 @@ describe('masterDataService', () => {
     mocks.procedure.deleteMany.mockResolvedValue({ count: 1 });
 
     await updateProcedure('procedure-1', { procedureDesc: 'Updated' }, 'actor1', 'tenant-a');
-    await deleteProcedure('procedure-1', 'tenant-a');
+    await deleteProcedure('procedure-1', 'actor1', 'tenant-a');
 
     expect(mocks.procedure.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'procedure-1', tenantId: 'tenant-a' },
@@ -96,6 +104,13 @@ describe('masterDataService', () => {
       where: { id: 'procedure-1', tenantId: 'tenant-a' },
     }));
     expect(mocks.procedure.deleteMany).toHaveBeenCalledWith({ where: { id: 'procedure-1', tenantId: 'tenant-a' } });
+    // Update and delete are both audited with before-state capture.
+    expect(mocks.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ entityType: 'Procedure', entityId: 'procedure-1', action: 'update', actorId: 'actor1' }),
+    }));
+    expect(mocks.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ entityType: 'Procedure', entityId: 'procedure-1', action: 'delete', actorId: 'actor1' }),
+    }));
   });
 
   it('rejects updates when a record is outside the caller tenant', async () => {
@@ -163,8 +178,11 @@ describe('masterDataService', () => {
   it('deletes phase equipment only after tenant ownership preflight', async () => {
     mocks.phaseEquip.deleteMany.mockResolvedValue({ count: 1 });
 
-    await expect(deletePhaseEquipment('equip-1', 'tenant-a')).resolves.toEqual({ success: true });
+    await expect(deletePhaseEquipment('equip-1', 'actor1', 'tenant-a')).resolves.toEqual({ success: true });
 
     expect(mocks.phaseEquip.deleteMany).toHaveBeenCalledWith({ where: { id: 'equip-1', tenantId: 'tenant-a' } });
+    expect(mocks.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ entityType: 'PhaseEquip', entityId: 'equip-1', action: 'delete', actorId: 'actor1' }),
+    }));
   });
 });

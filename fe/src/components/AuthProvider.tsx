@@ -3,16 +3,13 @@ import { useAuthStore } from '../store/authStore';
 import { me } from '../lib/auth-api';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { token, setUser, clearAuth, setLoading, isLoading } = useAuthStore();
+  const { setAuth, clearAuth, setLoading, isLoading } = useAuthStore();
 
   useEffect(() => {
-    if (!token) {
-      setLoading(false);
-      return;
-    }
+    // The auth cookie is httpOnly, so probe /me to learn whether a session exists.
     me()
       .then((user) => {
-        setUser(user);
+        setAuth(user);
       })
       .catch(() => {
         clearAuth();
@@ -20,7 +17,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .finally(() => {
         setLoading(false);
       });
-  }, [token, setUser, clearAuth, setLoading]);
+  }, [setAuth, clearAuth, setLoading]);
 
   if (isLoading) {
     return (

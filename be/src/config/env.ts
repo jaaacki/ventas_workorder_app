@@ -6,6 +6,7 @@ export const envSchema = z.object({
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   DATABASE_URL: z.string(),
   JWT_SECRET: z.string().min(16),
+  JWT_EXPIRES_IN: z.string().default('7d'),
   CORS_ORIGIN: z.string().optional(),
   FRONTEND_URL: z.string().url().default('http://localhost:3000'),
   OWNER_EMAIL: z.string().email().optional(),

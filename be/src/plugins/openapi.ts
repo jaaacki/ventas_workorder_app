@@ -315,7 +315,7 @@ const generatedCrudSuccessExamples: Array<[string, Record<string, unknown>]> = [
 
 const successExamples: Record<string, unknown> = {
   getHealth: { status: 'ok' },
-  login: { token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example', user: userExample },
+  login: { user: userExample },
   registerStaff: userExample,
   getCurrentUser: userExample,
   logout: { success: true },
@@ -325,7 +325,7 @@ const successExamples: Record<string, unknown> = {
   updateStaffRole: userExample,
   updateStaffActive: { ...userExample, active: false },
   authorizeOAuthProvider: 'https://accounts.google.com/o/oauth2/v2/auth?...',
-  handleOAuthCallback: 'http://localhost:3000/auth/callback?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example',
+  handleOAuthCallback: 'http://localhost:3000/auth/callback',
   listWorkflows: [{
     id: workflowExample.id,
     name: workflowExample.name,

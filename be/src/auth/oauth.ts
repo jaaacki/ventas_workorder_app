@@ -20,6 +20,7 @@ import { createHash, webcrypto, X509Certificate } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import type { Env } from '../config/env.js';
 import { prisma } from '../db/prisma.js';
+import { issueAuthCookie } from './session.js';
 import { DEFAULT_TENANT_ID, tenantIdOrDefault } from '../services/tenant.js';
 
 const errorResponse = z.object({ error: z.string() });
@@ -382,8 +383,10 @@ export const oauthRoutes: FastifyPluginAsyncZod = async function (app) {
         name: staff.name,
       });
 
+      issueAuthCookie(reply, token, env);
       clearOAuthCookies(reply);
-      return reply.redirect(`${env.FRONTEND_URL}/auth/callback?token=${encodeURIComponent(token)}`);
+      // Token is delivered in the httpOnly cookie above, never in the redirect URL.
+      return reply.redirect(`${env.FRONTEND_URL}/auth/callback`);
     }
   );
 };

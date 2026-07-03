@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 import { prisma } from '../db/prisma.js';
 import { permissionKey } from '../auth/permissions.js';
+import { maybeSlidingRefresh } from '../auth/session.js';
 
 export interface JwtPayload {
   id: string;
@@ -20,6 +21,7 @@ async function authPlugin(fastify: FastifyInstance) {
       } catch {
         return reply.status(401).send({ error: 'Unauthorized' });
       }
+      await maybeSlidingRefresh(request, reply, fastify.config);
     }
   );
 

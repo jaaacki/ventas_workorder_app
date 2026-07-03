@@ -15,6 +15,7 @@ import {
 import { useAuthStore } from '@/store/authStore';
 import { useWorkflowContext } from '@/store/workflowContext';
 import { fetchQaWorkOrderQueue } from '@/lib/work-orders-api';
+import { logoutApi } from '@/lib/auth-api';
 import {
   LayoutDashboard,
   Users,
@@ -355,7 +356,7 @@ export function Header() {
             <div className="font-medium text-foreground">{user?.name || user?.email}</div>
             <div className="capitalize text-muted-foreground">{user?.role?.name || user?.role?.key}</div>
           </div>
-          <Button variant="outline" size="icon-lg" onClick={() => { clearAuth(); navigate('/login', { replace: true }); }} title="Sign out">
+          <Button variant="outline" size="icon-lg" onClick={async () => { try { await logoutApi(); } finally { clearAuth(); navigate('/login', { replace: true }); } }} title="Sign out">
             <LogOut className="h-5 w-5" />
           </Button>
         </div>

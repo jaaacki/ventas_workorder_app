@@ -10,7 +10,6 @@ interface AuthState {
   setAuth: (user: User) => void;
   clearAuth: () => void;
   setLoading: (loading: boolean) => void;
-  setUser: (user: User) => void;
   hasPermission: (permission: string) => boolean;
 }
 
@@ -21,7 +20,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setAuth: (user) => set({ user, isAuthenticated: true, isLoading: false }),
   clearAuth: () => set({ user: null, isAuthenticated: false, isLoading: false }),
   setLoading: (isLoading) => set({ isLoading }),
-  setUser: (user) => set({ user, isAuthenticated: true }),
   hasPermission: (permission) => {
     const permissions = get().user?.role?.permissions ?? [];
     return permissions.includes(permission);

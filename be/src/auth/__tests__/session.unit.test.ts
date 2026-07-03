@@ -1,13 +1,23 @@
 import cookie from '@fastify/cookie';
 import jwt from '@fastify/jwt';
 import Fastify from 'fastify';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({ staff: { findFirst: vi.fn() } }));
+vi.mock('../../db/prisma.js', () => ({ prisma: { staff: mocks.staff } }));
+
 import { AUTH_COOKIE_NAME, clearAuthCookie, issueAuthCookie, maybeSlidingRefresh } from '../session.js';
 import type { Env } from '../../config/env.js';
 
 const config = { NODE_ENV: 'test' } as unknown as Env;
 
 const payload = { id: 'staff-1', role: 'user', email: 'u@example.test', tenantId: 'tenant-a', name: 'U' };
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  // Default: the staff behind the token is still active — sliding refresh re-issues.
+  mocks.staff.findFirst.mockResolvedValue({ id: 'staff-1', active: true, email: 'u@example.test', tenantId: 'tenant-a', role: { key: 'user' } });
+});
 
 function buildApp() {
   const app = Fastify();
@@ -84,6 +94,27 @@ describe('auth session cookie', () => {
       const res = await app.inject({ method: 'POST', url: '/t/refresh' });
       const setCookie = parseSetCookie(res.headers['set-cookie']).find((c) => c.startsWith(`${AUTH_COOKIE_NAME}=`));
       expect(setCookie).toBeDefined();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('clears the cookie instead of re-issuing when the staff has been deactivated', async () => {
+    mocks.staff.findFirst.mockResolvedValue({ id: 'staff-1', active: false, email: 'u@example.test', tenantId: 'tenant-a', role: { key: 'user' } });
+    const app = buildApp();
+    app.post('/t/refresh', async (req, reply) => {
+      const now = Math.floor(Date.now() / 1000);
+      // past half-life, so refresh runs the DB re-validation.
+      (req as { user: unknown }).user = { ...payload, iat: now - 6 * 86400, exp: now + 1 * 86400 };
+      await maybeSlidingRefresh(req, reply, config);
+      return { ok: true };
+    });
+    await app.ready();
+    try {
+      const res = await app.inject({ method: 'POST', url: '/t/refresh' });
+      const setCookie = parseSetCookie(res.headers['set-cookie']).find((c) => c.startsWith(`${AUTH_COOKIE_NAME}=`));
+      // Deactivated staff: the cookie is cleared, not refreshed.
+      expect(setCookie).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/i);
     } finally {
       await app.close();
     }

@@ -51,18 +51,6 @@ const workflowSummaryExample = {
   stepCount: 28,
 };
 
-const workflowExample = {
-  id: 'wf-amgraft',
-  name: 'AmGraft',
-  code: 'AMG',
-  description: 'AmGraft processing workflow',
-  active: true,
-  phases: [
-    { ...phaseSummaryExample, steps: [stepExample] },
-  ],
-  unplacedSteps: [unplacedStepExample],
-};
-
 const stepExample = {
   id: 'step-a1',
   workflowId: 'wf-amgraft',
@@ -90,6 +78,18 @@ const phaseSummaryExample = {
   isGate: false,
   blocksCombine: true,
   bomId: null,
+};
+
+const workflowExample = {
+  id: 'wf-amgraft',
+  name: 'AmGraft',
+  code: 'AMG',
+  description: 'AmGraft processing workflow',
+  active: true,
+  phases: [
+    { ...phaseSummaryExample, steps: [stepExample] },
+  ],
+  unplacedSteps: [unplacedStepExample],
 };
 
 const phaseExample = {

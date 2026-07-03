@@ -1,5 +1,8 @@
-import { useMemo, useRef, useState, type FormEvent, type PointerEvent } from 'react';
+import { useMemo, useRef, useState, type PointerEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Controller, useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Link, useSearchParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { fetchWorkflows } from '@/lib/workflows-api';
@@ -238,6 +241,21 @@ function SignaturePad({
   );
 }
 
+const createWorkOrderSchema = z
+  .object({
+    workflowId: z.string().min(1, 'Select a product workflow'),
+    hetId: z.string().min(1, 'Select a HET record'),
+    startNow: z.boolean(),
+    signatureDataUrl: z.string(),
+  })
+  // A controlled immediate start requires a captured sign-off signature.
+  .refine((values) => !values.startNow || values.signatureDataUrl.length > 0, {
+    message: 'Capture a start sign-off signature before starting the phase',
+    path: ['signatureDataUrl'],
+  });
+
+type CreateWorkOrderValues = z.infer<typeof createWorkOrderSchema>;
+
 function CreateWorkOrderForm({
   workflows,
   hets,
@@ -249,19 +267,25 @@ function CreateWorkOrderForm({
   creating: boolean;
   onCreate: (payload: { workflowId: string; hetId: string; startNow: boolean; signatureDataUrl?: string }) => void;
 }) {
-  const [workflowId, setWorkflowId] = useState('');
-  const [hetId, setHetId] = useState('');
-  const [startNow, setStartNow] = useState(true);
-  const [signatureDataUrl, setSignatureDataUrl] = useState('');
+  const form = useForm<CreateWorkOrderValues>({
+    resolver: zodResolver(createWorkOrderSchema),
+    defaultValues: { workflowId: '', hetId: '', startNow: true, signatureDataUrl: '' },
+  });
+  const { control, register, handleSubmit, watch, formState: { errors } } = form;
+  const workflowId = watch('workflowId');
+  const hetId = watch('hetId');
+  const startNow = watch('startNow');
   const selectedWorkflow = workflows.find((workflow) => workflow.id === workflowId);
   const selectedHet = hets.find((het) => het.id === hetId);
-  const canSubmit = Boolean(workflowId && hetId && (!startNow || signatureDataUrl));
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    if (!canSubmit) return;
-    onCreate({ workflowId, hetId, startNow, signatureDataUrl: startNow ? signatureDataUrl : undefined });
-  };
+  const submit = handleSubmit((values) => {
+    onCreate({
+      workflowId: values.workflowId,
+      hetId: values.hetId,
+      startNow: values.startNow,
+      signatureDataUrl: values.startNow ? values.signatureDataUrl : undefined,
+    });
+  });
 
   return (
     <form className="space-y-6" onSubmit={submit}>
@@ -271,8 +295,7 @@ function CreateWorkOrderForm({
           <select
             id="create-workflow"
             className="flex h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs transition-colors focus-visible:border-brand-300 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            value={workflowId}
-            onChange={(event) => setWorkflowId(event.target.value)}
+            {...register('workflowId')}
           >
             <option value="">Select product workflow</option>
             {workflows.map((workflow) => (
@@ -281,6 +304,7 @@ function CreateWorkOrderForm({
               </option>
             ))}
           </select>
+          {errors.workflowId && <p className="text-sm text-error-500">{errors.workflowId.message}</p>}
         </div>
 
         <div className="space-y-2">
@@ -288,8 +312,7 @@ function CreateWorkOrderForm({
           <select
             id="create-het"
             className="flex h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs transition-colors focus-visible:border-brand-300 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            value={hetId}
-            onChange={(event) => setHetId(event.target.value)}
+            {...register('hetId')}
           >
             <option value="">Select HET</option>
             {hets.map((het) => (
@@ -298,6 +321,7 @@ function CreateWorkOrderForm({
               </option>
             ))}
           </select>
+          {errors.hetId && <p className="text-sm text-error-500">{errors.hetId.message}</p>}
         </div>
       </div>
 
@@ -321,19 +345,25 @@ function CreateWorkOrderForm({
       <label className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 text-sm text-gray-700 dark:border-gray-800 dark:text-gray-300">
         <input
           type="checkbox"
-          checked={startNow}
-          onChange={(event) => setStartNow(event.target.checked)}
+          {...register('startNow')}
           className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
         />
         Start first phase immediately after creation
       </label>
 
       {startNow && (
-        <SignaturePad label="Start sign-off" value={signatureDataUrl} onChange={setSignatureDataUrl} />
+        <div className="space-y-1">
+          <Controller
+            control={control}
+            name="signatureDataUrl"
+            render={({ field }) => <SignaturePad label="Start sign-off" value={field.value} onChange={field.onChange} />}
+          />
+          {errors.signatureDataUrl && <p className="text-sm text-error-500">{errors.signatureDataUrl.message}</p>}
+        </div>
       )}
 
       <SheetFooter className="border-t border-gray-100 px-0 pb-0 dark:border-gray-800">
-        <Button type="submit" disabled={creating || !canSubmit}>
+        <Button type="submit" disabled={creating}>
           <FileSignature className="h-4 w-4" />
           {startNow ? 'Create and start phase' : 'Create work order'}
         </Button>

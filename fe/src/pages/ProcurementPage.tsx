@@ -1,6 +1,9 @@
-import { type FormEvent, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import type { AxiosError } from 'axios';
 import { toast } from 'sonner';
 import {
@@ -223,6 +226,21 @@ const requiredFields: Record<EditableKind, string[]> = {
   receipt: ['collectionOrderId'],
   receiptLine: ['collectionReceiptId'],
 };
+
+// Build the react-hook-form schema for an editor session from the field config:
+// required keys must be non-empty strings, boolean-valued fields validate as
+// booleans, everything else is an optional string (blank → null via cleanPayload).
+function buildEditorSchema(kind: EditableKind, values: Record<string, string | boolean>) {
+  const required = new Set(requiredFields[kind] ?? []);
+  return z.object(
+    Object.fromEntries(
+      Object.keys(values).map((key) => {
+        if (typeof values[key] === 'boolean') return [key, z.boolean()];
+        return [key, required.has(key) ? z.string().trim().min(1, 'Required') : z.string()];
+      }),
+    ),
+  );
+}
 
 function formatDate(value?: string | null) {
   return value ? new Date(value).toLocaleString() : '-';
@@ -875,6 +893,25 @@ export default function ProcurementPage() {
   const [includeDeletedByKind, setIncludeDeletedByKind] = useState<Partial<Record<ActionKind, boolean>>>({});
   const [unitSearch, setUnitSearch] = useState('');
   const [editor, setEditor] = useState<EditorState>(null);
+
+  // Single react-hook-form instance for the create/edit sheet across all kinds; the
+  // resolver rebuilds its zod schema (including boolean fields) from the active
+  // session, and reset() reseeds the fields when a new editor opens.
+  const editorKindRef = useRef<EditableKind | null>(null);
+  const editorForm = useForm<Record<string, string | boolean>>({
+    resolver: (values, context, options) => {
+      const kind = editorKindRef.current;
+      if (!kind) return { values, errors: {} };
+      return zodResolver(buildEditorSchema(kind, values))(values, context, options);
+    },
+    defaultValues: {},
+  });
+  useEffect(() => {
+    if (editor) {
+      editorKindRef.current = editor.kind;
+      editorForm.reset(editor.values);
+    }
+  }, [editor, editorForm]);
   const [audit, setAudit] = useState<AuditState>(null);
 
   const can = (kind: ActionKind, action: string) => hasPermission(`${resourceByKind[kind]}.${action}`);
@@ -1065,18 +1102,14 @@ export default function ProcurementPage() {
   const hasError = overview.isError || entities.isError || points.isError || units.isError || issuance.isError || issuanceLines.isError || fulfilments.isError || collectionOrders.isError || receipts.isError || receiptLines.isError;
   const mutationBusy = archiveMutation.isPending || restoreMutation.isPending || updateMutation.isPending || createMutation.isPending;
 
-  const setField = (key: string, value: string | boolean) => {
-    setEditor((current) => current && { ...current, values: { ...current.values, [key]: value } });
-  };
-  const submitEditor = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submitEditor = editorForm.handleSubmit((values) => {
     if (!editor) return;
     if (editor.mode === 'create') {
-      createMutation.mutate({ kind: editor.kind, values: editor.values });
+      createMutation.mutate({ kind: editor.kind, values });
       return;
     }
-    if (editor.id) updateMutation.mutate({ kind: editor.kind, id: editor.id, values: editor.values });
-  };
+    if (editor.id) updateMutation.mutate({ kind: editor.kind, id: editor.id, values });
+  });
 
   const openSupplyEditor = (entity: SupplyEntity) => setEditor({
     mode: 'edit',
@@ -1245,10 +1278,12 @@ export default function ProcurementPage() {
 
   const renderEditorFields = () => {
     if (!editor) return null;
-    const value = (key: string) => String(editor.values[key] ?? '');
+    const control = editorForm.control;
+    const errors = editorForm.formState.errors;
     const isRequired = (key: string) => requiredFields[editor.kind].includes(key);
+    const errorFor = (key: string) => errors[key]?.message as string | undefined;
     const selectField = (key: string, options: Array<{ value: string; label: string }>, label?: string) => (
-      <SelectField key={key} label={label ?? editorFieldLabels[editor.kind][key]} value={value(key)} options={options} required={isRequired(key)} allowEmpty={!isRequired(key)} onChange={(next) => setField(key, next)} />
+      <SelectField key={key} control={control} name={key} label={label ?? editorFieldLabels[editor.kind][key]} options={options} required={isRequired(key)} allowEmpty={!isRequired(key)} error={errorFor(key)} />
     );
     const enumField = (key: string, values: string[], label?: string) => selectField(key, values.map((entry) => ({ value: entry, label: entry.replace(/_/g, ' ') })), label);
     const relationshipField = (key: string) => {
@@ -1263,29 +1298,29 @@ export default function ProcurementPage() {
     if (editor.kind === 'supply') {
       return (
         <>
-          <TextField label="Name" value={value('name')} required onChange={(next) => setField('name', next)} />
-          <TextField label="Legal name" value={value('legalName')} onChange={(next) => setField('legalName', next)} />
-          <TextField label="External code" value={value('externalCode')} onChange={(next) => setField('externalCode', next)} />
-          <TextField label="Legacy clinic" value={value('legacyClinicId')} onChange={(next) => setField('legacyClinicId', next)} />
-          <TextField label="Legacy group" value={value('legacyGroupKey')} onChange={(next) => setField('legacyGroupKey', next)} />
-          <TextField label="Source system" value={value('sourceSystem')} onChange={(next) => setField('sourceSystem', next)} />
+          <TextField control={control} name="name" label="Name" required error={errorFor('name')} />
+          <TextField control={control} name="legalName" label="Legal name" error={errorFor('legalName')} />
+          <TextField control={control} name="externalCode" label="External code" error={errorFor('externalCode')} />
+          <TextField control={control} name="legacyClinicId" label="Legacy clinic" error={errorFor('legacyClinicId')} />
+          <TextField control={control} name="legacyGroupKey" label="Legacy group" error={errorFor('legacyGroupKey')} />
+          <TextField control={control} name="sourceSystem" label="Source system" error={errorFor('sourceSystem')} />
         </>
       );
     }
     if (editor.kind === 'unit') {
       return (
         <>
-          <TextField label="Unit number" value={value('unitNumber')} onChange={(next) => setField('unitNumber', next)} />
+          <TextField control={control} name="unitNumber" label="Unit number" error={errorFor('unitNumber')} />
           {enumField('status', ['available', 'issued', 'received', 'consumed', 'archived'])}
           {selectField('supplyEntityId', entityOptions, 'Supply entity')}
           {selectField('collectionPointId', pointOptions, 'Collection point')}
-          <TextField label="Legacy HET" value={value('legacyHetId')} onChange={(next) => setField('legacyHetId', next)} />
-          <TextField label="Parcel tracking" value={value('parcelTrackingNumber')} onChange={(next) => setField('parcelTrackingNumber', next)} />
-          <TextField label="Work order ID" value={value('legacyUsedByWorkOrderId')} onChange={(next) => setField('legacyUsedByWorkOrderId', next)} />
-          <TextField label="Source system" value={value('sourceSystem')} onChange={(next) => setField('sourceSystem', next)} />
-          <TextField label="Link completeness" value={value('linkCompleteness')} onChange={(next) => setField('linkCompleteness', next)} />
-          <TextField label="Semantic confidence" value={value('semanticConfidence')} onChange={(next) => setField('semanticConfidence', next)} />
-          <CheckboxField label="Hidden from operations" checked={Boolean(editor.values.hiddenFromOperations)} onChange={(next) => setField('hiddenFromOperations', next)} />
+          <TextField control={control} name="legacyHetId" label="Legacy HET" error={errorFor('legacyHetId')} />
+          <TextField control={control} name="parcelTrackingNumber" label="Parcel tracking" error={errorFor('parcelTrackingNumber')} />
+          <TextField control={control} name="legacyUsedByWorkOrderId" label="Work order ID" error={errorFor('legacyUsedByWorkOrderId')} />
+          <TextField control={control} name="sourceSystem" label="Source system" error={errorFor('sourceSystem')} />
+          <TextField control={control} name="linkCompleteness" label="Link completeness" error={errorFor('linkCompleteness')} />
+          <TextField control={control} name="semanticConfidence" label="Semantic confidence" error={errorFor('semanticConfidence')} />
+          <CheckboxField control={control} name="hiddenFromOperations" label="Hidden from operations" />
         </>
       );
     }
@@ -1305,10 +1340,10 @@ export default function ProcurementPage() {
                 ? enumField(key, ['intact', 'damaged', 'missing', 'unknown'])
                 : key === 'source'
                   ? enumField(key, ['manual', 'legacy', 'api', 'inferred'])
-                  : <TextField key={key} label={labels[key] ?? key.replace(/([A-Z])/g, ' $1')} value={value(key)} required={isRequired(key)} onChange={(next) => setField(key, next)} />)
+                  : <TextField key={key} control={control} name={key} label={labels[key] ?? key.replace(/([A-Z])/g, ' $1')} required={isRequired(key)} error={errorFor(key)} />)
         ))}
         {booleanFields.map((key) => (
-          <CheckboxField key={key} label={labels[key] ?? (key === 'legacyConflatedOrderReceipt' ? 'Conflated order/receipt' : key.replace(/([A-Z])/g, ' $1'))} checked={Boolean(editor.values[key])} onChange={(next) => setField(key, next)} />
+          <CheckboxField key={key} control={control} name={key} label={labels[key] ?? (key === 'legacyConflatedOrderReceipt' ? 'Conflated order/receipt' : key.replace(/([A-Z])/g, ' $1'))} />
         ))}
       </>
     );

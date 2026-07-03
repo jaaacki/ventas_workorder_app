@@ -67,6 +67,7 @@ const workOrderDetailInclude = {
       sortOrder: true,
       isGate: true,
       blocksCombine: true,
+      steps: { select: { id: true, code: true, name: true, sortOrder: true }, orderBy: { sortOrder: 'asc' as const } },
       bom: { select: { lines: { where: { deleted: false }, select: { id: true, description: true, quantity: true, uom: true, hasSerial: true } } } },
       phaseEquips: { select: { phaseEquip: { select: { id: true, equipId: true, name: true, description: true } } } },
     },

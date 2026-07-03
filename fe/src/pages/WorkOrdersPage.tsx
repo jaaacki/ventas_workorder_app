@@ -151,6 +151,20 @@ function WorkOrderCard({
         <span>{workOrder.counts?.serials ?? 0}/{workOrder.serialRequiredCount ?? 0} serials</span>
       </div>
 
+      {(workOrder.phase?.steps?.length ?? 0) > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1">
+          {workOrder.phase!.steps!.map((step) => (
+            <span
+              key={step.id}
+              className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400"
+              title={step.name ?? step.code ?? undefined}
+            >
+              {step.code || step.name}
+            </span>
+          ))}
+        </div>
+      )}
+
       {workOrder.missingAdvanceRequirements?.length > 0 && (
         <div className="mt-3 flex items-start gap-2 rounded-md bg-warning-50 px-2.5 py-2 text-xs text-warning-600 dark:bg-warning-500/10 dark:text-warning-500">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />

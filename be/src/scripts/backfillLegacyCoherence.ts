@@ -12,8 +12,8 @@ import { DEFAULT_TENANT_ID, tenantIdOrDefault } from '../services/tenant.js';
  * order gains a terminal state and a forward destination:
  *
  *   1. attach orphan work orders to the workflow;
- *   2. bind the workflow to the phases its work orders actually sit on
- *      (data-driven, ordered by phaseOrder), filling keyText from phaseShort;
+ *   2. attach every phase its work orders sit on to the workflow (phases are
+ *      workflow-owned now via phase.workflowId), filling keyText from phaseShort;
  *   3. link each HET run A1->…->terminal via previousWoId / nextPhaseId
  *      (unique-safe: one work order per phase per HET);
  *   4. mark terminal finished runs `released` (final phase reached, prodEnd set);
@@ -101,28 +101,17 @@ export async function backfillLegacyCoherence(options: {
       UPDATE "phase" SET "keyText" = "phaseShort"
       WHERE "tenantId" = ${tenantId} AND "keyText" IS NULL AND "phaseShort" IS NOT NULL`;
 
-    // 2b. Bind the workflow to exactly the phases its work orders sit on,
-    //     ordered by phaseOrder. Replaces any prior (demo) bindings. Data-driven
-    //     so it works for any product line, not a hardcoded phase list.
-    //     sortOrder is a dense ROW_NUMBER, not the raw phaseOrder: workflowPhase
-    //     has a unique (workflowId, sortOrder) and legacy phaseOrder is not
-    //     unique across phase sets (e.g. a demo phase and a legacy step can share
-    //     an order), so binding on raw phaseOrder would collide. The board only
-    //     needs the ordering, not the exact values.
-    await tx.$executeRaw`DELETE FROM "workflowPhase" WHERE "workflowId" = ${workflowId}`;
+    // 2b. Attach every phase a work order sits on to this workflow. Phases are
+    //     workflow-owned now (phase.workflowId), set at import/seed, so no join
+    //     table is involved. This is a safety net: any phase whose work order
+    //     routes here but whose workflowId still points elsewhere gets rebound.
     report.totals.phasesBound = await tx.$executeRaw`
-      INSERT INTO "workflowPhase" ("workflowId", "phaseId", "sortOrder")
-      SELECT ${workflowId}, ranked.id, ranked.rn
-      FROM (
-        SELECT p.id, (row_number() OVER (ORDER BY p."phaseOrder", p.id))::int AS rn
-        FROM "phase" p
-        WHERE p."tenantId" = ${tenantId}
-          AND p."phaseOrder" IS NOT NULL
-          AND EXISTS (
-            SELECT 1 FROM "workOrder" o
-            WHERE o."phaseId" = p.id AND o."workflowId" = ${workflowId} AND o."deleted" = false
-          )
-      ) ranked`;
+      UPDATE "phase" SET "workflowId" = ${workflowId}
+      WHERE "tenantId" = ${tenantId} AND "workflowId" <> ${workflowId}
+        AND "id" IN (
+          SELECT DISTINCT o."phaseId" FROM "workOrder" o
+          WHERE o."workflowId" = ${workflowId} AND o."phaseId" IS NOT NULL AND o."deleted" = false
+        )`;
 
     // 3. Chain each HET run: previousWoId = prior-phase work order,
     //    nextPhaseId = next phase. Unique-safe: one work order per phase per HET.
@@ -152,9 +141,9 @@ export async function backfillLegacyCoherence(options: {
       WHERE o."tenantId" = ${tenantId} AND o."deleted" = false
         AND o."releaseStatus" IS NULL AND o."prodEnd" IS NOT NULL
         AND o."phaseId" = (
-          SELECT wp."phaseId" FROM "workflowPhase" wp
-          WHERE wp."workflowId" = ${workflowId}
-          ORDER BY wp."sortOrder" DESC LIMIT 1
+          SELECT p."id" FROM "phase" p
+          WHERE p."workflowId" = ${workflowId}
+          ORDER BY p."sortOrder" DESC LIMIT 1
         )`;
 
     // 5. Bridge finished-goods inventory lots to the run that produced them,
@@ -168,9 +157,9 @@ export async function backfillLegacyCoherence(options: {
         AND l."deleted" = false AND l."workOrderId" IS NULL
         AND o."manuNumber" = l."lotNumber" AND o."deleted" = false
         AND o."phaseId" = (
-          SELECT wp."phaseId" FROM "workflowPhase" wp
-          WHERE wp."workflowId" = ${workflowId}
-          ORDER BY wp."sortOrder" DESC LIMIT 1
+          SELECT p."id" FROM "phase" p
+          WHERE p."workflowId" = ${workflowId}
+          ORDER BY p."sortOrder" DESC LIMIT 1
         )`;
 
     if (dryRun) {

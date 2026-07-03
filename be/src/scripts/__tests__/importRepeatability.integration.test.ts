@@ -169,15 +169,6 @@ function writeSeed(dir: string, seed = 1): void {
     ]),
   );
 
-  // procedure (sourceIdColumn = procedureId → id)
-  fs.writeFileSync(
-    path.join(dir, 'procedure.csv'),
-    csv([
-      ['procedureId', 'procedureName'],
-      [`PRO-${stem(1)}`, `Proc ${seed}`],
-    ]),
-  );
-
   // bom (sourceIdColumn = bomId → id)
   fs.writeFileSync(
     path.join(dir, 'bom.csv'),
@@ -205,7 +196,8 @@ function writeSeed(dir: string, seed = 1): void {
     ]),
   );
 
-  // phase (sourceIdColumn = phaseId → id)
+  // phase (sourceIdColumn = phaseId → id; workflowId injected via beforeImport →
+  // the AmGraft workflow, created-if-absent by the importer's beforeImport hook)
   fs.writeFileSync(
     path.join(dir, 'phase.csv'),
     csv([
@@ -225,6 +217,7 @@ function writeSeed(dir: string, seed = 1): void {
 
   // workOrder (sourceIdColumn = woId → id; FKs: manuId, phaseId, batchHetIds/phaseEquipIds via relations)
   // batchHetIds + phaseEquipIds are split into workOrderHet / workOrderPhaseEquip join tables.
+  // phaseId points at the imported (workflow-owned) phase seeded above.
   fs.writeFileSync(
     path.join(dir, 'workOrder.csv'),
     csv([
@@ -294,7 +287,6 @@ beforeEach(async () => {
   await prisma.het.deleteMany();
   await prisma.bomLine.deleteMany();
   await prisma.bom.deleteMany();
-  await prisma.procedure.deleteMany();
   await prisma.manufacturer.deleteMany();
   await prisma.printLabel.deleteMany();
   await prisma.staff.deleteMany();

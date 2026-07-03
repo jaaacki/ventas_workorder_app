@@ -12,7 +12,7 @@ type MethodPolicy = {
   completeness: string;
   allowedMethods: string[];
   omittedMethods?: Array<{ method: string; reason: string }>;
-  destructiveDeletes?: 'not-exposed' | 'not-applicable';
+  destructiveDeletes?: 'not-exposed' | 'not-applicable' | 'exposed-owner-guarded';
   notes: string;
 };
 
@@ -41,44 +41,68 @@ const userExample = {
   updatedAt: '2026-07-01T00:00:00.000Z',
 };
 
+const workflowSummaryExample = {
+  id: 'wf-amgraft',
+  name: 'AmGraft',
+  code: 'AMG',
+  description: 'AmGraft processing workflow',
+  active: true,
+  phaseCount: 8,
+  stepCount: 28,
+};
+
+const stepExample = {
+  id: 'step-a1',
+  workflowId: 'wf-amgraft',
+  phaseId: 'phase-a',
+  sortOrder: 0,
+  code: 'A1',
+  name: 'HET Collection',
+  description: null,
+};
+
+const unplacedStepExample = {
+  id: 'step-pool-1',
+  code: 'X1',
+  name: 'Spare inspection',
+  description: null,
+  sortOrder: 0,
+};
+
+const phaseSummaryExample = {
+  id: 'phase-a',
+  phaseShort: 'A',
+  phaseName: 'Material Acquisition',
+  description: null,
+  sortOrder: 0,
+  isGate: false,
+  blocksCombine: true,
+  bomId: null,
+};
+
 const workflowExample = {
   id: 'wf-amgraft',
-  name: 'AmGraft Standard',
-  code: 'AMGRAFT_STD',
-  description: 'Standard AmGraft processing workflow',
+  name: 'AmGraft',
+  code: 'AMG',
+  description: 'AmGraft processing workflow',
   active: true,
-  createdAt: '2026-07-01T00:00:00.000Z',
-  updatedAt: '2026-07-01T00:00:00.000Z',
   phases: [
-    {
-      workflowId: 'wf-amgraft',
-      phaseId: 'phase-intake',
-      sortOrder: 10,
-      phase: { id: 'phase-intake', phaseName: 'Intake', phaseShort: 'INT', phaseOrder: 10 },
-    },
+    { ...phaseSummaryExample, steps: [stepExample] },
   ],
+  unplacedSteps: [unplacedStepExample],
 };
 
 const phaseExample = {
-  id: 'phase-intake',
+  id: 'phase-a',
   tenantId: 'ventas',
-  phaseName: 'Intake',
-  phaseShort: 'INT',
-  phaseOrder: 10,
-  description: 'Initial HET intake and preparation.',
+  workflowId: 'wf-amgraft',
+  phaseName: 'Material Acquisition',
+  phaseShort: 'A',
+  description: null,
+  sortOrder: 0,
+  isGate: false,
+  blocksCombine: true,
   bomId: 'bom-amgraft-intake',
-  keyText: 'INTAKE',
-  createdAt: '2026-07-01T00:00:00.000Z',
-  updatedAt: '2026-07-01T00:00:00.000Z',
-};
-
-const procedureExample = {
-  id: 'proc-intake-checklist',
-  tenantId: 'ventas',
-  procedureName: 'Intake checklist',
-  procedureDesc: 'Verify HET identity, packaging, and required receiving evidence.',
-  procedureShort: 'INTAKE-CHECK',
-  keyText: 'INTAKE_CHECKLIST',
   createdAt: '2026-07-01T00:00:00.000Z',
   updatedAt: '2026-07-01T00:00:00.000Z',
 };
@@ -118,17 +142,6 @@ const phaseEquipmentExample = {
   createdAt: '2026-07-01T00:00:00.000Z',
   updatedAt: '2026-07-01T00:00:00.000Z',
   _count: { phases: 2, workOrders: 12 },
-};
-
-const phaseProcedureBindingExample = {
-  phaseId: 'phase-intake',
-  procedureId: 'proc-intake-checklist',
-  procedure: {
-    id: 'proc-intake-checklist',
-    procedureName: 'Intake checklist',
-    procedureShort: 'INTAKE-CHECK',
-    procedureDesc: 'Verify HET identity, packaging, and required receiving evidence.',
-  },
 };
 
 const phaseEquipmentBindingExample = {
@@ -326,35 +339,24 @@ const successExamples: Record<string, unknown> = {
   updateStaffActive: { ...userExample, active: false },
   authorizeOAuthProvider: 'https://accounts.google.com/o/oauth2/v2/auth?...',
   handleOAuthCallback: 'http://localhost:3000/auth/callback',
-  listWorkflows: [{
-    id: workflowExample.id,
-    name: workflowExample.name,
-    code: workflowExample.code,
-    description: workflowExample.description,
-    active: workflowExample.active,
-    createdAt: workflowExample.createdAt,
-    updatedAt: workflowExample.updatedAt,
-    _count: { phases: 8, workOrders: 12 },
-  }],
+  listWorkflows: [workflowSummaryExample],
   createWorkflow: workflowExample,
   getWorkflow: workflowExample,
   updateWorkflow: { ...workflowExample, description: 'Updated workflow description' },
-  listPhases: [phaseExample],
-  createPhase: phaseExample,
-  getPhase: phaseExample,
+  deleteWorkflow: { success: true },
+  addPhase: phaseSummaryExample,
+  reorderPhases: { success: true },
+  addWorkflowStep: stepExample,
   updatePhase: { ...phaseExample, description: 'Updated phase instructions.' },
   deletePhase: { success: true },
-  listPhaseProcedures: [phaseProcedureBindingExample],
-  addPhaseProcedure: phaseProcedureBindingExample,
-  deletePhaseProcedure: { success: true },
+  reorderPhaseSteps: { success: true },
+  updateStep: { ...stepExample, name: 'HET Collection (revised)' },
+  deleteStep: { success: true },
+  placeStep: stepExample,
+  unplaceStep: { ...stepExample, phaseId: null },
   listPhaseEquipmentBindings: [phaseEquipmentBindingExample],
   addPhaseEquipment: phaseEquipmentBindingExample,
   deletePhaseEquipmentBinding: { success: true },
-  listProcedures: [procedureExample],
-  createProcedure: procedureExample,
-  getProcedure: procedureExample,
-  updateProcedure: { ...procedureExample, procedureDesc: 'Updated controlled instruction.' },
-  deleteProcedure: { success: true },
   listBoms: [bomExample],
   createBom: bomExample,
   getBom: bomExample,
@@ -484,14 +486,16 @@ const requestExamples: Record<string, unknown> = {
   updateRole: { name: 'Production Operator', description: 'Can execute assigned production tasks' },
   updateStaffRole: { roleId: 'role-admin' },
   updateStaffActive: { active: false },
-  createWorkflow: { name: 'AmGraft Standard', code: 'AMGRAFT_STD', description: 'Standard AmGraft processing workflow', phases: [{ phaseId: 'phase-intake', sortOrder: 10 }] },
-  updateWorkflow: { description: 'Updated workflow description', active: true, phases: [{ phaseId: 'phase-intake', sortOrder: 10 }] },
-  createPhase: { phaseName: 'Intake', phaseShort: 'INT', phaseOrder: 10, description: 'Initial HET intake and preparation.', keyText: 'INTAKE' },
-  updatePhase: { description: 'Updated phase instructions.' },
-  addPhaseProcedure: { procedureId: 'proc-intake-checklist' },
+  createWorkflow: { name: 'AmGraft', code: 'AMG', description: 'AmGraft processing workflow' },
+  updateWorkflow: { name: 'AmGraft', description: 'Updated workflow description', active: true },
+  addPhase: { phaseShort: 'A', phaseName: 'Material Acquisition', blocksCombine: true },
+  reorderPhases: { phaseIds: ['phase-a', 'phase-b', 'phase-c'] },
+  addWorkflowStep: { code: 'A1', name: 'HET Collection', phaseId: 'phase-a' },
+  updatePhase: { phaseName: 'Material Acquisition', isGate: false, blocksCombine: true },
+  reorderPhaseSteps: { stepIds: ['step-a1', 'step-a2', 'step-a3'] },
+  updateStep: { name: 'HET Collection (revised)' },
+  placeStep: { phaseId: 'phase-a', sortOrder: 0 },
   addPhaseEquipment: { phaseEquipId: 'equip-heat-sealer' },
-  createProcedure: { procedureName: 'Intake checklist', procedureShort: 'INTAKE-CHECK', procedureDesc: 'Verify HET identity and packaging.', keyText: 'INTAKE_CHECKLIST' },
-  updateProcedure: { procedureDesc: 'Updated controlled instruction.' },
   createBom: { bomName: 'AmGraft intake BOM', keyText: 'AMGRAFT_INTAKE' },
   updateBom: { bomName: 'Updated AmGraft intake BOM' },
   createBomLine: { bomId: 'bom-amgraft-intake', description: 'AmGraft membrane', quantity: '1.0000', uom: 'ea', hasSerial: true, keyText: 'AMGRAFT_MEMBRANE' },
@@ -527,7 +531,6 @@ const parameterExamples: Record<string, unknown> = {
   workOrderId: 'WO-1001',
   bomId: 'bom-amgraft-intake',
   includeDeleted: 'false',
-  procedureId: 'proc-intake-checklist',
   phaseEquipId: 'equip-heat-sealer',
 };
 
@@ -632,102 +635,6 @@ const methodPolicies: Record<string, MethodPolicy> = {
     omittedMethods: [{ method: 'DELETE', reason: 'Role deletion is not exposed while staff may reference roles.' }],
     destructiveDeletes: 'not-exposed',
     notes: 'Owner-only role display metadata update.',
-  },
-  listWorkflows: {
-    resource: 'Workflow',
-    completeness: 'controlled-crud-no-delete',
-    allowedMethods: ['GET'],
-    omittedMethods: [{ method: 'DELETE', reason: 'Workflows are retired with active=false rather than destructively deleted.' }],
-    destructiveDeletes: 'not-exposed',
-    notes: 'Workflow resource supports list/get/create/update; delete is intentionally omitted.',
-  },
-  getWorkflow: {
-    resource: 'Workflow',
-    completeness: 'controlled-crud-no-delete',
-    allowedMethods: ['GET'],
-    omittedMethods: [{ method: 'DELETE', reason: 'Workflows may be referenced by work orders and are retired by active=false.' }],
-    destructiveDeletes: 'not-exposed',
-    notes: 'Workflow detail includes ordered phase bindings.',
-  },
-  createWorkflow: {
-    resource: 'Workflow',
-    completeness: 'controlled-crud-no-delete',
-    allowedMethods: ['POST'],
-    omittedMethods: [{ method: 'DELETE', reason: 'Use active=false instead of deleting workflow history.' }],
-    destructiveDeletes: 'not-exposed',
-    notes: 'Admin/owner creation path with optional initial phase bindings.',
-  },
-  updateWorkflow: {
-    resource: 'Workflow',
-    completeness: 'controlled-crud-no-delete',
-    allowedMethods: ['PATCH'],
-    omittedMethods: [{ method: 'DELETE', reason: 'Use active=false instead of deleting workflow history.' }],
-    destructiveDeletes: 'not-exposed',
-    notes: 'Admin/owner metadata and phase-binding update path.',
-  },
-  listPhases: {
-    resource: 'Phase',
-    completeness: 'guarded-crud',
-    allowedMethods: ['GET'],
-    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'Phase updates are PATCH-only and delete is guarded to unused phases so workflow/work-order history is protected.' }],
-    destructiveDeletes: 'not-applicable',
-    notes: 'Tenant-scoped phase catalog list used by workflow configuration phase binding.',
-  },
-  getPhase: {
-    resource: 'Phase',
-    completeness: 'guarded-crud',
-    allowedMethods: ['GET'],
-    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'Phase updates are PATCH-only and delete is guarded to unused phases so workflow/work-order history is protected.' }],
-    destructiveDeletes: 'not-applicable',
-    notes: 'Tenant-scoped phase catalog detail read.',
-  },
-  createPhase: {
-    resource: 'Phase',
-    completeness: 'guarded-crud',
-    allowedMethods: ['POST'],
-    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'Phase updates are PATCH-only and delete is guarded to unused phases so workflow/work-order history is protected.' }],
-    destructiveDeletes: 'not-applicable',
-    notes: 'Admin/owner phase master-data creation path for workflow configuration.',
-  },
-  updatePhase: {
-    resource: 'Phase',
-    completeness: 'guarded-crud',
-    allowedMethods: ['PATCH'],
-    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'Phase updates are PATCH-only and delete is guarded to unused phases so workflow/work-order history is protected.' }],
-    destructiveDeletes: 'not-applicable',
-    notes: 'Admin/owner phase master-data metadata update path.',
-  },
-  deletePhase: {
-    resource: 'Phase',
-    completeness: 'guarded-crud',
-    allowedMethods: ['DELETE'],
-    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'Phase updates are PATCH-only and delete is guarded to unused phases so workflow/work-order history is protected.' }],
-    destructiveDeletes: 'not-applicable',
-    notes: 'Admin/owner delete path for unused phase master data; referenced phases return conflict.',
-  },
-  listPhaseProcedures: {
-    resource: 'Phase procedure binding',
-    completeness: 'complete-binding-crud',
-    allowedMethods: ['GET'],
-    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'Bindings are managed as add/remove set membership; DELETE only removes the join row and never deletes master data.' }],
-    destructiveDeletes: 'not-applicable',
-    notes: 'Tenant-scoped procedure bindings for phase-level controlled instructions.',
-  },
-  addPhaseProcedure: {
-    resource: 'Phase procedure binding',
-    completeness: 'complete-binding-crud',
-    allowedMethods: ['POST'],
-    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'Bindings are managed as add/remove set membership; DELETE only removes the join row and never deletes master data.' }],
-    destructiveDeletes: 'not-applicable',
-    notes: 'Admin/owner idempotent add path for phase procedure bindings.',
-  },
-  deletePhaseProcedure: {
-    resource: 'Phase procedure binding',
-    completeness: 'complete-binding-crud',
-    allowedMethods: ['DELETE'],
-    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'Bindings are managed as add/remove set membership; DELETE only removes the join row and never deletes master data.' }],
-    destructiveDeletes: 'not-applicable',
-    notes: 'Admin/owner remove path for phase procedure bindings; procedure master data is not deleted.',
   },
   listPhaseEquipmentBindings: {
     resource: 'Phase equipment binding',
@@ -963,14 +870,32 @@ const methodPolicies: Record<string, MethodPolicy> = {
   },
 };
 
-for (const operationId of ['listProcedures', 'getProcedure', 'createProcedure', 'updateProcedure', 'deleteProcedure']) {
+// Workflow configurator: workflows own phases which own steps. Full CRUD is
+// exposed; DELETE cascades owned phases and steps. A workflow can also be
+// retired without deletion via active=false.
+for (const operationId of [
+  'listWorkflows',
+  'getWorkflow',
+  'createWorkflow',
+  'updateWorkflow',
+  'deleteWorkflow',
+  'addPhase',
+  'reorderPhases',
+  'addWorkflowStep',
+  'updatePhase',
+  'deletePhase',
+  'reorderPhaseSteps',
+  'updateStep',
+  'deleteStep',
+  'placeStep',
+  'unplaceStep',
+]) {
   methodPolicies[operationId] = {
-    resource: 'Procedure',
-    completeness: 'guarded-crud',
-    allowedMethods: [operationId.startsWith('list') || operationId.startsWith('get') ? 'GET' : operationId.startsWith('create') ? 'POST' : operationId.startsWith('update') ? 'PATCH' : 'DELETE'],
-    omittedMethods: [{ method: 'PUT/unguarded DELETE', reason: 'Procedure updates are PATCH-only and delete is guarded to unused procedure master data.' }],
-    destructiveDeletes: 'not-applicable',
-    notes: 'Tenant-scoped procedure master data for phase-level controlled instructions.',
+    resource: 'Workflow',
+    completeness: 'controlled-crud',
+    allowedMethods: ['GET', 'POST', 'PATCH', 'DELETE'],
+    destructiveDeletes: 'exposed-owner-guarded',
+    notes: 'Admin/owner workflow configurator CRUD over workflows and their owned phases and steps. DELETE cascades owned phases and steps; retire a workflow without deleting via active=false.',
   };
 }
 

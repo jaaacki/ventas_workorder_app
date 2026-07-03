@@ -63,14 +63,12 @@ describe('work-order tenant isolation (integration)', () => {
       data: {
         id: input.phaseId,
         tenantId: input.tenantId,
+        workflowId: input.workflowId,
+        sortOrder: 0,
         phaseName: `Phase ${input.label}`,
         phaseShort: input.label,
-        phaseOrder: 0,
         keyText: input.phaseId,
       },
-    });
-    await prisma.workflowPhase.create({
-      data: { workflowId: input.workflowId, phaseId: input.phaseId, sortOrder: 0 },
     });
     await prisma.het.create({
       data: {
@@ -125,7 +123,6 @@ describe('work-order tenant isolation (integration)', () => {
     await prisma.workOrderAuditEvent.deleteMany({ where: { workOrderId: { in: [workOrderA, workOrderB] } } }).catch(() => undefined);
     await prisma.workOrder.deleteMany({ where: { id: { in: [workOrderA, workOrderB] } } }).catch(() => undefined);
     await prisma.het.deleteMany({ where: { id: { in: [hetA, hetB] } } }).catch(() => undefined);
-    await prisma.workflowPhase.deleteMany({ where: { workflowId: { in: [workflowA, workflowB] } } }).catch(() => undefined);
     await prisma.phase.deleteMany({ where: { id: { in: [phaseA, phaseB] } } }).catch(() => undefined);
     await prisma.workflow.deleteMany({ where: { id: { in: [workflowA, workflowB] } } }).catch(() => undefined);
     await prisma.staff.deleteMany({ where: { id: { in: [actorA, actorB] } } }).catch(() => undefined);

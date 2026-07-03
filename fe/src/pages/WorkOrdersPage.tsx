@@ -94,6 +94,9 @@ function workOrderColumnId(workOrder: WorkOrderSummary): string {
 function groupByPhase(workOrders: WorkOrderSummary[], columns: PhaseColumn[]) {
   const grouped = new Map<string, WorkOrderSummary[]>(columns.map((column) => [column.id, []]));
   for (const workOrder of workOrders) {
+    // Superseded chain steps (the HET moved on to the next phase's work order)
+    // are history, not active board work — they stay visible on the HET detail.
+    if (workOrder.legacyStateBucket === '5. WO Completed') continue;
     const key = workOrderColumnId(workOrder);
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)?.push(workOrder);
@@ -618,7 +621,9 @@ export default function WorkOrdersPage() {
     mutationFn: advanceWorkOrder,
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['work-orders'] });
-      toast.success(`Advanced ${updated.woNumber || updated.id}`);
+      // Advance completes the current work order and returns the next phase's
+      // newly initialised work order — follow the chain.
+      toast.success(`Advanced to ${updated.woNumber || updated.id}`);
       openWorkOrder(updated.id);
     },
     onError: (e: AxiosError<{ error?: string }>) =>

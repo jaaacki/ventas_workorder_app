@@ -27,6 +27,12 @@ const mocks = vi.hoisted(() => ({
   sterilise: {
     findFirst: vi.fn(),
   },
+  het: {
+    updateMany: vi.fn(),
+  },
+  workOrderHet: {
+    createMany: vi.fn(),
+  },
 }));
 
 vi.mock('../../db/prisma.js', () => ({
@@ -37,10 +43,14 @@ vi.mock('../../db/prisma.js', () => ({
     workOrderPhaseEquip: mocks.workOrderPhaseEquip,
     woSerial: mocks.woSerial,
     sterilise: mocks.sterilise,
+    het: mocks.het,
+    workOrderHet: mocks.workOrderHet,
     $transaction: vi.fn((callback) => callback({
       workOrder: mocks.workOrder,
       workOrderPhaseEquip: mocks.workOrderPhaseEquip,
       woSerial: mocks.woSerial,
+      het: mocks.het,
+      workOrderHet: mocks.workOrderHet,
     })),
   },
 }));
@@ -521,6 +531,11 @@ describe('workOrderService', () => {
         updatedById: 'actor1',
       }),
     });
+    // A released run consumes its HET: the releasing work order becomes the finisher.
+    expect(mocks.het.updateMany).toHaveBeenCalledWith({
+      where: { id: 'het-1', tenantId: 'tenant-a' },
+      data: { finishedById: 'wo-1' },
+    });
     expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -806,6 +821,11 @@ describe('workOrderService', () => {
     expect(createCall.data.createdById).toBe('actor1');
     expect(createCall.data.updatedById).toBe('actor1');
     expect(createCall.data.woNumber.startsWith('WO-')).toBe(true);
+    // The first work order of a run marks the HET as in-use (guarded on usedById=null).
+    expect(mocks.het.updateMany).toHaveBeenCalledWith({
+      where: { id: 'h1', tenantId: 'ventas', usedById: null },
+      data: { usedById: 'wo-created' },
+    });
     expect(result).toMatchObject({
       id: created.id,
       lifecycleState: 'NotStarted',
@@ -890,6 +910,8 @@ describe('workOrderService', () => {
       prodEnd: null,
     });
     mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
+    // No same-HET peers: this run's only work order is the one being started.
+    mocks.workOrder.findMany.mockResolvedValue([]);
     mocks.workOrder.findFirstOrThrow.mockResolvedValueOnce({
       id: 'wo-1',
       tenantId: 'ventas',
@@ -901,6 +923,7 @@ describe('workOrderService', () => {
       prodEnd: null,
     }).mockResolvedValue({
       id: 'wo-1',
+      phaseOrder: 0,
       hetId: 'h1',
       prodStart: new Date('2026-06-30T08:00:00Z'),
       prodEnd: null,
@@ -908,6 +931,7 @@ describe('workOrderService', () => {
       sterilises: [],
       woSerials: [],
       phaseEquips: [],
+      batchHets: [],
     });
 
     const result = await startWorkOrderPhase('wo-1', 'actor1');
@@ -1026,6 +1050,8 @@ describe('workOrderService', () => {
         prodDuration: null,
       });
       mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
+      // No same-HET peers: this run's only work order is the one being finished.
+      mocks.workOrder.findMany.mockResolvedValue([]);
       mocks.workOrder.findFirstOrThrow.mockResolvedValueOnce({
         id: 'wo-1',
         tenantId: 'ventas',
@@ -1038,6 +1064,7 @@ describe('workOrderService', () => {
         prodDuration: { toString: () => '60.0000' },
       }).mockResolvedValue({
         id: 'wo-1',
+        phaseOrder: 0,
         hetId: 'h1',
         prodStart: new Date('2026-06-30T08:00:00Z'),
         prodEnd: new Date('2026-06-30T09:00:00Z'),
@@ -1045,6 +1072,7 @@ describe('workOrderService', () => {
         sterilises: [],
         woSerials: [],
         phaseEquips: [],
+        batchHets: [],
       });
 
       const result = await finishWorkOrderPhase('wo-1', 'actor1');
@@ -1092,9 +1120,9 @@ describe('workOrderService', () => {
     expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
   });
 
-  it('advanceWorkOrder moves the work order to the next phase', async () => {
+  it('advanceWorkOrder completes the current work order and spawns the next phase as a new one', async () => {
     mocks.workOrder.findFirst
-      // first call: load WO with its workflow's ordered phases
+      // first call: load WO with its workflow's ordered phases + batch HETs
       .mockResolvedValueOnce({
         id: 'wo-1',
         tenantId: 'ventas',
@@ -1113,11 +1141,12 @@ describe('workOrderService', () => {
             { phaseId: 'p2', sortOrder: 1, phase: { phaseName: 'Pour' } },
           ],
         },
+        batchHets: [],
       });
 
     mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
     mocks.workOrder.findMany.mockResolvedValue([]);
-    mocks.workOrder.findFirstOrThrow.mockResolvedValueOnce({
+    const currentDecorated = {
       id: 'wo-1',
       tenantId: 'ventas',
       workflowId: 'w1',
@@ -1141,71 +1170,183 @@ describe('workOrderService', () => {
       woSerials: [],
       phaseEquips: [],
       batchHets: [],
-    }).mockResolvedValueOnce({
-      id: 'wo-1',
+    };
+    mocks.workOrder.findFirstOrThrow
+      // pre-advance requirements check (decorated reload of the current WO)
+      .mockResolvedValueOnce(currentDecorated)
+      // audit snapshot of the completed WO inside the transaction
+      .mockResolvedValueOnce({
+        ...currentDecorated,
+        nextPhaseId: 'p2',
+      })
+      // decorated reload of the spawned WO
+      .mockResolvedValueOnce({
+        id: 'WO-NEXT',
+        tenantId: 'ventas',
+        workflowId: 'w1',
+        phaseId: 'p2',
+        phaseOrder: 1,
+        hetId: 'h1',
+        previousWoId: 'wo-1',
+        prodStart: null,
+        prodEnd: null,
+        prodDuration: null,
+        outputQuantity: null,
+        imagePath: null,
+        releaseStatus: null,
+        workflow: {
+          phases: [
+            { sortOrder: 0, phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 0 } },
+            { sortOrder: 1, phase: { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', phaseOrder: 1 } },
+          ],
+        },
+        phase: { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', phaseOrder: 1, bom: { lines: [] }, phaseEquips: [] },
+        sterilises: [],
+        woSerials: [],
+        phaseEquips: [],
+        batchHets: [],
+      });
+    mocks.workOrder.create.mockResolvedValue({
+      id: 'WO-NEXT',
       tenantId: 'ventas',
       workflowId: 'w1',
       phaseId: 'p2',
       phaseOrder: 1,
       hetId: 'h1',
+      previousWoId: 'wo-1',
       prodStart: null,
       prodEnd: null,
       prodDuration: null,
       outputQuantity: null,
-      imagePath: null,
       releaseStatus: null,
-    }).mockResolvedValueOnce({
-      id: 'wo-1',
-      tenantId: 'ventas',
-      workflowId: 'w1',
-      phaseId: 'p2',
-      phaseOrder: 1,
-      hetId: 'h1',
-      prodStart: null,
-      prodEnd: null,
-      prodDuration: null,
-      outputQuantity: null,
-      imagePath: null,
-      releaseStatus: null,
-      workflow: {
-        phases: [
-          { sortOrder: 0, phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 0 } },
-          { sortOrder: 1, phase: { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', phaseOrder: 1 } },
-        ],
-      },
-      phase: { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', phaseOrder: 1, bom: { lines: [] }, phaseEquips: [] },
-      sterilises: [],
-      woSerials: [],
-      phaseEquips: [],
-      batchHets: [],
     });
 
     const result = await advanceWorkOrder('wo-1', 'actor1');
 
+    // The completed WO keeps its evidence: only the chain pointer is written.
     const updateCall = mocks.workOrder.updateMany.mock.calls[0][0] as {
       where: { id: string; tenantId: string };
-      data: { phaseId: string; phaseOrder: number; updatedById: string; prodStart: null; prodEnd: null; outputQuantity: null; imagePath: null };
+      data: Record<string, unknown>;
     };
     expect(updateCall.where).toEqual({ id: 'wo-1', tenantId: 'ventas' });
-    expect(updateCall.data.phaseId).toBe('p2');
-    expect(updateCall.data.phaseOrder).toBe(1);
-    expect(updateCall.data.prodStart).toBeNull();
-    expect(updateCall.data.prodEnd).toBeNull();
-    expect(updateCall.data.outputQuantity).toBeNull();
-    expect(updateCall.data.imagePath).toBeNull();
-    expect(updateCall.data.updatedById).toBe('actor1');
-    expect(mocks.woSerial.deleteMany).toHaveBeenCalledWith({ where: { workOrderId: 'wo-1', tenantId: 'ventas' } });
-    expect(mocks.workOrderPhaseEquip.deleteMany).toHaveBeenCalledWith({ where: { workOrderId: 'wo-1' } });
+    expect(updateCall.data).toEqual({ nextPhaseId: 'p2', updatedById: 'actor1' });
+    expect(mocks.woSerial.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.workOrderPhaseEquip.deleteMany).not.toHaveBeenCalled();
+
+    // The next phase is initialised as a NEW work order carrying the HET.
+    const createCall = mocks.workOrder.create.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(createCall.data).toMatchObject({
+      tenantId: 'ventas',
+      workflowId: 'w1',
+      hetId: 'h1',
+      phaseId: 'p2',
+      phaseOrder: 1,
+      previousWoId: 'wo-1',
+      createdById: 'actor1',
+      updatedById: 'actor1',
+    });
+    expect(String(createCall.data.woNumber).startsWith('WO-')).toBe(true);
+    expect(createCall.data.id).toBe(createCall.data.woNumber);
+
     expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          workOrderId: 'wo-1',
           action: 'work_order.phase_advanced',
           previousState: expect.objectContaining({ phaseId: 'p1', phaseOrder: 0 }),
-          newState: expect.objectContaining({ phaseId: 'p2', phaseOrder: 1 }),
+          newState: expect.objectContaining({ phaseId: 'p1', nextWorkOrderId: 'WO-NEXT' }),
         }),
       }),
     );
-    expect(result).toMatchObject({ id: 'wo-1', phaseId: 'p2', phaseOrder: 1 });
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          workOrderId: 'WO-NEXT',
+          action: 'work_order.created',
+          newState: expect.objectContaining({ phaseId: 'p2', phaseOrder: 1, previousWoId: 'wo-1' }),
+        }),
+      }),
+    );
+    expect(result).toMatchObject({ id: 'WO-NEXT', phaseId: 'p2', phaseOrder: 1, previousWoId: 'wo-1' });
+  });
+
+  it('advanceWorkOrder carries batch-HET links onto the spawned work order', async () => {
+    mocks.workOrder.findFirst.mockResolvedValueOnce({
+      id: 'wo-1',
+      tenantId: 'ventas',
+      workflowId: 'w1',
+      phaseId: 'p1',
+      phaseOrder: 6,
+      hetId: 'h1',
+      prodStart: new Date('2026-06-30T08:00:00Z'),
+      prodEnd: new Date('2026-06-30T09:00:00Z'),
+      outputQuantity: { toString: () => '1.0000', gt: () => true },
+      imagePath: 'data:image/png;base64,AAAA',
+      releaseStatus: null,
+      workflow: {
+        phases: [
+          { phaseId: 'p1', sortOrder: 6, phase: { phaseName: 'Mix' } },
+          { phaseId: 'p2', sortOrder: 7, phase: { phaseName: 'Pour' } },
+        ],
+      },
+      batchHets: [{ hetId: 'h1' }, { hetId: 'h2' }],
+    });
+
+    mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
+    mocks.workOrder.findMany.mockResolvedValue([]);
+    const decorated = {
+      id: 'wo-1',
+      tenantId: 'ventas',
+      workflowId: 'w1',
+      phaseId: 'p1',
+      phaseOrder: 6,
+      hetId: 'h1',
+      prodStart: new Date('2026-06-30T08:00:00Z'),
+      prodEnd: new Date('2026-06-30T09:00:00Z'),
+      prodDuration: null,
+      outputQuantity: { toString: () => '1.0000', gt: () => true },
+      imagePath: 'data:image/png;base64,AAAA',
+      releaseStatus: null,
+      workflow: {
+        phases: [
+          { sortOrder: 6, phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 6 } },
+          { sortOrder: 7, phase: { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', phaseOrder: 7 } },
+        ],
+      },
+      phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 6, bom: { lines: [] }, phaseEquips: [] },
+      sterilises: [],
+      woSerials: [],
+      phaseEquips: [],
+      batchHets: [{ hetId: 'h1' }, { hetId: 'h2' }],
+    };
+    mocks.workOrder.findFirstOrThrow
+      .mockResolvedValueOnce(decorated)
+      .mockResolvedValueOnce({ ...decorated, nextPhaseId: 'p2' })
+      .mockResolvedValueOnce({ ...decorated, id: 'WO-NEXT', phaseId: 'p2', phaseOrder: 7, previousWoId: 'wo-1', prodStart: null, prodEnd: null, outputQuantity: null, imagePath: null });
+    mocks.workOrder.create.mockResolvedValue({
+      id: 'WO-NEXT',
+      tenantId: 'ventas',
+      workflowId: 'w1',
+      phaseId: 'p2',
+      phaseOrder: 7,
+      hetId: 'h1',
+      previousWoId: 'wo-1',
+      prodStart: null,
+      prodEnd: null,
+      prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: null,
+    });
+
+    await advanceWorkOrder('wo-1', 'actor1');
+
+    expect(mocks.workOrderHet.createMany).toHaveBeenCalledWith({
+      data: [
+        { workOrderId: 'WO-NEXT', hetId: 'h1' },
+        { workOrderId: 'WO-NEXT', hetId: 'h2' },
+      ],
+      skipDuplicates: true,
+    });
   });
 
   it('advanceWorkOrder blocks missing HET before changing phase', async () => {
@@ -1427,6 +1568,9 @@ describe('workOrderService', () => {
     expect(result.find((workOrder) => workOrder.id === 'wo-completed')).toMatchObject({
       phaseOrderCurrent: 5,
       legacyProductionState: '5. WO Completed',
+      // Superseded chain steps read as completed history, not active work.
+      lifecycleState: 'Completed',
+      operationalStatus: 'Completed',
     });
   });
 

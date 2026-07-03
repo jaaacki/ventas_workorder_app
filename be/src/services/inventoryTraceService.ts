@@ -159,7 +159,20 @@ export async function getHetInventoryTrace(id: string, tenantId?: string | null)
   });
   if (!het) return null;
 
-  const workOrderIds = Array.from(new Set([het.usedById, het.finishedById].filter(Boolean) as string[]));
+  // The HET carries through the workflow as a chain of per-phase work orders:
+  // pick up every work order that carries this HET (directly or as a batch
+  // HET), not just the first/last chain ends on usedById/finishedById.
+  const chainWorkOrders = await prisma.workOrder.findMany({
+    where: {
+      tenantId: scopedTenantId,
+      deleted: false,
+      OR: [{ hetId: het.id }, { batchHets: { some: { hetId: het.id } } }],
+    },
+    select: { id: true },
+  });
+  const workOrderIds = Array.from(
+    new Set([het.usedById, het.finishedById, ...chainWorkOrders.map((workOrder) => workOrder.id)].filter(Boolean) as string[]),
+  );
 
   return buildTrace(
     scopedTenantId,

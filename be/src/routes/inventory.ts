@@ -1,7 +1,7 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
-import type { JwtPayload } from '../plugins/auth.js';
+import { tenantIdOf } from './requestContext.js';
 import * as inventoryService from '../services/inventoryService.js';
 import { registerCrudRoutes, type CrudRouteDefinition } from './crudRouteHelpers.js';
 
@@ -201,10 +201,6 @@ const importReportSchema = z.object({
   report: z.unknown(),
   ...softDeleteSchema,
 });
-
-function tenantIdOf(req: { user: unknown }): string {
-  return (req.user as JwtPayload).tenantId;
-}
 
 const listQuery = z.object({
   q: z.string().optional(),

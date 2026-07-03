@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import type { JwtPayload } from '../plugins/auth.js';
+import { tenantIdOf, actorIdOf } from './requestContext.js';
 import * as masterDataService from '../services/masterDataService.js';
 
 const errorResponse = z.object({ error: z.string() });
@@ -90,14 +90,6 @@ const phaseEquipmentMutationSchema = z.object({
   description: z.string().trim().nullable().optional(),
   keyText: z.string().trim().nullable().optional(),
 });
-
-function actorIdOf(req: { user: unknown }): string {
-  return (req.user as JwtPayload).id;
-}
-
-function tenantIdOf(req: { user: unknown }): string {
-  return (req.user as JwtPayload).tenantId;
-}
 
 function handleKnownError(reply: any, err: unknown, labels: { notFound: string; conflict?: string }): any {
   if (err instanceof Prisma.PrismaClientKnownRequestError) {

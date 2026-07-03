@@ -1,7 +1,7 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
-import type { JwtPayload } from '../plugins/auth.js';
+import { tenantIdOf } from './requestContext.js';
 import * as procurementService from '../services/procurementService.js';
 import * as inventoryTraceService from '../services/inventoryTraceService.js';
 import { inventoryTraceSchema } from './inventoryTraceSchemas.js';
@@ -214,10 +214,6 @@ const importReportSchema = z.object({
   report: z.unknown(),
   ...softDeleteSchema,
 });
-
-function tenantIdOf(req: { user: unknown }): string {
-  return (req.user as JwtPayload).tenantId;
-}
 
 const includeDeletedQuery = z.object({ includeDeleted: z.coerce.boolean().optional() });
 

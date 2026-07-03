@@ -1,7 +1,7 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import type { JwtPayload } from '../plugins/auth.js';
+import { tenantIdOf, actorIdOf } from './requestContext.js';
 import * as phaseService from '../services/phaseService.js';
 
 const errorResponse = z.object({ error: z.string() });
@@ -52,14 +52,6 @@ const phaseEquipmentBindingSchema = z.object({
 
 const bindProcedureBodySchema = z.object({ procedureId: z.string().trim().min(1) });
 const bindEquipmentBodySchema = z.object({ phaseEquipId: z.string().trim().min(1) });
-
-function actorIdOf(req: { user: unknown }): string {
-  return (req.user as JwtPayload).id;
-}
-
-function tenantIdOf(req: { user: unknown }): string {
-  return (req.user as JwtPayload).tenantId;
-}
 
 export const phaseRoutes: FastifyPluginAsyncZod = async function (app) {
   app.get(

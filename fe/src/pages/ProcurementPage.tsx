@@ -902,7 +902,11 @@ export default function ProcurementPage() {
     resolver: (values, context, options) => {
       const kind = editorKindRef.current;
       if (!kind) return { values, errors: {} };
-      return zodResolver(buildEditorSchema(kind, values))(values, context, options);
+      // buildEditorSchema mixes string and boolean fields, so zod widens the inferred
+      // shape to Record<string, unknown>; assert it back to the form's value type.
+      // Runtime validation is unaffected — the real zod schema still runs.
+      const schema = buildEditorSchema(kind, values) as unknown as z.ZodType<Record<string, string | boolean>>;
+      return zodResolver(schema)(values, context, options);
     },
     defaultValues: {},
   });

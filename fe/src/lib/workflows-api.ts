@@ -1,39 +1,165 @@
 import api from './api';
 
+// ── Workflow (product line) ────────────────────────────────────────────────
+
 export interface WorkflowSummary {
   id: string;
   name: string;
   code: string;
   description: string | null;
   active: boolean;
-  createdAt: string;
-  updatedAt: string;
-  _count: { phases: number; workOrders: number };
+  phaseCount: number;
+  stepCount: number;
 }
 
-export interface PhaseCatalogItem {
+export interface StepItem {
   id: string;
-  tenantId: string;
-  phaseName: string | null;
-  phaseShort: string | null;
-  phaseOrder: number | null;
+  phaseId: string | null;
+  sortOrder: number;
+  code: string | null;
+  name: string | null;
   description: string | null;
-  bomId: string | null;
-  keyText: string | null;
-  createdAt: string;
-  updatedAt: string;
 }
 
-export interface ProcedureCatalogItem {
+export interface PhaseItem {
   id: string;
-  tenantId: string;
-  procedureName: string | null;
-  procedureDesc: string | null;
-  procedureShort: string | null;
-  keyText: string | null;
-  createdAt: string;
-  updatedAt: string;
+  sortOrder: number;
+  phaseShort: string | null;
+  phaseName: string | null;
+  description: string | null;
+  isGate: boolean;
+  blocksCombine: boolean;
+  bomId: string | null;
+  steps: StepItem[];
 }
+
+export interface WorkflowDetail {
+  id: string;
+  name: string;
+  code: string;
+  description: string | null;
+  active: boolean;
+  phases: PhaseItem[];
+  unplacedSteps: StepItem[];
+}
+
+function asWorkflowList(data: unknown): WorkflowSummary[] {
+  if (Array.isArray(data)) return data as WorkflowSummary[];
+  if (data && typeof data === 'object') {
+    const envelope = data as { data?: unknown; items?: unknown };
+    if (Array.isArray(envelope.items)) return envelope.items as WorkflowSummary[];
+    if (Array.isArray(envelope.data)) return envelope.data as WorkflowSummary[];
+  }
+  return [];
+}
+
+export async function fetchWorkflows(activeOnly = false): Promise<WorkflowSummary[]> {
+  const { data } = await api.get<unknown>('/api/workflows', {
+    params: activeOnly ? { active: 'true' } : undefined,
+  });
+  return asWorkflowList(data);
+}
+
+export async function fetchWorkflow(id: string): Promise<WorkflowDetail> {
+  const { data } = await api.get<WorkflowDetail>(`/api/workflows/${id}`);
+  return data;
+}
+
+export async function createWorkflow(payload: {
+  name: string;
+  code: string;
+  description?: string | null;
+}): Promise<WorkflowDetail> {
+  const { data } = await api.post<WorkflowDetail>('/api/workflows', payload);
+  return data;
+}
+
+export async function updateWorkflow(
+  id: string,
+  payload: { name?: string; code?: string; description?: string | null; active?: boolean },
+): Promise<WorkflowDetail> {
+  const { data } = await api.patch<WorkflowDetail>(`/api/workflows/${id}`, payload);
+  return data;
+}
+
+export async function deleteWorkflow(id: string): Promise<{ success: true }> {
+  const { data } = await api.delete<{ success: true }>(`/api/workflows/${id}`);
+  return data;
+}
+
+// ── Phases (owned by a workflow, ordered) ───────────────────────────────────
+
+export type PhaseMutationPayload = {
+  phaseShort?: string | null;
+  phaseName?: string | null;
+  description?: string | null;
+  isGate?: boolean;
+  blocksCombine?: boolean;
+  bomId?: string | null;
+};
+
+export async function createPhase(workflowId: string, payload: PhaseMutationPayload): Promise<PhaseItem> {
+  const { data } = await api.post<PhaseItem>(`/api/workflows/${workflowId}/phases`, payload);
+  return data;
+}
+
+export async function updatePhase(id: string, payload: PhaseMutationPayload): Promise<PhaseItem> {
+  const { data } = await api.patch<PhaseItem>(`/api/phases/${id}`, payload);
+  return data;
+}
+
+export async function deletePhase(id: string): Promise<{ success: true }> {
+  const { data } = await api.delete<{ success: true }>(`/api/phases/${id}`);
+  return data;
+}
+
+export async function reorderPhases(workflowId: string, phaseIds: string[]): Promise<{ success: true }> {
+  const { data } = await api.post<{ success: true }>(`/api/workflows/${workflowId}/phases/reorder`, { phaseIds });
+  return data;
+}
+
+// ── Steps (owned by a phase, or unplaced in the workflow pool) ───────────────
+
+export type StepMutationPayload = {
+  code?: string | null;
+  name?: string | null;
+  description?: string | null;
+};
+
+export async function createStep(
+  workflowId: string,
+  payload: StepMutationPayload & { phaseId?: string | null },
+): Promise<StepItem> {
+  const { data } = await api.post<StepItem>(`/api/workflows/${workflowId}/steps`, payload);
+  return data;
+}
+
+export async function updateStep(id: string, payload: StepMutationPayload): Promise<StepItem> {
+  const { data } = await api.patch<StepItem>(`/api/steps/${id}`, payload);
+  return data;
+}
+
+export async function deleteStep(id: string): Promise<{ success: true }> {
+  const { data } = await api.delete<{ success: true }>(`/api/steps/${id}`);
+  return data;
+}
+
+export async function placeStep(id: string, phaseId: string, sortOrder?: number): Promise<StepItem> {
+  const { data } = await api.post<StepItem>(`/api/steps/${id}/place`, { phaseId, sortOrder });
+  return data;
+}
+
+export async function unplaceStep(id: string): Promise<StepItem> {
+  const { data } = await api.post<StepItem>(`/api/steps/${id}/unplace`, {});
+  return data;
+}
+
+export async function reorderSteps(phaseId: string, stepIds: string[]): Promise<{ success: true }> {
+  const { data } = await api.post<{ success: true }>(`/api/phases/${phaseId}/steps/reorder`, { stepIds });
+  return data;
+}
+
+// ── BOM + phase-equipment master data (unchanged, still model-backed) ────────
 
 export interface BomCatalogItem {
   id: string;
@@ -72,139 +198,6 @@ export interface PhaseEquipmentCatalogItem {
   _count?: { phases?: number; workOrders?: number };
 }
 
-export interface PhaseProcedureBinding {
-  phaseId: string;
-  procedureId: string;
-  procedure: {
-    id: string;
-    procedureName: string | null;
-    procedureShort: string | null;
-    procedureDesc: string | null;
-  };
-}
-
-export interface PhaseEquipmentBinding {
-  phaseId: string;
-  phaseEquipId: string;
-  phaseEquip: {
-    id: string;
-    equipId: string | null;
-    name: string | null;
-    description: string | null;
-  };
-}
-
-export interface WorkflowPhaseBinding {
-  workflowId: string;
-  phaseId: string;
-  sortOrder: number;
-  phase: {
-    id: string;
-    phaseName: string | null;
-    phaseShort: string | null;
-    phaseOrder: number | null;
-  };
-}
-
-export interface WorkflowDetail {
-  id: string;
-  name: string;
-  code: string;
-  description: string | null;
-  active: boolean;
-  createdAt: string;
-  updatedAt: string;
-  phases: WorkflowPhaseBinding[];
-}
-
-function asWorkflowList(data: unknown): WorkflowSummary[] {
-  if (Array.isArray(data)) return data as WorkflowSummary[];
-  if (data && typeof data === 'object') {
-    const envelope = data as { data?: unknown; items?: unknown };
-    if (Array.isArray(envelope.items)) return envelope.items as WorkflowSummary[];
-    if (Array.isArray(envelope.data)) return envelope.data as WorkflowSummary[];
-  }
-  return [];
-}
-
-export async function fetchWorkflows(activeOnly = false): Promise<WorkflowSummary[]> {
-  const { data } = await api.get<unknown>('/api/workflows', {
-    params: activeOnly ? { active: 'true' } : undefined,
-  });
-  return asWorkflowList(data);
-}
-
-export async function fetchWorkflow(id: string): Promise<WorkflowDetail> {
-  const { data } = await api.get<WorkflowDetail>(`/api/workflows/${id}`);
-  return data;
-}
-
-export async function fetchPhases(): Promise<PhaseCatalogItem[]> {
-  const { data } = await api.get<PhaseCatalogItem[]>('/api/phases');
-  return data;
-}
-
-export type PhaseMutationPayload = {
-  phaseName?: string | null;
-  phaseShort?: string | null;
-  phaseOrder?: number | null;
-  description?: string | null;
-  bomId?: string | null;
-  keyText?: string | null;
-};
-
-export async function createPhase(payload: PhaseMutationPayload): Promise<PhaseCatalogItem> {
-  const { data } = await api.post<PhaseCatalogItem>('/api/phases', payload);
-  return data;
-}
-
-export async function updatePhase(id: string, payload: PhaseMutationPayload): Promise<PhaseCatalogItem> {
-  const { data } = await api.patch<PhaseCatalogItem>(`/api/phases/${id}`, payload);
-  return data;
-}
-
-export async function deletePhase(id: string): Promise<{ success: true }> {
-  const { data } = await api.delete<{ success: true }>(`/api/phases/${id}`);
-  return data;
-}
-
-export async function fetchPhaseProcedures(phaseId: string): Promise<PhaseProcedureBinding[]> {
-  const { data } = await api.get<PhaseProcedureBinding[]>(`/api/phases/${phaseId}/procedures`);
-  return data;
-}
-
-export async function addPhaseProcedure(phaseId: string, procedureId: string): Promise<PhaseProcedureBinding> {
-  const { data } = await api.post<PhaseProcedureBinding>(`/api/phases/${phaseId}/procedures`, { procedureId });
-  return data;
-}
-
-export async function deletePhaseProcedure(phaseId: string, procedureId: string): Promise<{ success: true }> {
-  const { data } = await api.delete<{ success: true }>(`/api/phases/${phaseId}/procedures/${procedureId}`);
-  return data;
-}
-
-export async function fetchPhaseEquipmentBindings(phaseId: string): Promise<PhaseEquipmentBinding[]> {
-  const { data } = await api.get<PhaseEquipmentBinding[]>(`/api/phases/${phaseId}/equipment`);
-  return data;
-}
-
-export async function addPhaseEquipment(phaseId: string, phaseEquipId: string): Promise<PhaseEquipmentBinding> {
-  const { data } = await api.post<PhaseEquipmentBinding>(`/api/phases/${phaseId}/equipment`, { phaseEquipId });
-  return data;
-}
-
-export async function deletePhaseEquipmentBinding(phaseId: string, phaseEquipId: string): Promise<{ success: true }> {
-  const { data } = await api.delete<{ success: true }>(`/api/phases/${phaseId}/equipment/${phaseEquipId}`);
-  return data;
-}
-
-export type ProcedureMutationPayload = {
-  procedureName?: string | null;
-  procedureDesc?: string | null;
-  procedureShort?: string | null;
-  keyText?: string | null;
-};
-
 export type BomMutationPayload = {
   bomName?: string | null;
   keyText?: string | null;
@@ -226,26 +219,6 @@ export type PhaseEquipmentMutationPayload = {
   description?: string | null;
   keyText?: string | null;
 };
-
-export async function fetchProcedures(): Promise<ProcedureCatalogItem[]> {
-  const { data } = await api.get<ProcedureCatalogItem[]>('/api/master-data/procedures');
-  return data;
-}
-
-export async function createProcedure(payload: ProcedureMutationPayload): Promise<ProcedureCatalogItem> {
-  const { data } = await api.post<ProcedureCatalogItem>('/api/master-data/procedures', payload);
-  return data;
-}
-
-export async function updateProcedure(id: string, payload: ProcedureMutationPayload): Promise<ProcedureCatalogItem> {
-  const { data } = await api.patch<ProcedureCatalogItem>(`/api/master-data/procedures/${id}`, payload);
-  return data;
-}
-
-export async function deleteProcedure(id: string): Promise<{ success: true }> {
-  const { data } = await api.delete<{ success: true }>(`/api/master-data/procedures/${id}`);
-  return data;
-}
 
 export async function fetchBoms(): Promise<BomCatalogItem[]> {
   const { data } = await api.get<BomCatalogItem[]>('/api/master-data/boms');
@@ -299,30 +272,15 @@ export async function createPhaseEquipment(payload: PhaseEquipmentMutationPayloa
   return data;
 }
 
-export async function updatePhaseEquipment(id: string, payload: PhaseEquipmentMutationPayload): Promise<PhaseEquipmentCatalogItem> {
+export async function updatePhaseEquipment(
+  id: string,
+  payload: PhaseEquipmentMutationPayload,
+): Promise<PhaseEquipmentCatalogItem> {
   const { data } = await api.patch<PhaseEquipmentCatalogItem>(`/api/master-data/phase-equipment/${id}`, payload);
   return data;
 }
 
 export async function deletePhaseEquipment(id: string): Promise<{ success: true }> {
   const { data } = await api.delete<{ success: true }>(`/api/master-data/phase-equipment/${id}`);
-  return data;
-}
-
-export async function createWorkflow(payload: {
-  name: string;
-  code: string;
-  description?: string | null;
-  phases?: { phaseId: string; sortOrder: number }[];
-}): Promise<WorkflowDetail> {
-  const { data } = await api.post<WorkflowDetail>('/api/workflows', payload);
-  return data;
-}
-
-export async function updateWorkflow(
-  id: string,
-  payload: { name?: string; description?: string | null; active?: boolean; phases?: { phaseId: string; sortOrder: number }[] },
-): Promise<WorkflowDetail> {
-  const { data } = await api.patch<WorkflowDetail>(`/api/workflows/${id}`, payload);
   return data;
 }

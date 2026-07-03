@@ -1,7 +1,7 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import type { JwtPayload } from '../plugins/auth.js';
+import { tenantIdOf, actorIdOf } from './requestContext.js';
 import * as hetService from '../services/hetService.js';
 import * as inventoryTraceService from '../services/inventoryTraceService.js';
 import { inventoryTraceSchema } from './inventoryTraceSchemas.js';
@@ -48,14 +48,6 @@ const hetSchema = z.object({
 const hetLinkBodySchema = z.object({
   workOrderId: z.string().min(1),
 });
-
-function actorIdOf(req: { user: unknown }): string {
-  return (req.user as JwtPayload).id;
-}
-
-function tenantIdOf(req: { user: unknown }): string {
-  return (req.user as JwtPayload).tenantId;
-}
 
 export const hetRoutes: FastifyPluginAsyncZod = async function (app) {
   app.get(

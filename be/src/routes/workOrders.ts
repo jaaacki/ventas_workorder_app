@@ -1,7 +1,7 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import type { JwtPayload } from '../plugins/auth.js';
+import { tenantIdOf, actorIdOf } from './requestContext.js';
 import * as workOrderService from '../services/workOrderService.js';
 import * as inventoryTraceService from '../services/inventoryTraceService.js';
 import { inventoryTraceSchema } from './inventoryTraceSchemas.js';
@@ -197,14 +197,6 @@ const releaseBodySchema = z.object({
   releaseStatus: z.enum(['released', 'quarantined', 'rejected']),
   remarks: z.string().trim().max(2000).optional(),
 });
-
-function actorIdOf(req: { user: unknown }): string {
-  return (req.user as JwtPayload).id;
-}
-
-function tenantIdOf(req: { user: unknown }): string {
-  return (req.user as JwtPayload).tenantId;
-}
 
 export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
   app.get(

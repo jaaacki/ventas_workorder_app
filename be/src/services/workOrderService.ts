@@ -36,6 +36,8 @@ interface WorkOrderAuditState extends Prisma.InputJsonObject {
   imageCaptured?: boolean | null;
   equipmentCount?: number | null;
   serialCount?: number | null;
+  previousWoId?: string | null;
+  nextWorkOrderId?: string | null;
 }
 
 /**
@@ -96,6 +98,8 @@ const workOrderOperationalInclude = {
 /**
  * Include used when loading a work order with its workflow's ordered phase
  * bindings, so the lifecycle (create/advance) can read the phase ordering.
+ * batchHets is included so an advance can carry the combined-HET links onto
+ * the next phase's work order.
  */
 const workOrderWithWorkflowPhasesInclude = {
   workflow: {
@@ -108,6 +112,7 @@ const workOrderWithWorkflowPhasesInclude = {
       },
     },
   },
+  batchHets: { select: { hetId: true } },
 } satisfies Prisma.WorkOrderInclude;
 
 const workOrderAuditSelect = {
@@ -303,18 +308,31 @@ export async function createWorkOrder(input: CreateWorkOrderInput, actorId: stri
 
   // WorkOrder.id has no @default; reuse woNumber as the id so the work order is
   // addressable by the same human-readable identifier used in the UI.
-  const created = await prisma.workOrder.create({
-    data: {
-      id: woNumber,
-      tenantId: scopedTenantId,
-      woNumber,
-      workflowId: input.workflowId,
-      hetId: input.hetId,
-      phaseId: firstPhase.phaseId,
-      phaseOrder: firstPhase.sortOrder,
-      createdById: actorId,
-      updatedById: actorId,
-    },
+  const created = await prisma.$transaction(async (tx) => {
+    const workOrder = await tx.workOrder.create({
+      data: {
+        id: woNumber,
+        tenantId: scopedTenantId,
+        woNumber,
+        workflowId: input.workflowId,
+        hetId: input.hetId,
+        phaseId: firstPhase.phaseId,
+        phaseOrder: firstPhase.sortOrder,
+        createdById: actorId,
+        updatedById: actorId,
+      },
+    });
+
+    // The first work order of a run marks the HET as in-use. Guarded on
+    // usedById=null so a HET already in production keeps its original pointer.
+    if (input.hetId) {
+      await tx.het.updateMany({
+        where: { id: input.hetId, tenantId: scopedTenantId, usedById: null },
+        data: { usedById: workOrder.id },
+      });
+    }
+
+    return workOrder;
   });
   await recordWorkOrderAuditEvent({
     tenantId: scopedTenantId,
@@ -541,14 +559,24 @@ function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder, context: 
             : 'pending',
   }));
 
+  // A work order is superseded when a peer on the same HET has advanced to a
+  // later phase: the HET moved on to the next phase's work order, so this row
+  // is a completed step in the chain, not active work.
+  const superseded = legacyState.phaseOrderCurrent !== (workOrder.phaseOrder ?? null);
+  const lifecycleState = workOrder.releaseStatus
+    ? getLifecycleState(workOrder, atFinalPhase)
+    : superseded
+      ? 'Completed'
+      : getLifecycleState(workOrder, atFinalPhase);
+
   return {
     ...workOrder,
     releaseStatus: workOrder.releaseStatus ?? null,
     releaseDecisionAt: workOrder.releaseDecisionAt ?? null,
     releaseDecisionById: workOrder.releaseDecisionById ?? null,
     releaseRemarks: workOrder.releaseRemarks ?? null,
-    lifecycleState: getLifecycleState(workOrder, atFinalPhase),
-    operationalStatus: blockers.length && !workOrder.releaseStatus ? 'Blocked' : workOrder.releaseStatus ?? (atFinalPhase ? 'ReleasePending' : getLifecycleState(workOrder, atFinalPhase)),
+    lifecycleState,
+    operationalStatus: workOrder.releaseStatus ?? (superseded ? 'Completed' : blockers.length ? 'Blocked' : atFinalPhase ? 'ReleasePending' : lifecycleState),
     readinessBlockers: [...blockers, ...evidenceBlockers],
     currentPhaseLabel: workOrder.phase?.phaseName ?? workOrder.phaseShort ?? `Phase ${workOrder.phaseOrder ?? '-'}`,
     ...legacyState,
@@ -866,12 +894,25 @@ export async function recordWorkOrderRelease(
     throw new Error(`cannot release: missing ${blockers.join(', ')}`);
   }
 
-  const updated = await updateTenantWorkOrderForAudit(prisma, id, scopedTenantId, {
-    releaseStatus: input.releaseStatus,
-    releaseDecisionAt: new Date(),
-    releaseDecisionById: actorId,
-    releaseRemarks: input.remarks?.trim() || null,
-    updatedById: actorId,
+  const updated = await prisma.$transaction(async (tx) => {
+    const released = await updateTenantWorkOrderForAudit(tx, id, scopedTenantId, {
+      releaseStatus: input.releaseStatus,
+      releaseDecisionAt: new Date(),
+      releaseDecisionById: actorId,
+      releaseRemarks: input.remarks?.trim() || null,
+      updatedById: actorId,
+    });
+
+    // A released run consumes its HET: the final (release-phase) work order is
+    // recorded as the HET's finisher. Quarantine/reject leave the HET open.
+    if (input.releaseStatus === 'released' && workOrder.hetId) {
+      await tx.het.updateMany({
+        where: { id: workOrder.hetId, tenantId: scopedTenantId },
+        data: { finishedById: id },
+      });
+    }
+
+    return released;
   });
 
   await recordWorkOrderAuditEvent({
@@ -1147,24 +1188,43 @@ export async function advanceWorkOrder(id: string, actorId: string, tenantId?: s
 
   const nextPhase = orderedPhases[currentIndex + 1];
 
-  const updated = await prisma.$transaction(async (tx) => {
-    await tx.woSerial.deleteMany({ where: { workOrderId: id, tenantId: scopedTenantId } });
-    await tx.workOrderPhaseEquip.deleteMany({ where: { workOrderId: id } });
-    return updateTenantWorkOrderForAudit(tx, id, scopedTenantId, {
-      phaseId: nextPhase.phaseId,
-      phaseOrder: nextPhase.sortOrder,
-      prodStart: null,
-      startSignPath: null,
-      startSignById: null,
-      prodEnd: null,
-      endSignPath: null,
-      endSignById: null,
-      prodDuration: null,
-      outputQuantity: null,
-      imagePath: null,
+  // The HET is the state that carries through the workflow: advancing completes
+  // this work order (evidence retained) and initialises the next phase as a NEW
+  // work order chained via previousWoId, carrying the HET and batch-HET links.
+  const nextWoNumber = `WO-${Date.now().toString(36).toUpperCase()}`;
+
+  const { completed, spawned } = await prisma.$transaction(async (tx) => {
+    const completed = await updateTenantWorkOrderForAudit(tx, id, scopedTenantId, {
+      nextPhaseId: nextPhase.phaseId,
       updatedById: actorId,
     });
+
+    const spawned = await tx.workOrder.create({
+      data: {
+        id: nextWoNumber,
+        tenantId: scopedTenantId,
+        woNumber: nextWoNumber,
+        workflowId: workOrder.workflowId,
+        hetId: workOrder.hetId,
+        phaseId: nextPhase.phaseId,
+        phaseOrder: nextPhase.sortOrder,
+        previousWoId: id,
+        createdById: actorId,
+        updatedById: actorId,
+      },
+    });
+
+    const batchHetIds = (workOrder.batchHets ?? []).map((batchHet) => batchHet.hetId);
+    if (batchHetIds.length > 0) {
+      await tx.workOrderHet.createMany({
+        data: batchHetIds.map((hetId) => ({ workOrderId: spawned.id, hetId })),
+        skipDuplicates: true,
+      });
+    }
+
+    return { completed, spawned };
   });
+
   await recordWorkOrderAuditEvent({
     tenantId: scopedTenantId,
     workOrderId: id,
@@ -1172,8 +1232,17 @@ export async function advanceWorkOrder(id: string, actorId: string, tenantId?: s
     actorId,
     source: 'workOrderService.advanceWorkOrder',
     previousState: auditState(workOrder),
-    newState: auditState(updated),
+    newState: { ...auditState(completed), nextWorkOrderId: spawned.id },
+  });
+  await recordWorkOrderAuditEvent({
+    tenantId: scopedTenantId,
+    workOrderId: spawned.id,
+    action: 'work_order.created',
+    actorId,
+    source: 'workOrderService.advanceWorkOrder',
+    previousState: null,
+    newState: { ...auditState(spawned), previousWoId: id },
   });
 
-  return getDecoratedWorkOrderOrThrow(id, scopedTenantId);
+  return getDecoratedWorkOrderOrThrow(spawned.id, scopedTenantId);
 }

@@ -669,7 +669,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
       schema: {
         tags: ['Work Orders'],
         summary: 'Advance work order',
-        description: 'Move a production run to the next workflow phase when lifecycle gates are satisfied.',
+        description: 'Complete the current work order and initialise the next workflow phase as a new work order (chained via previousWoId) when lifecycle gates are satisfied. Returns the newly spawned work order.',
         operationId: 'advanceWorkOrder',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',

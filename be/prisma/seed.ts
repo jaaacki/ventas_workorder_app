@@ -226,10 +226,15 @@ async function seedAmGraftWorkflow() {
     },
   });
 
-  // Idempotent reset: clear this workflow's owned steps then phases, then
-  // recreate them in order (mirrors how the old seed cleared its bindings).
-  await prisma.step.deleteMany({ where: { workflowId: workflow.id } });
-  await prisma.phase.deleteMany({ where: { workflowId: workflow.id } });
+  // Only seed the demo A–H recipe on a fresh workflow. Once a workflow has
+  // phases (seeded once, or later edited in the configurator), leave them
+  // intact — otherwise every deploy would wipe the real phases and re-hide the
+  // board behind a freshly-seeded recipe.
+  const existingPhases = await prisma.phase.count({ where: { workflowId: workflow.id } });
+  if (existingPhases > 0) {
+    console.log(`AmGraft workflow (${workflow.code}) already has ${existingPhases} phases; leaving them intact`);
+    return workflow;
+  }
 
   let stepCount = 0;
   for (let phaseIndex = 0; phaseIndex < recipe.length; phaseIndex += 1) {

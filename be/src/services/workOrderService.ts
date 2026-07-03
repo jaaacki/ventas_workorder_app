@@ -64,12 +64,15 @@ const workOrderDetailInclude = {
       id: true,
       phaseName: true,
       phaseShort: true,
-      phaseOrder: true,
+      sortOrder: true,
+      isGate: true,
+      blocksCombine: true,
+      steps: { select: { id: true, code: true, name: true, sortOrder: true }, orderBy: { sortOrder: 'asc' as const } },
       bom: { select: { lines: { where: { deleted: false }, select: { id: true, description: true, quantity: true, uom: true, hasSerial: true } } } },
       phaseEquips: { select: { phaseEquip: { select: { id: true, equipId: true, name: true, description: true } } } },
     },
   },
-  nextPhase: { select: { id: true, phaseName: true, phaseShort: true, phaseOrder: true } },
+  nextPhase: { select: { id: true, phaseName: true, phaseShort: true, sortOrder: true } },
   het: { select: { id: true, hetNumber: true, clinicName: true, quantity: true } },
   manufacturer: { select: { id: true, manuNumber: true, manuName: true } },
   steralisationCurrent: { select: { id: true, result: true, createdAt: true } },
@@ -98,10 +101,7 @@ const workOrderOperationalInclude = {
       name: true,
       code: true,
       phases: {
-        select: {
-          sortOrder: true,
-          phase: { select: { id: true, phaseName: true, phaseShort: true, phaseOrder: true } },
-        },
+        select: { id: true, phaseName: true, phaseShort: true, sortOrder: true, isGate: true, blocksCombine: true },
         orderBy: { sortOrder: 'asc' as const },
       },
     },
@@ -109,18 +109,16 @@ const workOrderOperationalInclude = {
 } satisfies Prisma.WorkOrderInclude;
 
 /**
- * Include used when loading a work order with its workflow's ordered phase
- * bindings, so the lifecycle (create/advance) can read the phase ordering.
+ * Include used when loading a work order with its workflow's owned phases
+ * (ordered), so the lifecycle (create/advance) can read the phase ordering.
  * batchHets is included so an advance can carry the combined-HET links onto
  * the next phase's work order.
  */
-const workOrderWithWorkflowPhasesInclude = {
+const workOrderWithPhasesInclude = {
   workflow: {
     include: {
       phases: {
-        include: {
-          phase: { select: { id: true, phaseName: true, phaseShort: true, phaseOrder: true } },
-        },
+        select: { id: true, phaseName: true, phaseShort: true, sortOrder: true, isGate: true },
         orderBy: { sortOrder: 'asc' as const },
       },
     },
@@ -294,9 +292,7 @@ export async function createWorkOrder(input: CreateWorkOrderInput, actorId: stri
     where: { id: input.workflowId, tenantId: scopedTenantId },
     include: {
       phases: {
-        include: {
-          phase: { select: { id: true, phaseName: true, phaseShort: true, phaseOrder: true } },
-        },
+        select: { id: true, phaseName: true, phaseShort: true, sortOrder: true },
         orderBy: { sortOrder: 'asc' },
       },
     },
@@ -329,8 +325,9 @@ export async function createWorkOrder(input: CreateWorkOrderInput, actorId: stri
         woNumber,
         workflowId: input.workflowId,
         hetId: input.hetId,
-        phaseId: firstPhase.phaseId,
+        phaseId: firstPhase.id,
         phaseOrder: firstPhase.sortOrder,
+        phaseShort: firstPhase.phaseShort,
         createdById: actorId,
         updatedById: actorId,
       },
@@ -369,10 +366,6 @@ type LegacyStateBucket =
 
 interface LegacyWorkOrderContext {
   phaseOrderCurrent: Map<string, number | null>;
-}
-
-function isGatePhase(phaseName?: string | null) {
-  return Boolean(phaseName && /steril|bet/i.test(phaseName));
 }
 
 function getLifecycleState(workOrder: OperationalWorkOrder, atFinalPhase: boolean) {
@@ -433,7 +426,7 @@ function legacyBucketLabel(bucket: LegacyStateBucket, suffix?: string | null) {
   return suffix ? `${bucket}: ${suffix}` : bucket;
 }
 
-function getLegacyWorkOrderState(workOrder: OperationalWorkOrder, context: LegacyWorkOrderContext) {
+function getLegacyWorkOrderState(workOrder: OperationalWorkOrder, context: LegacyWorkOrderContext, atFinalPhase: boolean) {
   const phaseOrder = workOrder.phaseOrder ?? null;
   const phaseOrderCurrent = context.phaseOrderCurrent.get(workOrder.id) ?? phaseOrder;
   const phaseShort = workOrder.nextPhase?.phaseShort ?? workOrder.phase?.phaseShort ?? workOrder.phaseShort;
@@ -460,7 +453,7 @@ function getLegacyWorkOrderState(workOrder: OperationalWorkOrder, context: Legac
     legacyStateBucket = '5. WO Completed';
     legacyProductionState = legacyStateBucket;
   } else if (workOrder.prodStart && workOrder.prodEnd) {
-    if (phaseOrder != null && phaseOrder < 16) {
+    if (!atFinalPhase) {
       legacyStateBucket = '2. Next Phase';
       legacyProductionState = legacyBucketLabel(legacyStateBucket, phaseShort);
     } else {
@@ -489,13 +482,12 @@ function getLegacyWorkOrderState(workOrder: OperationalWorkOrder, context: Legac
     { key: 'equipment_check', label: 'Allowed equipment recorded', met: equipmentCheckDone },
   ];
 
-  if (phaseOrder != null && phaseOrder <= 5) {
-    advanceRequirements.push({ key: 'not_combined_het', label: 'Not a combined-HET phase <= 5', met: !combinedHetCheck });
+  if (workOrder.phase?.blocksCombine) {
+    advanceRequirements.push({ key: 'not_combined_het', label: 'Combined-HET not allowed in this phase', met: !combinedHetCheck });
   }
 
   const canAdvanceLegacy =
-    phaseOrder != null &&
-    phaseOrder < 16 &&
+    !atFinalPhase &&
     advanceRequirements.every((requirement) => requirement.met);
 
   return {
@@ -536,7 +528,7 @@ function getLegacyWorkOrderState(workOrder: OperationalWorkOrder, context: Legac
 
 function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder, context: LegacyWorkOrderContext) {
   const phases = workOrder.workflow?.phases ?? [];
-  const currentIndex = phases.findIndex((p) => p.phase.id === workOrder.phaseId);
+  const currentIndex = phases.findIndex((p) => p.id === workOrder.phaseId);
   const atFinalPhase = currentIndex >= 0 && currentIndex === phases.length - 1;
   const sterilises = workOrder.sterilises ?? [];
   const woSerials = workOrder.woSerials ?? [];
@@ -544,10 +536,10 @@ function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder, context: 
   const hasPassingSterilisation = sterilises.some((s) => s.result === true);
   const blockers: string[] = [];
   const evidenceBlockers: string[] = [];
-  const legacyState = getLegacyWorkOrderState(workOrder, context);
+  const legacyState = getLegacyWorkOrderState(workOrder, context, atFinalPhase);
 
   if (!workOrder.hetId) blockers.push('HET not assigned');
-  if (isGatePhase(workOrder.phase?.phaseName) && !hasPassingSterilisation) {
+  if (workOrder.phase?.isGate && !hasPassingSterilisation) {
     blockers.push('Sterilisation/BET pass required');
   }
   if (!legacyState.imageCaptured) evidenceBlockers.push('Work-order image captured');
@@ -557,10 +549,9 @@ function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder, context: 
   if (atFinalPhase && !workOrder.prodEnd) blockers.push('Release phase not finished');
 
   const phaseTimeline = phases.map((p, index) => ({
-    id: p.phase.id,
-    phaseName: p.phase.phaseName,
-    phaseShort: p.phase.phaseShort,
-    phaseOrder: p.phase.phaseOrder,
+    id: p.id,
+    phaseName: p.phaseName,
+    phaseShort: p.phaseShort,
     sortOrder: p.sortOrder,
     state:
       currentIndex === -1
@@ -631,7 +622,7 @@ export async function listWorkOrders(tenantId?: string | null) {
 export async function listQaWorkOrderQueue(tenantId?: string | null) {
   const workOrders = await listWorkOrders(tenantId);
   const sterilisation = workOrders.filter((workOrder) =>
-    isGatePhase(workOrder.phase?.phaseName) &&
+    workOrder.phase?.isGate &&
     workOrder.readinessBlockers.includes('Sterilisation/BET pass required'),
   );
   const quarantine = workOrders.filter((workOrder) => workOrder.legacyStateBucket === '3. In Quarantine');
@@ -1148,7 +1139,7 @@ export async function advanceWorkOrder(id: string, actorId: string, tenantId?: s
   const scopedTenantId = tenantIdOrDefault(tenantId);
   const workOrder = await prisma.workOrder.findFirst({
     where: { id, tenantId: scopedTenantId },
-    include: workOrderWithWorkflowPhasesInclude,
+    include: workOrderWithPhasesInclude,
   });
 
   if (!workOrder) {
@@ -1159,7 +1150,7 @@ export async function advanceWorkOrder(id: string, actorId: string, tenantId?: s
   }
 
   const orderedPhases = workOrder.workflow?.phases ?? [];
-  const currentIndex = orderedPhases.findIndex((p) => p.phaseId === workOrder.phaseId);
+  const currentIndex = orderedPhases.findIndex((p) => p.id === workOrder.phaseId);
 
   if (currentIndex === -1 || currentIndex === orderedPhases.length - 1) {
     throw new Error('work order is at its final phase');
@@ -1180,10 +1171,9 @@ export async function advanceWorkOrder(id: string, actorId: string, tenantId?: s
     throw new Error('cannot advance: phase not finished');
   }
 
-  // Sterilisation / BET gate: leaving a sterilisation-gate phase requires a
-  // passing sterilisation result recorded against the work order.
-  const currentPhaseName = orderedPhases[currentIndex].phase?.phaseName;
-  if (currentPhaseName && /steril|bet/i.test(currentPhaseName)) {
+  // Sterilisation / BET gate: leaving a gate phase requires a passing
+  // sterilisation result recorded against the work order.
+  if (orderedPhases[currentIndex].isGate) {
     const passing = await prisma.sterilise.findFirst({
       where: { workOrderId: id, tenantId: scopedTenantId, result: true },
     });
@@ -1211,7 +1201,7 @@ export async function advanceWorkOrder(id: string, actorId: string, tenantId?: s
 
   const { completed, spawned } = await prisma.$transaction(async (tx) => {
     const completed = await updateTenantWorkOrderForAudit(tx, id, scopedTenantId, {
-      nextPhaseId: nextPhase.phaseId,
+      nextPhaseId: nextPhase.id,
       updatedById: actorId,
     });
 
@@ -1225,8 +1215,9 @@ export async function advanceWorkOrder(id: string, actorId: string, tenantId?: s
         woNumber: nextWoNumber,
         workflowId: workOrder.workflowId,
         hetId: workOrder.hetId,
-        phaseId: nextPhase.phaseId,
+        phaseId: nextPhase.id,
         phaseOrder: nextPhase.sortOrder,
+        phaseShort: nextPhase.phaseShort,
         previousWoId: id,
         createdById: actorId,
         updatedById: actorId,

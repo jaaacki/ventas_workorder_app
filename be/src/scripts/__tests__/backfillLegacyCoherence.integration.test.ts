@@ -3,7 +3,7 @@ import { prisma } from '../../db/prisma.js';
 import { backfillLegacyCoherence } from '../backfillLegacyCoherence.js';
 
 // Retrofits chain coherence onto unwired legacy work orders (workflowId /
-// previousWoId / nextPhaseId / releaseStatus all NULL, phases unbound, finished-
+// previousWoId / nextPhaseId / releaseStatus all NULL, phases keyless, finished-
 // goods lot orphaned) and asserts every work order ends up with a terminal state
 // and a forward destination. Self-contained; cleans up afterwards.
 
@@ -35,9 +35,17 @@ beforeAll(async () => {
   for (let i = 0; i < phaseNames.length; i += 1) {
     const phaseId = `${code}:P${i + 1}`;
     ctx.phaseIds.push(phaseId);
-    // Keyless on purpose — the backfill must fill keyText from phaseShort.
+    // Owned phases (workflowId + sortOrder). Keyless on purpose — the backfill
+    // must fill keyText from phaseShort.
     await prisma.phase.create({
-      data: { id: phaseId, tenantId: ctx.tenantId, phaseName: phaseNames[i], phaseShort: `P${i + 1}`, phaseOrder: i + 1 },
+      data: {
+        id: phaseId,
+        tenantId: ctx.tenantId,
+        workflowId: ctx.workflowId,
+        phaseName: phaseNames[i],
+        phaseShort: `P${i + 1}`,
+        sortOrder: i + 1,
+      },
     });
   }
 
@@ -94,7 +102,6 @@ afterAll(async () => {
   await prisma.workOrder.updateMany({ where: { id: { in: ctx.woIds } }, data: { previousWoId: null } }).catch(() => undefined);
   await prisma.workOrder.deleteMany({ where: { id: { in: ctx.woIds } } }).catch(() => undefined);
   await prisma.het.deleteMany({ where: { id: { in: ctx.hetIds } } }).catch(() => undefined);
-  await prisma.workflowPhase.deleteMany({ where: { workflowId: ctx.workflowId } }).catch(() => undefined);
   await prisma.phase.deleteMany({ where: { id: { in: ctx.phaseIds } } }).catch(() => undefined);
   await prisma.workflow.deleteMany({ where: { id: ctx.workflowId } }).catch(() => undefined);
   await prisma.tenant.deleteMany({ where: { id: ctx.tenantId } }).catch(() => undefined);
@@ -110,9 +117,11 @@ describe('backfillLegacyCoherence (integration)', () => {
     const attached = await prisma.workOrder.count({ where: { id: { in: ctx.woIds }, workflowId: ctx.workflowId } });
     expect(attached).toBe(4);
 
-    // 2. Workflow bound to exactly the phases its work orders sit on, keyed.
-    const bindings = await prisma.workflowPhase.findMany({ where: { workflowId: ctx.workflowId }, orderBy: { sortOrder: 'asc' } });
-    expect(bindings.map((b) => b.phaseId)).toEqual(ctx.phaseIds);
+    // 2. Every phase a work order sits on is owned by the workflow, keyed. The
+    //    phases were seeded already owned, so step 2b is a no-op safety net (0).
+    expect(report.totals.phasesBound).toBe(0);
+    const boundPhases = await prisma.phase.count({ where: { id: { in: ctx.phaseIds }, workflowId: ctx.workflowId } });
+    expect(boundPhases).toBe(3);
     const keyed = await prisma.phase.count({ where: { id: { in: ctx.phaseIds }, keyText: { not: null } } });
     expect(keyed).toBe(3);
 
@@ -148,5 +157,36 @@ describe('backfillLegacyCoherence (integration)', () => {
     expect(rerun.totals.terminalReleased).toBe(0);
     expect(rerun.totals.finishedGoodsBridged).toBe(0);
     expect(rerun.totals.chainLinked).toBe(0);
+  });
+
+  it('step 2b rebinds a foreign-workflow phase that an AMG work order sits on', async () => {
+    // Own tenant + workflows so this scenario never perturbs the run above.
+    // Runs before the file afterAll, so the shared prisma client is still live.
+    const c2 = `${code}-REBIND`;
+    const t2 = `TENANT-${c2}`;
+    await prisma.tenant.create({ data: { id: t2, slug: t2, name: `Test ${c2}` } });
+    const amg = await prisma.workflow.create({ data: { tenantId: t2, name: `AMG ${c2}`, code: c2, active: true } });
+    const foreign = await prisma.workflow.create({ data: { tenantId: t2, name: `Foreign ${c2}`, code: `${c2}-F`, active: true } });
+    const phaseId = `${c2}:P`;
+    // Phase owned by the FOREIGN workflow...
+    await prisma.phase.create({ data: { id: phaseId, tenantId: t2, workflowId: foreign.id, phaseName: 'Stray', phaseShort: 'S1', sortOrder: 1 } });
+    const hetId = `${c2}:HET`;
+    await prisma.het.create({ data: { id: hetId, tenantId: t2, hetNumber: `${c2}-H`, quantity: 1 } });
+    const woId = `${c2}:WO`;
+    // ...but an AMG work order already sits on it (legacy incoherence).
+    await prisma.workOrder.create({ data: { id: woId, tenantId: t2, woNumber: woId, workflowId: amg.id, hetId, phaseId, phaseOrder: 1 } });
+
+    try {
+      const report = await backfillLegacyCoherence({ tenantId: t2, workflowCode: c2 });
+      expect(report.totals.phasesBound).toBe(1);
+      const rebound = await prisma.phase.findUniqueOrThrow({ where: { id: phaseId } });
+      expect(rebound.workflowId).toBe(amg.id);
+    } finally {
+      await prisma.workOrder.deleteMany({ where: { id: woId } }).catch(() => undefined);
+      await prisma.het.deleteMany({ where: { id: hetId } }).catch(() => undefined);
+      await prisma.phase.deleteMany({ where: { id: phaseId } }).catch(() => undefined);
+      await prisma.workflow.deleteMany({ where: { id: { in: [amg.id, foreign.id] } } }).catch(() => undefined);
+      await prisma.tenant.deleteMany({ where: { id: t2 } }).catch(() => undefined);
+    }
   });
 });

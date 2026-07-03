@@ -3,106 +3,124 @@ import { prisma } from '../db/prisma.js';
 import { tenantIdOrDefault } from './tenant.js';
 import { writeAuditLog } from './auditLogService.js';
 
-export interface WorkflowPhaseInput {
-  phaseId: string;
-  sortOrder: number;
-}
-
 export interface CreateWorkflowInput {
   name: string;
   code: string;
   description?: string | null;
-  phases?: WorkflowPhaseInput[];
 }
 
 export interface UpdateWorkflowInput {
   name?: string;
+  code?: string;
   description?: string | null;
   active?: boolean;
-  /** When provided, the workflow's phase bindings are replaced wholesale. */
-  phases?: WorkflowPhaseInput[];
+}
+
+export interface AddPhaseInput {
+  phaseShort?: string | null;
+  phaseName?: string | null;
+  description?: string | null;
+  isGate?: boolean;
+  blocksCombine?: boolean;
+  bomId?: string | null;
 }
 
 export interface ListWorkflowsOptions {
   activeOnly?: boolean;
 }
 
+const stepSummarySelect = {
+  id: true,
+  code: true,
+  name: true,
+  description: true,
+  sortOrder: true,
+  phaseId: true,
+} as const;
+
+const phaseSummarySelect = {
+  id: true,
+  phaseShort: true,
+  phaseName: true,
+  description: true,
+  sortOrder: true,
+  isGate: true,
+  blocksCombine: true,
+  bomId: true,
+} as const;
+
+function notFound(message: string) {
+  return new Prisma.PrismaClientKnownRequestError(message, { code: 'P2025', clientVersion: 'unknown' });
+}
+
+function referenced(message: string) {
+  return new Prisma.PrismaClientKnownRequestError(message, { code: 'P2003', clientVersion: 'unknown' });
+}
+
+async function assertTenantBom(bomId: string, tenantId: string) {
+  const bom = await prisma.bom.findFirst({ where: { id: bomId, tenantId }, select: { id: true } });
+  if (!bom) throw referenced('Referenced BOM does not exist');
+}
+
 /**
- * Shared include for the detail view: ordered phase bindings, each carrying the
- * phase summary a work-order execution UI needs (id, label, order).
+ * Detail shape for one workflow: owned phases (ordered) each carrying their
+ * ordered steps, plus the workflow's unplaced step pool (phaseId null).
  */
-const workflowDetailInclude = {
-  createdBy: { select: { id: true, name: true, email: true } },
-  updatedBy: { select: { id: true, name: true, email: true } },
-  phases: {
-    include: {
-      phase: { select: { id: true, phaseName: true, phaseShort: true, phaseOrder: true } },
+async function workflowDetail(id: string, tenantId: string) {
+  const workflow = await prisma.workflow.findFirst({
+    where: { id, tenantId },
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      description: true,
+      active: true,
+      phases: {
+        orderBy: { sortOrder: 'asc' },
+        select: {
+          ...phaseSummarySelect,
+          steps: { orderBy: { sortOrder: 'asc' }, select: stepSummarySelect },
+        },
+      },
+      steps: {
+        where: { phaseId: null },
+        orderBy: { sortOrder: 'asc' },
+        select: { id: true, code: true, name: true, description: true, sortOrder: true },
+      },
     },
-    orderBy: { sortOrder: 'asc' },
-  },
-} satisfies Prisma.WorkflowInclude;
-
-function phaseCreateMany(phases: WorkflowPhaseInput[]) {
-  return phases.map(({ phaseId, sortOrder }) => ({ phaseId, sortOrder }));
-}
-
-function knownRequestError(code: string, message: string) {
-  return new Prisma.PrismaClientKnownRequestError(message, {
-    code,
-    clientVersion: 'unknown',
   });
-}
-
-function uniquePhaseIds(phases: WorkflowPhaseInput[]) {
-  return [...new Set(phases.map(({ phaseId }) => phaseId))];
-}
-
-async function assertTenantPhasesExist(
-  tx: Pick<Prisma.TransactionClient, 'phase'>,
-  phases: WorkflowPhaseInput[],
-  tenantId: string,
-) {
-  const phaseIds = uniquePhaseIds(phases);
-  if (phaseIds.length === 0) return;
-
-  const tenantPhases = await tx.phase.findMany({
-    where: { tenantId, id: { in: phaseIds } },
-    select: { id: true },
-  });
-  if (tenantPhases.length !== phaseIds.length) {
-    throw knownRequestError('P2003', 'Referenced phase does not exist');
-  }
+  if (!workflow) return null;
+  const { steps, ...rest } = workflow;
+  return { ...rest, unplacedSteps: steps };
 }
 
 export async function listWorkflows(options: ListWorkflowsOptions = {}, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
-  return prisma.workflow.findMany({
+  const workflows = await prisma.workflow.findMany({
     where: { tenantId: scopedTenantId, ...(options.activeOnly ? { active: true } : {}) },
     orderBy: { name: 'asc' },
-    include: {
-      _count: { select: { phases: true, workOrders: true } },
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      description: true,
+      active: true,
+      _count: { select: { phases: true, steps: true } },
     },
   });
+  return workflows.map(({ _count, ...workflow }) => ({
+    ...workflow,
+    phaseCount: _count.phases,
+    stepCount: _count.steps,
+  }));
 }
 
 export async function getWorkflow(id: string, tenantId?: string | null) {
-  return prisma.workflow.findFirst({
-    where: { id, tenantId: tenantIdOrDefault(tenantId) },
-    include: workflowDetailInclude,
-  });
-}
-
-export async function getWorkflowByCode(code: string, tenantId?: string | null) {
-  return prisma.workflow.findFirst({
-    where: { code, tenantId: tenantIdOrDefault(tenantId) },
-    include: workflowDetailInclude,
-  });
+  return workflowDetail(id, tenantIdOrDefault(tenantId));
 }
 
 export async function createWorkflow(input: CreateWorkflowInput, actorId: string, tenantId?: string | null) {
-  const phases = input.phases ?? [];
   const scopedTenantId = tenantIdOrDefault(tenantId);
-  await assertTenantPhasesExist(prisma, phases, scopedTenantId);
   const created = await prisma.workflow.create({
     data: {
       tenantId: scopedTenantId,
@@ -111,59 +129,104 @@ export async function createWorkflow(input: CreateWorkflowInput, actorId: string
       description: input.description ?? null,
       createdById: actorId,
       updatedById: actorId,
-      ...(phases.length > 0 && {
-        phases: { create: phaseCreateMany(phases) },
-      }),
     },
-    include: workflowDetailInclude,
+    select: { id: true },
   });
-  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Workflow', entityId: created.id, action: 'create', after: created });
-  return created;
+  const detail = await workflowDetail(created.id, scopedTenantId);
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Workflow', entityId: created.id, action: 'create', after: detail });
+  return detail!;
 }
 
 export async function updateWorkflow(id: string, input: UpdateWorkflowInput, actorId: string, tenantId?: string | null) {
-  const replacePhases = input.phases;
   const scopedTenantId = tenantIdOrDefault(tenantId);
-  const before = await prisma.workflow.findFirst({ where: { id, tenantId: scopedTenantId }, include: workflowDetailInclude });
-  const after = await prisma.$transaction(async (tx) => {
-    const workflow = await tx.workflow.findFirst({
-      where: { id, tenantId: scopedTenantId },
-      select: { id: true },
-    });
-    if (!workflow) {
-      throw new Prisma.PrismaClientKnownRequestError('Workflow not found', {
-        code: 'P2025',
-        clientVersion: 'unknown',
-      });
-    }
-    // Replace phase bindings atomically when a new set is supplied.
-    if (replacePhases !== undefined) {
-      await assertTenantPhasesExist(tx, replacePhases, scopedTenantId);
-      await tx.workflowPhase.deleteMany({ where: { workflowId: id } });
-    }
-    const updated = await tx.workflow.updateMany({
-      where: { id, tenantId: scopedTenantId },
-      data: {
-        ...(input.name !== undefined && { name: input.name }),
-        ...(input.description !== undefined && { description: input.description }),
-        ...(input.active !== undefined && { active: input.active }),
-        updatedById: actorId,
-      },
-    });
-    if (updated.count === 0) {
-      throw new Prisma.PrismaClientKnownRequestError('Workflow not found', {
-        code: 'P2025',
-        clientVersion: 'unknown',
-      });
-    }
-    if (replacePhases !== undefined && replacePhases.length > 0) {
-      await tx.workflowPhase.createMany({ data: phaseCreateMany(replacePhases).map((phase) => ({ ...phase, workflowId: id })) });
-    }
-    return tx.workflow.findFirstOrThrow({
-      where: { id, tenantId: scopedTenantId },
-      include: workflowDetailInclude,
-    });
+  const before = await workflowDetail(id, scopedTenantId);
+  const updated = await prisma.workflow.updateMany({
+    where: { id, tenantId: scopedTenantId },
+    data: {
+      ...(input.name !== undefined && { name: input.name }),
+      ...(input.code !== undefined && { code: input.code }),
+      ...(input.description !== undefined && { description: input.description }),
+      ...(input.active !== undefined && { active: input.active }),
+      updatedById: actorId,
+    },
   });
+  if (updated.count === 0) throw notFound('Workflow not found');
+
+  const after = await workflowDetail(id, scopedTenantId);
   await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Workflow', entityId: id, action: 'update', before, after });
-  return after;
+  return after!;
+}
+
+export async function deleteWorkflow(id: string, actorId: string, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const before = await workflowDetail(id, scopedTenantId);
+  // workOrder.workflowId is ON DELETE SET NULL, so a plain delete would strand
+  // live work orders (nulling their workflowId, cascading owned phases/steps).
+  const live = await prisma.workOrder.count({ where: { workflowId: id, tenantId: scopedTenantId, deleted: false } });
+  if (live > 0) throw referenced('Workflow is referenced by a work order and cannot be deleted');
+  const deleted = await prisma.workflow.deleteMany({ where: { id, tenantId: scopedTenantId } });
+  if (deleted.count === 0) throw notFound('Workflow not found');
+
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Workflow', entityId: id, action: 'delete', before });
+  return { success: true as const };
+}
+
+/** Append a new phase to a workflow (sortOrder = current max + 1). */
+export async function addPhase(workflowId: string, input: AddPhaseInput, actorId: string, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const workflow = await prisma.workflow.findFirst({ where: { id: workflowId, tenantId: scopedTenantId }, select: { id: true } });
+  if (!workflow) throw notFound('Workflow not found');
+
+  const agg = await prisma.phase.aggregate({ where: { workflowId }, _max: { sortOrder: true } });
+  const sortOrder = (agg._max.sortOrder ?? -1) + 1;
+
+  if (input.bomId != null) await assertTenantBom(input.bomId, scopedTenantId);
+
+  const created = await prisma.phase.create({
+    data: {
+      tenantId: scopedTenantId,
+      workflowId,
+      sortOrder,
+      phaseShort: input.phaseShort ?? null,
+      phaseName: input.phaseName ?? null,
+      description: input.description ?? null,
+      isGate: input.isGate ?? false,
+      blocksCombine: input.blocksCombine ?? false,
+      bomId: input.bomId ?? null,
+      createdById: actorId,
+      updatedById: actorId,
+    },
+    select: phaseSummarySelect,
+  });
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Phase', entityId: created.id, action: 'create', after: created });
+  return created;
+}
+
+/** Set each phase's sortOrder to its index in the supplied ordering. */
+export async function reorderPhases(workflowId: string, phaseIds: string[], actorId: string, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const workflow = await prisma.workflow.findFirst({ where: { id: workflowId, tenantId: scopedTenantId }, select: { id: true } });
+  if (!workflow) throw notFound('Workflow not found');
+
+  // A short/wrong id list would silently no-op (each updateMany is parent-scoped),
+  // leaving stale sortOrders. Require the list to be exactly the current phase set.
+  const current = await prisma.phase.findMany({ where: { workflowId, tenantId: scopedTenantId }, select: { id: true } });
+  if (
+    phaseIds.length !== current.length ||
+    new Set(phaseIds).size !== phaseIds.length ||
+    !phaseIds.every((id) => current.some((p) => p.id === id))
+  ) {
+    throw notFound('reorder list must be exactly the workflow\'s current phases');
+  }
+
+  await prisma.$transaction(
+    phaseIds.map((phaseId, index) =>
+      prisma.phase.updateMany({
+        where: { id: phaseId, workflowId, tenantId: scopedTenantId },
+        data: { sortOrder: index, updatedById: actorId },
+      }),
+    ),
+  );
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Workflow', entityId: workflowId, action: 'update', metadata: { reorderedPhases: phaseIds } });
+  return { success: true as const };
 }

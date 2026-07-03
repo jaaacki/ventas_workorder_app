@@ -1,51 +1,30 @@
-import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { tenantIdOrDefault } from './tenant.js';
 import { writeAuditLog } from './auditLogService.js';
 
-export interface CreatePhaseInput {
-  phaseName?: string | null;
-  phaseShort?: string | null;
-  phaseOrder?: number | null;
-  description?: string | null;
-  bomId?: string | null;
-  keyText?: string | null;
-}
-
 export interface UpdatePhaseInput {
   phaseName?: string | null;
   phaseShort?: string | null;
-  phaseOrder?: number | null;
   description?: string | null;
+  isGate?: boolean;
+  blocksCombine?: boolean;
   bomId?: string | null;
-  keyText?: string | null;
 }
 
 const phaseSelect = {
   id: true,
   tenantId: true,
+  workflowId: true,
   phaseName: true,
   phaseShort: true,
-  phaseOrder: true,
   description: true,
+  sortOrder: true,
+  isGate: true,
+  blocksCombine: true,
   bomId: true,
-  keyText: true,
   createdAt: true,
   updatedAt: true,
-} as const;
-
-const phaseProcedureSelect = {
-  phaseId: true,
-  procedureId: true,
-  procedure: {
-    select: {
-      id: true,
-      procedureName: true,
-      procedureShort: true,
-      procedureDesc: true,
-    },
-  },
 } as const;
 
 const phaseEquipmentSelect = {
@@ -68,63 +47,36 @@ function notFound(message: string) {
   });
 }
 
+function referenced(message: string) {
+  return new Prisma.PrismaClientKnownRequestError(message, {
+    code: 'P2003',
+    clientVersion: 'unknown',
+  });
+}
+
 async function assertTenantPhase(id: string, tenantId: string) {
   const phase = await prisma.phase.findFirst({ where: { id, tenantId }, select: { id: true } });
   if (!phase) throw notFound('Phase not found');
 }
 
-export async function listPhases(tenantId?: string | null) {
-  return prisma.phase.findMany({
-    where: { tenantId: tenantIdOrDefault(tenantId) },
-    select: phaseSelect,
-    orderBy: [
-      { phaseOrder: 'asc' },
-      { phaseName: 'asc' },
-      { id: 'asc' },
-    ],
-  });
-}
-
-export async function getPhase(id: string, tenantId?: string | null) {
-  return prisma.phase.findFirst({
-    where: { id, tenantId: tenantIdOrDefault(tenantId) },
-    select: phaseSelect,
-  });
-}
-
-export async function createPhase(input: CreatePhaseInput, actorId: string, tenantId?: string | null) {
-  const scopedTenantId = tenantIdOrDefault(tenantId);
-  const created = await prisma.phase.create({
-    data: {
-      id: randomUUID(),
-      tenantId: scopedTenantId,
-      phaseName: input.phaseName ?? null,
-      phaseShort: input.phaseShort ?? null,
-      phaseOrder: input.phaseOrder ?? null,
-      description: input.description ?? null,
-      bomId: input.bomId ?? null,
-      keyText: input.keyText ?? null,
-      createdById: actorId,
-      updatedById: actorId,
-    },
-    select: phaseSelect,
-  });
-  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Phase', entityId: created.id, action: 'create', after: created });
-  return created;
+async function assertTenantBom(bomId: string, tenantId: string) {
+  const bom = await prisma.bom.findFirst({ where: { id: bomId, tenantId }, select: { id: true } });
+  if (!bom) throw referenced('Referenced BOM does not exist');
 }
 
 export async function updatePhase(id: string, input: UpdatePhaseInput, actorId: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
+  if (input.bomId != null) await assertTenantBom(input.bomId, scopedTenantId);
   const before = await prisma.phase.findFirst({ where: { id, tenantId: scopedTenantId }, select: phaseSelect });
   const updated = await prisma.phase.updateMany({
     where: { id, tenantId: scopedTenantId },
     data: {
       ...(input.phaseName !== undefined && { phaseName: input.phaseName }),
       ...(input.phaseShort !== undefined && { phaseShort: input.phaseShort }),
-      ...(input.phaseOrder !== undefined && { phaseOrder: input.phaseOrder }),
       ...(input.description !== undefined && { description: input.description }),
+      ...(input.isGate !== undefined && { isGate: input.isGate }),
+      ...(input.blocksCombine !== undefined && { blocksCombine: input.blocksCombine }),
       ...(input.bomId !== undefined && { bomId: input.bomId }),
-      ...(input.keyText !== undefined && { keyText: input.keyText }),
       updatedById: actorId,
     },
   });
@@ -143,56 +95,18 @@ export async function updatePhase(id: string, input: UpdatePhaseInput, actorId: 
 export async function deletePhase(id: string, actorId: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
   const before = await prisma.phase.findFirst({ where: { id, tenantId: scopedTenantId }, select: phaseSelect });
+  // workOrder.phaseId & nextPhaseId are ON DELETE SET NULL, so a plain delete
+  // would strand live work orders (nulling their phase pointers).
+  const live = await prisma.workOrder.count({ where: { tenantId: scopedTenantId, deleted: false, OR: [{ phaseId: id }, { nextPhaseId: id }] } });
+  if (live > 0) throw referenced('Phase is referenced by a work order and cannot be deleted');
+  // Owned steps survive: Step.phaseId is ON DELETE SET NULL, so they fall back
+  // to the workflow's unplaced pool rather than being deleted with the phase.
   const deleted = await prisma.phase.deleteMany({ where: { id, tenantId: scopedTenantId } });
   if (deleted.count === 0) {
     throw notFound('Phase not found');
   }
 
   await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Phase', entityId: id, action: 'delete', before });
-  return { success: true as const };
-}
-
-export async function listPhaseProcedures(phaseId: string, tenantId?: string | null) {
-  const scopedTenantId = tenantIdOrDefault(tenantId);
-  await assertTenantPhase(phaseId, scopedTenantId);
-
-  return prisma.phaseProcedure.findMany({
-    where: { phaseId },
-    select: phaseProcedureSelect,
-    orderBy: [{ procedure: { procedureName: 'asc' } }, { procedureId: 'asc' }],
-  });
-}
-
-export async function addPhaseProcedure(phaseId: string, procedureId: string, actorId: string, tenantId?: string | null) {
-  const scopedTenantId = tenantIdOrDefault(tenantId);
-  await assertTenantPhase(phaseId, scopedTenantId);
-  const procedure = await prisma.procedure.findFirst({
-    where: { id: procedureId, tenantId: scopedTenantId },
-    select: { id: true },
-  });
-  if (!procedure) throw notFound('Procedure not found');
-
-  const binding = await prisma.phaseProcedure.upsert({
-    where: { phaseId_procedureId: { phaseId, procedureId } },
-    create: { phaseId, procedureId },
-    update: {},
-    select: phaseProcedureSelect,
-  });
-  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Phase', entityId: phaseId, action: 'link', after: binding, metadata: { relation: 'procedure', procedureId } });
-  return binding;
-}
-
-export async function deletePhaseProcedure(phaseId: string, procedureId: string, actorId: string, tenantId?: string | null) {
-  const scopedTenantId = tenantIdOrDefault(tenantId);
-  await assertTenantPhase(phaseId, scopedTenantId);
-  const binding = await prisma.phaseProcedure.findUnique({
-    where: { phaseId_procedureId: { phaseId, procedureId } },
-    select: { phaseId: true },
-  });
-  if (!binding) throw notFound('Phase procedure binding not found');
-
-  await prisma.phaseProcedure.delete({ where: { phaseId_procedureId: { phaseId, procedureId } } });
-  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Phase', entityId: phaseId, action: 'unlink', metadata: { relation: 'procedure', procedureId } });
   return { success: true as const };
 }
 

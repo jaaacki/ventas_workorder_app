@@ -119,20 +119,97 @@ async function seedOwner(ownerRoleId: string) {
 }
 
 async function seedAmGraftWorkflow() {
-  // Ordered AmGraft manufacturing phases, derived from
-  // docs/CORE_ESSENCE.md section 3 (preparation -> production ->
-  // sterilisation/BET gate -> finish/release).
-  const phases = [
-    { phaseName: 'Preparation', phaseShort: 'PREP' },
-    { phaseName: 'Production', phaseShort: 'PROD' },
-    { phaseName: 'Sterilisation', phaseShort: 'STER' },
-    { phaseName: 'BET Verification', phaseShort: 'BET' },
-    { phaseName: 'Release', phaseShort: 'REL' },
+  // Real AmGraft A–H production recipe. Each phase (letter group) owns an
+  // ordered set of steps. isGate marks the sterilisation/BET gate; blocksCombine
+  // forbids running the phase on a combined (multi-HET) batch.
+  const recipe: Array<{
+    phaseShort: string;
+    phaseName: string;
+    isGate?: boolean;
+    blocksCombine?: boolean;
+    steps: Array<{ code: string; name: string }>;
+  }> = [
+    // The canonical AmGraft phase grouping mirrors the legacy production sheet:
+    // 16 phases, each grouping 1+ consecutive steps. phaseShort is the grouped
+    // step codes; a work order sits on a phase. blocksCombine covers the pre-mill
+    // steps (before C12); isGate covers the EtO/BET sterilisation gates.
+    { phaseShort: 'A1', phaseName: 'HET Collection', blocksCombine: true, steps: [{ code: 'A1', name: 'HET Collection' }] },
+    { phaseShort: 'A2', phaseName: 'HET Transfer', blocksCombine: true, steps: [{ code: 'A2', name: 'HET Transfer' }] },
+    {
+      phaseShort: 'A3, A4, A5',
+      phaseName: 'Retrieve, Decoronate, Split Root',
+      blocksCombine: true,
+      steps: [
+        { code: 'A3', name: 'Retrieve' },
+        { code: 'A4', name: 'Decoronate' },
+        { code: 'A5', name: 'Split Root' },
+      ],
+    },
+    {
+      phaseShort: 'B6, B7, B8',
+      phaseName: 'Washing',
+      blocksCombine: true,
+      steps: [
+        { code: 'B6', name: 'Washing' },
+        { code: 'B7', name: 'Washing' },
+        { code: 'B8', name: 'Washing' },
+      ],
+    },
+    {
+      phaseShort: 'B9, B10, B11',
+      phaseName: 'Burring, Washing, Autoclave',
+      blocksCombine: true,
+      steps: [
+        { code: 'B9', name: 'Burring' },
+        { code: 'B10', name: 'Washing' },
+        { code: 'B11', name: 'Autoclave' },
+      ],
+    },
+    { phaseShort: 'C12', phaseName: 'Milling & Sieving', steps: [{ code: 'C12', name: 'Milling & Sieving' }] },
+    {
+      phaseShort: 'D13, D14, D15, D16',
+      phaseName: 'Cleaning',
+      steps: [
+        { code: 'D13', name: 'Cleaning' },
+        { code: 'D14', name: 'Cleaning' },
+        { code: 'D15', name: 'Cleaning' },
+        { code: 'D16', name: 'Cleaning' },
+      ],
+    },
+    { phaseShort: 'E17', phaseName: 'Freezing', steps: [{ code: 'E17', name: 'Freezing' }] },
+    { phaseShort: 'E18', phaseName: 'Lyophilising', steps: [{ code: 'E18', name: 'Lyophilising' }] },
+    { phaseShort: 'F19', phaseName: 'Dispenser', steps: [{ code: 'F19', name: 'Dispenser' }] },
+    {
+      phaseShort: 'F20, F21, F22',
+      phaseName: 'Sealing & Send Out',
+      steps: [
+        { code: 'F20', name: 'Sealing Inner' },
+        { code: 'F21', name: 'Sealing Outer' },
+        { code: 'F22', name: 'Send Out' },
+      ],
+    },
+    { phaseShort: 'G23', phaseName: 'Pack for Terminal Sterilisation', steps: [{ code: 'G23', name: 'Packing for EtO' }] },
+    { phaseShort: 'G24', phaseName: 'EtO Sterilisation', isGate: true, steps: [{ code: 'G24', name: 'Terminal Sterilisation (EtO)' }] },
+    {
+      phaseShort: 'G25, G26',
+      phaseName: 'BET Test & Final QC',
+      isGate: true,
+      steps: [
+        { code: 'G25', name: 'BET Test' },
+        { code: 'G26', name: 'Pass/Fail Handling' },
+      ],
+    },
+    { phaseShort: 'H27', phaseName: 'Labelling & Verification', steps: [{ code: 'H27', name: 'Labelling & Verification' }] },
+    { phaseShort: 'H28', phaseName: 'Release to Inventory', steps: [{ code: 'H28', name: 'Release to Inventory' }] },
   ];
 
   const workflow = await prisma.workflow.upsert({
     where: { tenantId_code: { tenantId: DEFAULT_TENANT_ID, code: 'AMG' } },
-    update: { tenantId: DEFAULT_TENANT_ID },
+    update: {
+      tenantId: DEFAULT_TENANT_ID,
+      name: 'AmGraft',
+      description: 'AmGraft® tissue-engineered dental graft manufacturing workflow.',
+    },
     create: {
       id: 'workflow-amg',
       tenantId: DEFAULT_TENANT_ID,
@@ -143,58 +220,53 @@ async function seedAmGraftWorkflow() {
     },
   });
 
-  // Only seed + bind the placeholder demo phases on a fresh workflow. Once the
-  // real phases are bound (by the legacy import + `db:backfill:legacy-coherence`),
-  // leave the binding alone — otherwise every deploy would wipe the real 16-phase
-  // binding and re-hide all legacy work orders behind the 5 demo phases.
-  const existingBindings = await prisma.workflowPhase.count({ where: { workflowId: workflow.id } });
-  if (existingBindings > 0) {
-    console.log(`AmGraft workflow (${workflow.code}) already has ${existingBindings} phase bindings; leaving them intact`);
+  // Only seed the demo A–H recipe on a fresh workflow. Once a workflow has
+  // phases (seeded once, or later edited in the configurator), leave them
+  // intact — otherwise every deploy would wipe the real phases and re-hide the
+  // board behind a freshly-seeded recipe.
+  const existingPhases = await prisma.phase.count({ where: { workflowId: workflow.id } });
+  if (existingPhases > 0) {
+    console.log(`AmGraft workflow (${workflow.code}) already has ${existingPhases} phases; leaving them intact`);
     return workflow;
   }
 
-  // Upsert each Phase with a stable id. Phase.id is `String @id` with no
-  // default, so we supply an explicit id (and matching keyText).
-  for (let index = 0; index < phases.length; index += 1) {
-    const phase = phases[index];
-    const phaseId = `AMG:${phase.phaseName}`;
-    await prisma.phase.upsert({
-      where: { id: phaseId },
-      update: {
-        tenantId: DEFAULT_TENANT_ID,
-        phaseName: phase.phaseName,
-        phaseShort: phase.phaseShort,
-        phaseOrder: index,
-        keyText: phaseId,
-      },
-      create: {
-        id: phaseId,
-        tenantId: DEFAULT_TENANT_ID,
-        phaseName: phase.phaseName,
-        phaseShort: phase.phaseShort,
-        phaseOrder: index,
-        keyText: phaseId,
-      },
-    });
-  }
-
-  // Bind phases to the AMG workflow via WorkflowPhase. Idempotent: clear
-  // existing bindings for this workflow then re-create them in order.
-  await prisma.workflowPhase.deleteMany({
-    where: { workflowId: workflow.id },
+  // One transaction so a mid-loop failure can't strand a partial recipe that the
+  // `existingPhases > 0` guard above would then skip forever.
+  let stepCount = 0;
+  await prisma.$transaction(async (tx) => {
+    for (let phaseIndex = 0; phaseIndex < recipe.length; phaseIndex += 1) {
+      const group = recipe[phaseIndex];
+      const phase = await tx.phase.create({
+        data: {
+          tenantId: DEFAULT_TENANT_ID,
+          workflowId: workflow.id,
+          sortOrder: phaseIndex,
+          phaseShort: group.phaseShort,
+          phaseName: group.phaseName,
+          isGate: group.isGate ?? false,
+          blocksCombine: group.blocksCombine ?? false,
+          keyText: `AMG:${group.phaseShort}`,
+        },
+      });
+      for (let stepIndex = 0; stepIndex < group.steps.length; stepIndex += 1) {
+        const step = group.steps[stepIndex];
+        await tx.step.create({
+          data: {
+            tenantId: DEFAULT_TENANT_ID,
+            workflowId: workflow.id,
+            phaseId: phase.id,
+            sortOrder: stepIndex,
+            code: step.code,
+            name: step.name,
+            keyText: `AMG:${step.code}`,
+          },
+        });
+        stepCount += 1;
+      }
+    }
   });
-  for (let index = 0; index < phases.length; index += 1) {
-    const phase = phases[index];
-    await prisma.workflowPhase.create({
-      data: {
-        workflowId: workflow.id,
-        phaseId: `AMG:${phase.phaseName}`,
-        sortOrder: index,
-      },
-    });
-  }
 
-  console.log(`Seeded AmGraft workflow (${workflow.code}) with ${phases.length} phases`);
+  console.log(`Seeded AmGraft workflow (${workflow.code}) with ${recipe.length} phases and ${stepCount} steps`);
   return workflow;
 }
 

@@ -33,8 +33,8 @@ model Staff {
   updatedAt    DateTime @updatedAt
 
   role                 Role?          @relation(fields: [roleId], references: [id])
-  createdProcedures    Procedure[]    @relation("ProcedureCreatedBy")
-  updatedProcedures    Procedure[]    @relation("ProcedureUpdatedBy")
+  createdSteps         Step[]         @relation("StepCreatedBy")
+  updatedSteps         Step[]         @relation("StepUpdatedBy")
   createdHets          Het[]          @relation("HetCreatedBy")
   updatedHets          Het[]          @relation("HetUpdatedBy")
   createdPhases        Phase[]        @relation("PhaseCreatedBy")
@@ -149,24 +149,34 @@ model Manufacturer {
   @@map("manufacturer")
 }
 
-model Procedure {
-  id             String   @id
-  tenantId       String   @default("ventas")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  createdById    String?
-  updatedById    String?
-  procedureName  String?
-  procedureDesc  String?
-  procedureShort String?
-  keyText        String?
+// A Step is a numbered work item (e.g. "G23 · Packing for EtO") owned by one
+// Phase. Steps are ordered within their phase via sortOrder. A Step with a null
+// phaseId is "unplaced" — it belongs to the workflow's pool but is not yet slotted
+// into a phase (the "Available to pull in" list in the configurator).
+model Step {
+  id          String   @id @default(cuid())
+  tenantId    String   @default("ventas")
+  workflowId  String
+  phaseId     String?
+  sortOrder   Int      @default(0)
+  code        String?
+  name        String?
+  description String?
+  keyText     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+  updatedById String?
 
-  createdBy Staff?           @relation("ProcedureCreatedBy", fields: [createdById], references: [id])
-  updatedBy Staff?           @relation("ProcedureUpdatedBy", fields: [updatedById], references: [id])
-  phases    PhaseProcedure[]
+  workflow  Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  phase     Phase?   @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  createdBy Staff?   @relation("StepCreatedBy", fields: [createdById], references: [id])
+  updatedBy Staff?   @relation("StepUpdatedBy", fields: [updatedById], references: [id])
 
   @@index([tenantId])
-  @@map("procedure")
+  @@index([workflowId])
+  @@index([phaseId])
+  @@map("step")
 }
 
 model Bom {
@@ -275,7 +285,8 @@ model Workflow {
 
   createdBy  Staff?          @relation("WorkflowCreatedBy", fields: [createdById], references: [id])
   updatedBy  Staff?          @relation("WorkflowUpdatedBy", fields: [updatedById], references: [id])
-  phases     WorkflowPhase[]
+  phases     Phase[]
+  steps      Step[]
   workOrders WorkOrder[]
 
   @@unique([tenantId, code])
@@ -283,54 +294,40 @@ model Workflow {
   @@map("workflow")
 }
 
-model WorkflowPhase {
-  workflowId String
-  phaseId    String
-  sortOrder  Int
-
-  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  phase    Phase    @relation(fields: [phaseId], references: [id], onDelete: Cascade)
-
-  @@id([workflowId, phaseId])
-  @@unique([workflowId, sortOrder])
-  @@map("workflowPhase")
-}
-
+// A Phase is a letter-grouped stage owned by exactly one Workflow and ordered
+// within it via sortOrder. phaseShort holds the grouped step codes for the phase
+// (e.g. "A3, A4, A5"). isGate marks a sterilisation/BET gate that requires a
+// passing result before advancing; blocksCombine forbids running the phase on a
+// combined (multi-HET) batch. These replace the hardcoded phaseOrder magic numbers.
 model Phase {
-  id          String   @id
-  tenantId    String   @default("ventas")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  createdById String?
-  updatedById String?
-  phaseName   String?
-  phaseShort  String?
-  phaseOrder  Int?
-  description String?
-  bomId       String?
-  keyText     String?
+  id            String   @id @default(cuid())
+  tenantId      String   @default("ventas")
+  workflowId    String
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdById   String?
+  updatedById   String?
+  phaseName     String?
+  phaseShort    String?
+  description   String?
+  bomId         String?
+  isGate        Boolean  @default(false)
+  blocksCombine Boolean  @default(false)
+  keyText       String?
 
+  workflow          Workflow          @relation(fields: [workflowId], references: [id], onDelete: Cascade)
   createdBy         Staff?            @relation("PhaseCreatedBy", fields: [createdById], references: [id])
   updatedBy         Staff?            @relation("PhaseUpdatedBy", fields: [updatedById], references: [id])
   bom               Bom?              @relation(fields: [bomId], references: [id])
-  procedures        PhaseProcedure[]
+  steps             Step[]
   phaseEquips       PhasePhaseEquip[]
-  workflows         WorkflowPhase[]
   currentWorkOrders WorkOrder[]       @relation("WorkOrderCurrentPhase")
   nextWorkOrders    WorkOrder[]       @relation("WorkOrderNextPhase")
 
   @@index([tenantId])
+  @@index([workflowId])
   @@map("phase")
-}
-
-model PhaseProcedure {
-  phaseId     String
-  procedureId String
-  phase       Phase     @relation(fields: [phaseId], references: [id], onDelete: Cascade)
-  procedure   Procedure @relation(fields: [procedureId], references: [id], onDelete: Cascade)
-
-  @@id([phaseId, procedureId])
-  @@map("phaseProcedure")
 }
 
 model PhaseEquip {

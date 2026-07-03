@@ -72,22 +72,31 @@ beforeAll(async () => {
     data: { id: ctx.phaseEquipId, tenantId: ctx.tenantId, equipId: `${code}-SEALER`, name: 'Integration heat sealer', keyText: ctx.phaseEquipId },
   });
 
-  // Phases + ordered WorkflowPhase bindings.
+  // Phases owned directly by the workflow, ordered via sortOrder. Sterilisation
+  // and BET Verification are gate phases (isGate) — the backend now enforces the
+  // sterilisation/BET gate off this flag, not a phase-name regex.
   ctx.phaseIds = [];
   for (let i = 0; i < phaseNames.length; i += 1) {
     const phaseId = `${code}:${phaseNames[i]}`;
     ctx.phaseIds.push(phaseId);
     await prisma.phase.create({
-      data: { id: phaseId, tenantId: ctx.tenantId, phaseName: phaseNames[i], phaseOrder: i, phaseShort: phaseNames[i].slice(0, 4), keyText: phaseId, ...(i === 0 && { bomId: ctx.bomId }) },
+      data: {
+        id: phaseId,
+        tenantId: ctx.tenantId,
+        workflowId: workflow.id,
+        sortOrder: i,
+        phaseName: phaseNames[i],
+        phaseShort: phaseNames[i].slice(0, 4),
+        isGate: /Sterilisation|BET/i.test(phaseNames[i]),
+        keyText: phaseId,
+        ...(i === 0 && { bomId: ctx.bomId }),
+      },
     });
     if (i === 0) {
       await prisma.phasePhaseEquip.create({
         data: { phaseId, phaseEquipId: ctx.phaseEquipId },
       });
     }
-    await prisma.workflowPhase.create({
-      data: { workflowId: workflow.id, phaseId, sortOrder: i },
-    });
   }
 
   ctx.hetId = `${code}:HET`;
@@ -111,7 +120,6 @@ afterAll(async () => {
   await prisma.workOrderHet.deleteMany({ where: { hetId: ctx.hetId } }).catch(() => undefined);
   await prisma.workOrderPhaseEquip.deleteMany({ where: { phaseEquipId: ctx.phaseEquipId } }).catch(() => undefined);
   await prisma.het.deleteMany({ where: { id: ctx.hetId } }).catch(() => undefined);
-  await prisma.workflowPhase.deleteMany({ where: { workflowId: ctx.workflowId } }).catch(() => undefined);
   await prisma.phasePhaseEquip.deleteMany({ where: { phaseEquipId: ctx.phaseEquipId } }).catch(() => undefined);
   await prisma.phase.deleteMany({ where: { id: { in: ctx.phaseIds } } }).catch(() => undefined);
   await prisma.phaseEquip.deleteMany({ where: { id: ctx.phaseEquipId } }).catch(() => undefined);

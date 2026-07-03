@@ -7,11 +7,21 @@ export interface WorkOrderWorkflowRef {
   code: string;
 }
 
+export interface WorkOrderStepTag {
+  id: string;
+  code: string | null;
+  name: string | null;
+  sortOrder: number;
+}
+
 export interface WorkOrderPhaseRef {
   id: string;
   phaseName: string | null;
   phaseShort: string | null;
   phaseOrder: number | null;
+  // The current phase's ordered steps (owned Step rows). Absent on the phase
+  // timeline entries, which only carry phase-level fields.
+  steps?: WorkOrderStepTag[];
 }
 
 export interface WorkOrderHetRef {

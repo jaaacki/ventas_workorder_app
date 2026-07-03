@@ -126,12 +126,12 @@ describe('workOrderService', () => {
         prodEnd: null,
         workflow: {
           phases: [
-            { sortOrder: 10, phase: { id: 'phase-prep', phaseName: 'Preparation', phaseShort: 'PREP', phaseOrder: 10 } },
-            { sortOrder: 20, phase: { id: 'phase-ster', phaseName: 'Sterilisation', phaseShort: 'STER', phaseOrder: 20 } },
-            { sortOrder: 30, phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 30 } },
+            { id: 'phase-prep', phaseName: 'Preparation', phaseShort: 'PREP', sortOrder: 10, isGate: false, blocksCombine: false },
+            { id: 'phase-ster', phaseName: 'Sterilisation', phaseShort: 'STER', sortOrder: 20, isGate: true, blocksCombine: false },
+            { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', sortOrder: 30, isGate: false, blocksCombine: false },
           ],
         },
-        phase: { id: 'phase-ster', phaseName: 'Sterilisation', phaseShort: 'STER', phaseOrder: 20, bom: { lines: [] }, phaseEquips: [] },
+        phase: { id: 'phase-ster', phaseName: 'Sterilisation', phaseShort: 'STER', sortOrder: 20, isGate: true, blocksCombine: false, bom: { lines: [] }, phaseEquips: [] },
         sterilises: [],
         woSerials: [],
         phaseEquips: [],
@@ -148,10 +148,10 @@ describe('workOrderService', () => {
         steralisationCurrent: { id: 'ster-fail', result: false, createdAt: startedAt },
         workflow: {
           phases: [
-            { sortOrder: 20, phase: { id: 'phase-review', phaseName: 'Inspection', phaseShort: 'INSP', phaseOrder: 20 } },
+            { id: 'phase-review', phaseName: 'Inspection', phaseShort: 'INSP', sortOrder: 20, isGate: false, blocksCombine: false },
           ],
         },
-        phase: { id: 'phase-review', phaseName: 'Inspection', phaseShort: 'INSP', phaseOrder: 20, bom: { lines: [] }, phaseEquips: [] },
+        phase: { id: 'phase-review', phaseName: 'Inspection', phaseShort: 'INSP', sortOrder: 20, isGate: false, blocksCombine: false, bom: { lines: [] }, phaseEquips: [] },
         sterilises: [{ id: 'ster-fail', result: false }],
         woSerials: [],
         phaseEquips: [],
@@ -168,10 +168,10 @@ describe('workOrderService', () => {
         outputQuantity: { toString: () => '1.0000' },
         workflow: {
           phases: [
-            { sortOrder: 30, phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 30 } },
+            { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', sortOrder: 30, isGate: false, blocksCombine: false },
           ],
         },
-        phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 30, bom: { lines: [] }, phaseEquips: [] },
+        phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', sortOrder: 30, isGate: false, blocksCombine: false, bom: { lines: [] }, phaseEquips: [] },
         sterilises: [{ id: 'ster-pass', result: true }],
         woSerials: [],
         phaseEquips: [],
@@ -493,10 +493,10 @@ describe('workOrderService', () => {
       releaseDecisionAt: null,
       workflow: {
         phases: [
-          { sortOrder: 30, phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 30 } },
+          { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', sortOrder: 30, isGate: false, blocksCombine: false },
         ],
       },
-      phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 30, bom: { lines: [] }, phaseEquips: [] },
+      phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', sortOrder: 30, isGate: false, blocksCombine: false, bom: { lines: [] }, phaseEquips: [] },
       sterilises: [{ id: 'ster-pass', result: true }],
       woSerials: [],
       phaseEquips: [],
@@ -568,11 +568,11 @@ describe('workOrderService', () => {
       releaseDecisionAt: null,
       workflow: {
         phases: [
-          { sortOrder: 10, phase: { id: 'phase-work', phaseName: 'Production', phaseShort: 'PROD', phaseOrder: 10 } },
-          { sortOrder: 20, phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 20 } },
+          { id: 'phase-work', phaseName: 'Production', phaseShort: 'PROD', sortOrder: 10, isGate: false, blocksCombine: false },
+          { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', sortOrder: 20, isGate: false, blocksCombine: false },
         ],
       },
-      phase: { id: 'phase-work', phaseName: 'Production', phaseShort: 'PROD', phaseOrder: 10, bom: { lines: [] }, phaseEquips: [] },
+      phase: { id: 'phase-work', phaseName: 'Production', phaseShort: 'PROD', sortOrder: 10, isGate: false, blocksCombine: false, bom: { lines: [] }, phaseEquips: [] },
       sterilises: [],
       woSerials: [],
       phaseEquips: [],
@@ -604,10 +604,10 @@ describe('workOrderService', () => {
       releaseDecisionAt: new Date('2026-07-01T12:00:00Z'),
       workflow: {
         phases: [
-          { sortOrder: 30, phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 30 } },
+          { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', sortOrder: 30, isGate: false, blocksCombine: false },
         ],
       },
-      phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 30, bom: { lines: [] }, phaseEquips: [] },
+      phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', sortOrder: 30, isGate: false, blocksCombine: false, bom: { lines: [] }, phaseEquips: [] },
       sterilises: [{ id: 'ster-pass', result: true }],
       woSerials: [],
       phaseEquips: [],
@@ -779,8 +779,8 @@ describe('workOrderService', () => {
     mocks.workflow.findFirst.mockResolvedValue({
       id: 'w1',
       phases: [
-        { phaseId: 'p1', sortOrder: 0, phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 0 } },
-        { phaseId: 'p2', sortOrder: 1, phase: { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', phaseOrder: 1 } },
+        { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', sortOrder: 0 },
+        { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', sortOrder: 1 },
       ],
     });
     const created = {
@@ -800,11 +800,11 @@ describe('workOrderService', () => {
       hetId: 'h1',
       workflow: {
         phases: [
-          { sortOrder: 0, phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 0 } },
-          { sortOrder: 1, phase: { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', phaseOrder: 1 } },
+          { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', sortOrder: 0, isGate: false, blocksCombine: false },
+          { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', sortOrder: 1, isGate: false, blocksCombine: false },
         ],
       },
-      phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 0 },
+      phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', sortOrder: 0, isGate: false, blocksCombine: false },
       sterilises: [],
       woSerials: [],
       phaseEquips: [],
@@ -813,10 +813,11 @@ describe('workOrderService', () => {
     const result = await createWorkOrder({ workflowId: 'w1', hetId: 'h1' }, 'actor1');
 
     const createCall = mocks.workOrder.create.mock.calls[0][0] as {
-      data: { phaseId: string; phaseOrder: number; woNumber: string; workflowId: string; hetId: string; createdById: string; updatedById: string };
+      data: { phaseId: string; phaseOrder: number; phaseShort: string; woNumber: string; workflowId: string; hetId: string; createdById: string; updatedById: string };
     };
     expect(createCall.data.phaseId).toBe('p1');
     expect(createCall.data.phaseOrder).toBe(0);
+    expect(createCall.data.phaseShort).toBe('MX');
     expect(createCall.data.workflowId).toBe('w1');
     expect(createCall.data.hetId).toBe('h1');
     expect(createCall.data.createdById).toBe('actor1');
@@ -849,7 +850,7 @@ describe('workOrderService', () => {
   it('createWorkOrder scopes workflow lookup, creation, and decorated reload to the caller tenant', async () => {
     mocks.workflow.findFirst.mockResolvedValue({
       id: 'w1',
-      phases: [{ phaseId: 'p1', sortOrder: 0, phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 0 } }],
+      phases: [{ id: 'p1', phaseName: 'Mix', phaseShort: 'MX', sortOrder: 0 }],
     });
     mocks.workOrder.create.mockResolvedValue({
       id: 'wo-created',
@@ -1138,8 +1139,8 @@ describe('workOrderService', () => {
         releaseStatus: null,
         workflow: {
           phases: [
-            { phaseId: 'p1', sortOrder: 0, phase: { phaseName: 'Mix' } },
-            { phaseId: 'p2', sortOrder: 1, phase: { phaseName: 'Pour' } },
+            { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', sortOrder: 0, isGate: false },
+            { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', sortOrder: 1, isGate: false },
           ],
         },
         batchHets: [],
@@ -1162,11 +1163,11 @@ describe('workOrderService', () => {
       releaseStatus: null,
       workflow: {
         phases: [
-          { sortOrder: 0, phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 0 } },
-          { sortOrder: 1, phase: { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', phaseOrder: 1 } },
+          { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', sortOrder: 0, isGate: false, blocksCombine: false },
+          { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', sortOrder: 1, isGate: false, blocksCombine: false },
         ],
       },
-      phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 0, bom: { lines: [] }, phaseEquips: [] },
+      phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', sortOrder: 0, isGate: false, blocksCombine: false, bom: { lines: [] }, phaseEquips: [] },
       sterilises: [],
       woSerials: [],
       phaseEquips: [],
@@ -1197,11 +1198,11 @@ describe('workOrderService', () => {
         releaseStatus: null,
         workflow: {
           phases: [
-            { sortOrder: 0, phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 0 } },
-            { sortOrder: 1, phase: { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', phaseOrder: 1 } },
+            { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', sortOrder: 0, isGate: false, blocksCombine: false },
+            { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', sortOrder: 1, isGate: false, blocksCombine: false },
           ],
         },
-        phase: { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', phaseOrder: 1, bom: { lines: [] }, phaseEquips: [] },
+        phase: { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', sortOrder: 1, isGate: false, blocksCombine: false, bom: { lines: [] }, phaseEquips: [] },
         sterilises: [],
         woSerials: [],
         phaseEquips: [],
@@ -1242,6 +1243,7 @@ describe('workOrderService', () => {
       hetId: 'h1',
       phaseId: 'p2',
       phaseOrder: 1,
+      phaseShort: 'PR',
       previousWoId: 'wo-1',
       createdById: 'actor1',
       updatedById: 'actor1',
@@ -1286,8 +1288,8 @@ describe('workOrderService', () => {
       releaseStatus: null,
       workflow: {
         phases: [
-          { phaseId: 'p1', sortOrder: 6, phase: { phaseName: 'Mix' } },
-          { phaseId: 'p2', sortOrder: 7, phase: { phaseName: 'Pour' } },
+          { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', sortOrder: 6, isGate: false },
+          { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', sortOrder: 7, isGate: false },
         ],
       },
       batchHets: [{ hetId: 'h1' }, { hetId: 'h2' }],
@@ -1310,11 +1312,11 @@ describe('workOrderService', () => {
       releaseStatus: null,
       workflow: {
         phases: [
-          { sortOrder: 6, phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 6 } },
-          { sortOrder: 7, phase: { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', phaseOrder: 7 } },
+          { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', sortOrder: 6, isGate: false, blocksCombine: false },
+          { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', sortOrder: 7, isGate: false, blocksCombine: false },
         ],
       },
-      phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 6, bom: { lines: [] }, phaseEquips: [] },
+      phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', sortOrder: 6, isGate: false, blocksCombine: false, bom: { lines: [] }, phaseEquips: [] },
       sterilises: [],
       woSerials: [],
       phaseEquips: [],
@@ -1359,8 +1361,8 @@ describe('workOrderService', () => {
       prodEnd: new Date('2026-06-30T09:00:00Z'),
       workflow: {
         phases: [
-          { phaseId: 'p1', sortOrder: 0, phase: { phaseName: 'Mix' } },
-          { phaseId: 'p2', sortOrder: 1, phase: { phaseName: 'Pour' } },
+          { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', sortOrder: 0, isGate: false },
+          { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', sortOrder: 1, isGate: false },
         ],
       },
     });
@@ -1380,8 +1382,8 @@ describe('workOrderService', () => {
       prodEnd: null,
       workflow: {
         phases: [
-          { phaseId: 'p1', sortOrder: 0, phase: { phaseName: 'Mix' } },
-          { phaseId: 'p2', sortOrder: 1, phase: { phaseName: 'Pour' } },
+          { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', sortOrder: 0, isGate: false },
+          { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', sortOrder: 1, isGate: false },
         ],
       },
     });
@@ -1424,11 +1426,11 @@ describe('workOrderService', () => {
         prodEnd: null,
         workflow: {
           phases: [
-            { sortOrder: 0, phase: { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', phaseOrder: 0 } },
-            { sortOrder: 1, phase: { id: 'p2', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 1 } },
+            { id: 'p1', phaseName: 'Mix', phaseShort: 'MX', sortOrder: 0, isGate: false, blocksCombine: false },
+            { id: 'p2', phaseName: 'Release', phaseShort: 'REL', sortOrder: 1, isGate: false, blocksCombine: false },
           ],
         },
-        phase: { id: 'p2', phaseName: 'Release', phaseShort: 'REL', phaseOrder: 1 },
+        phase: { id: 'p2', phaseName: 'Release', phaseShort: 'REL', sortOrder: 1, isGate: false, blocksCombine: false },
         sterilises: [],
         woSerials: [],
         phaseEquips: [],
@@ -1449,8 +1451,8 @@ describe('workOrderService', () => {
       phaseId: 'p2',
       workflow: {
         phases: [
-          { phaseId: 'p1', sortOrder: 0 },
-          { phaseId: 'p2', sortOrder: 1 },
+          { id: 'p1', sortOrder: 0 },
+          { id: 'p2', sortOrder: 1 },
         ],
       },
     });
@@ -1512,12 +1514,13 @@ describe('workOrderService', () => {
       {
         id: 'wo-finished',
         hetId: 'h4',
+        phaseId: 'p16',
         phaseOrder: 16,
         phaseShort: 'P16',
         prodStart: new Date('2026-06-30T08:00:00Z'),
         prodEnd: new Date('2026-06-30T09:00:00Z'),
-        workflow: { phases: [] },
-        phase: { phaseShort: 'P16' },
+        workflow: { phases: [{ id: 'p16', phaseName: 'Release', phaseShort: 'P16', sortOrder: 16, isGate: false, blocksCombine: false }] },
+        phase: { id: 'p16', phaseShort: 'P16' },
         steralisationCurrent: null,
         sterilises: [],
         woSerials: [],

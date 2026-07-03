@@ -9,15 +9,16 @@ const mocks = vi.hoisted(() => {
   const make = () => ({
     upsert: vi.fn(async () => ({})),
     findUnique: vi.fn(async () => null), // null = "would be created" in dry-run
+    findFirst: vi.fn(async () => null),
     findMany: vi.fn(async () => []),
   });
   return {
     staff: make(),
     manufacturer: make(),
-    procedure: make(),
     bom: make(),
     bomLine: make(),
     het: make(),
+    workflow: make(),
     phase: make(),
     phaseEquip: make(),
     workOrder: make(),
@@ -59,14 +60,13 @@ function writeCsv(name: string, header: string[], rows: string[][]): void {
 }
 
 describe('importCsv — D3 idempotency + validation report', () => {
-  it('imports all 12 entities in tableConfigs order', async () => {
+  it('imports all 11 entities in tableConfigs order', async () => {
     // Write minimal valid CSVs for every entity. Empty body is OK for entities
     // we don't care about — the importer logs "file not found" as a warning.
     writeCsv('staff.csv', ['email', 'name', 'bitrixId', 'active'], [
       ['alice@example.com', 'Alice', 'bx-1', 'yes'],
     ]);
     writeCsv('manufacturer.csv', ['manuId', 'manuName'], [['MAN-1', 'Mfg A']]);
-    writeCsv('procedure.csv', ['procedureId', 'procedureName'], [['PRO-1', 'Proc A']]);
     writeCsv('bom.csv', ['bomId', 'bomName'], [['BOM-1', 'BOM A']]);
     writeCsv('bomLine.csv', ['bomLineId', 'bomId'], [['BOL-1', 'BOM-1']]);
     writeCsv('het.csv', ['hetId'], [['HET-1']]);
@@ -82,14 +82,13 @@ describe('importCsv — D3 idempotency + validation report', () => {
     expect(report.perEntity.staff.upserted).toBe(1);
     expect(report.perEntity.workOrder.upserted).toBe(1);
     expect(report.perEntity.sterilise.upserted).toBe(1);
-    expect(report.totals.upserted).toBeGreaterThanOrEqual(12);
+    expect(report.totals.upserted).toBeGreaterThanOrEqual(11);
     expect(report.errored).toEqual([]);
   });
 
   it('is idempotent: re-running yields 0 errored and same upserted counts', async () => {
     writeCsv('staff.csv', ['email', 'name'], [['alice@example.com', 'Alice']]);
     writeCsv('manufacturer.csv', ['manuId', 'manuName'], [['MAN-1', 'Mfg A']]);
-    writeCsv('procedure.csv', ['procedureId'], [['PRO-1']]);
     writeCsv('bom.csv', ['bomId'], [['BOM-1']]);
     writeCsv('bomLine.csv', ['bomLineId'], [['BOL-1']]);
     writeCsv('het.csv', ['hetId'], [['HET-1']]);
@@ -115,7 +114,6 @@ describe('importCsv — D3 idempotency + validation report', () => {
       ['alice@example.com', 'Alice'],
     ]);
     writeCsv('manufacturer.csv', ['manuId'], [['MAN-1']]);
-    writeCsv('procedure.csv', ['procedureId'], [['PRO-1']]);
     writeCsv('bom.csv', ['bomId'], [['BOM-1']]);
     writeCsv('bomLine.csv', ['bomLineId'], [['BOL-1']]);
     writeCsv('het.csv', ['hetId'], [['HET-1']]);
@@ -136,7 +134,6 @@ describe('importCsv — D3 idempotency + validation report', () => {
   it('dry-run does not call upsert (it probes with findUnique)', async () => {
     writeCsv('staff.csv', ['email'], [['alice@example.com']]);
     writeCsv('manufacturer.csv', ['manuId'], [['MAN-1']]);
-    writeCsv('procedure.csv', ['procedureId'], [['PRO-1']]);
     writeCsv('bom.csv', ['bomId'], [['BOM-1']]);
     writeCsv('bomLine.csv', ['bomLineId'], [['BOL-1']]);
     writeCsv('het.csv', ['hetId'], [['HET-1']]);
@@ -156,12 +153,43 @@ describe('importCsv — D3 idempotency + validation report', () => {
     expect(report.totals.upserted).toBeGreaterThan(0);
   });
 
+  it('binds every phase to the resolved AMG workflow (tenant + code)', async () => {
+    writeCsv('staff.csv', ['email'], [['a@b.c']]);
+    writeCsv('manufacturer.csv', ['manuId'], [['MAN-1']]);
+    writeCsv('bom.csv', ['bomId'], [['BOM-1']]);
+    writeCsv('bomLine.csv', ['bomLineId'], [['BOL-1']]);
+    writeCsv('het.csv', ['hetId'], [['HET-1']]);
+    writeCsv('phase.csv', ['phaseId'], [['PHS-1']]);
+    writeCsv('phaseEquip.csv', ['phaseEquipId'], [['PHQ-1']]);
+    writeCsv('workOrder.csv', ['woId'], [['WKO-1']]);
+    writeCsv('woSerial.csv', ['woSerialId'], [['WSR-1']]);
+    writeCsv('sterilise.csv', ['steriliseId'], [['STR-1']]);
+    writeCsv('printLabels.csv', ['_ID'], [['PL-1']]);
+
+    // phase.beforeImport resolves the AMG workflow up-front; give it an id to bind.
+    mocks.workflow.upsert.mockResolvedValue({ id: 'workflow-amg' });
+
+    await importAll(tmpDir, { dryRun: false });
+
+    // AMG cutover: workflow resolved once by tenant + code.
+    expect(mocks.workflow.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { tenantId_code: expect.objectContaining({ code: 'AMG' }) },
+      }),
+    );
+    // Every phase row is upserted carrying the resolved workflowId.
+    expect(mocks.phase.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ id: 'PHS-1', workflowId: 'workflow-amg' }),
+      }),
+    );
+  });
+
   it('manufacturerafterImport hook derives ManufacturerHet rows (GAP-1)', async () => {
     // Manufacture a workOrder with manuId, plus a WorkOrderHet join with HET-X.
     // Then the manufacturer.afterImport hook should produce a ManufacturerHet row.
     writeCsv('workOrder.csv', ['woId', 'manuId'], [['WKO-1', 'MAN-1']]);
     writeCsv('manufacturer.csv', ['manuId'], [['MAN-1']]);
-    writeCsv('procedure.csv', ['procedureId'], [['PRO-1']]);
     writeCsv('bom.csv', ['bomId'], [['BOM-1']]);
     writeCsv('bomLine.csv', ['bomLineId'], [['BOL-1']]);
     writeCsv('het.csv', ['hetId'], [['HET-X']]);
@@ -189,9 +217,9 @@ describe('importCsv — D3 idempotency + validation report', () => {
 });
 
 describe('importCsv — tableConfigs single-source-of-truth contract', () => {
-  it('exports 12 entries matching seed_data/README.md', () => {
+  it('exports 11 entries matching seed_data/README.md', () => {
     const expected = [
-      'staff.csv', 'manufacturer.csv', 'procedure.csv', 'bom.csv', 'bomLine.csv',
+      'staff.csv', 'manufacturer.csv', 'bom.csv', 'bomLine.csv',
       'het.csv', 'phase.csv', 'phaseEquip.csv', 'workOrder.csv', 'woSerial.csv',
       'sterilise.csv', 'printLabels.csv',
     ];

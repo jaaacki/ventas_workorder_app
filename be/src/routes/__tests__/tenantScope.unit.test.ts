@@ -6,26 +6,26 @@ const mocks = vi.hoisted(() => ({
     getWorkflow: vi.fn(),
     createWorkflow: vi.fn(),
     updateWorkflow: vi.fn(),
+    deleteWorkflow: vi.fn(),
+    addPhase: vi.fn(),
+    reorderPhases: vi.fn(),
   },
   phaseService: {
-    listPhases: vi.fn(),
-    getPhase: vi.fn(),
-    createPhase: vi.fn(),
     updatePhase: vi.fn(),
     deletePhase: vi.fn(),
-    listPhaseProcedures: vi.fn(),
-    addPhaseProcedure: vi.fn(),
-    deletePhaseProcedure: vi.fn(),
     listPhaseEquipmentBindings: vi.fn(),
     addPhaseEquipment: vi.fn(),
     deletePhaseEquipment: vi.fn(),
   },
+  stepService: {
+    createStep: vi.fn(),
+    updateStep: vi.fn(),
+    deleteStep: vi.fn(),
+    placeStep: vi.fn(),
+    unplaceStep: vi.fn(),
+    reorderPhaseSteps: vi.fn(),
+  },
   masterDataService: {
-    listProcedures: vi.fn(),
-    getProcedure: vi.fn(),
-    createProcedure: vi.fn(),
-    updateProcedure: vi.fn(),
-    deleteProcedure: vi.fn(),
     listBoms: vi.fn(),
     getBom: vi.fn(),
     createBom: vi.fn(),
@@ -142,6 +142,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../services/workflowService.js', () => mocks.workflowService);
 vi.mock('../../services/phaseService.js', () => mocks.phaseService);
+vi.mock('../../services/stepService.js', () => mocks.stepService);
 vi.mock('../../services/masterDataService.js', () => mocks.masterDataService);
 vi.mock('../../services/workOrderService.js', () => mocks.workOrderService);
 vi.mock('../../services/sterilisationService.js', () => mocks.sterilisationService);
@@ -159,42 +160,48 @@ const now = new Date('2026-07-01T00:00:00.000Z');
 
 const workflowDetail = {
   id: 'workflow-1',
-  tenantId,
   name: 'AmGraft',
-  code: 'AMGRAFT',
+  code: 'AMG',
   description: null,
   active: true,
-  createdById: adminActorId,
-  updatedById: adminActorId,
-  createdAt: now,
-  updatedAt: now,
-  createdBy: null,
-  updatedBy: null,
   phases: [],
+  unplacedSteps: [],
 };
 
 const phaseDetail = {
   id: 'phase-1',
   tenantId,
-  phaseName: 'Intake',
-  phaseShort: 'INT',
-  phaseOrder: 10,
+  workflowId: 'workflow-1',
+  phaseName: 'Material Acquisition',
+  phaseShort: 'A',
   description: null,
+  sortOrder: 0,
+  isGate: false,
+  blocksCombine: true,
   bomId: null,
-  keyText: null,
   createdAt: now,
   updatedAt: now,
 };
 
-const procedureDetail = {
-  id: 'procedure-1',
-  tenantId,
-  procedureName: 'Intake checklist',
-  procedureDesc: null,
-  procedureShort: 'INTAKE',
-  keyText: null,
-  createdAt: now,
-  updatedAt: now,
+const phaseSummaryDetail = {
+  id: 'phase-1',
+  phaseShort: 'A',
+  phaseName: 'Material Acquisition',
+  description: null,
+  sortOrder: 0,
+  isGate: false,
+  blocksCombine: true,
+  bomId: null,
+};
+
+const stepDetail = {
+  id: 'step-1',
+  workflowId: 'workflow-1',
+  phaseId: 'phase-1',
+  sortOrder: 0,
+  code: 'A1',
+  name: 'HET Collection',
+  description: null,
 };
 
 const bomDetail = {
@@ -232,17 +239,6 @@ const phaseEquipmentDetail = {
   createdAt: now,
   updatedAt: now,
   _count: { phases: 0, workOrders: 0 },
-};
-
-const phaseProcedureBinding = {
-  phaseId: 'phase-1',
-  procedureId: 'procedure-1',
-  procedure: {
-    id: 'procedure-1',
-    procedureName: 'Intake checklist',
-    procedureShort: 'INTAKE',
-    procedureDesc: null,
-  },
 };
 
 const phaseEquipmentBinding = {
@@ -423,22 +419,20 @@ function resetServiceMocks() {
   mocks.workflowService.getWorkflow.mockResolvedValue(null);
   mocks.workflowService.createWorkflow.mockResolvedValue(workflowDetail);
   mocks.workflowService.updateWorkflow.mockResolvedValue(workflowDetail);
-  mocks.phaseService.listPhases.mockResolvedValue([]);
-  mocks.phaseService.getPhase.mockResolvedValue(null);
-  mocks.phaseService.createPhase.mockResolvedValue(phaseDetail);
+  mocks.workflowService.deleteWorkflow.mockResolvedValue({ success: true });
+  mocks.workflowService.addPhase.mockResolvedValue(phaseSummaryDetail);
+  mocks.workflowService.reorderPhases.mockResolvedValue({ success: true });
   mocks.phaseService.updatePhase.mockResolvedValue(phaseDetail);
   mocks.phaseService.deletePhase.mockResolvedValue({ success: true });
-  mocks.phaseService.listPhaseProcedures.mockResolvedValue([]);
-  mocks.phaseService.addPhaseProcedure.mockResolvedValue(phaseProcedureBinding);
-  mocks.phaseService.deletePhaseProcedure.mockResolvedValue({ success: true });
   mocks.phaseService.listPhaseEquipmentBindings.mockResolvedValue([]);
   mocks.phaseService.addPhaseEquipment.mockResolvedValue(phaseEquipmentBinding);
   mocks.phaseService.deletePhaseEquipment.mockResolvedValue({ success: true });
-  mocks.masterDataService.listProcedures.mockResolvedValue([]);
-  mocks.masterDataService.getProcedure.mockResolvedValue(null);
-  mocks.masterDataService.createProcedure.mockResolvedValue(procedureDetail);
-  mocks.masterDataService.updateProcedure.mockResolvedValue(procedureDetail);
-  mocks.masterDataService.deleteProcedure.mockResolvedValue({ success: true });
+  mocks.stepService.createStep.mockResolvedValue(stepDetail);
+  mocks.stepService.updateStep.mockResolvedValue(stepDetail);
+  mocks.stepService.deleteStep.mockResolvedValue({ success: true });
+  mocks.stepService.placeStep.mockResolvedValue(stepDetail);
+  mocks.stepService.unplaceStep.mockResolvedValue({ ...stepDetail, phaseId: null });
+  mocks.stepService.reorderPhaseSteps.mockResolvedValue({ success: true });
   mocks.masterDataService.listBoms.mockResolvedValue([]);
   mocks.masterDataService.getBom.mockResolvedValue(null);
   mocks.masterDataService.createBom.mockResolvedValue(bomDetail);
@@ -567,23 +561,8 @@ describe('route tenant propagation', () => {
       await get('/api/workflows/workflow-1');
       expect(mocks.workflowService.getWorkflow).toHaveBeenCalledWith('workflow-1', tenantId);
 
-      await get('/api/phases');
-      expect(mocks.phaseService.listPhases).toHaveBeenCalledWith(tenantId);
-
-      await get('/api/phases/phase-1');
-      expect(mocks.phaseService.getPhase).toHaveBeenCalledWith('phase-1', tenantId);
-
-      await get('/api/phases/phase-1/procedures');
-      expect(mocks.phaseService.listPhaseProcedures).toHaveBeenCalledWith('phase-1', tenantId);
-
       await get('/api/phases/phase-1/equipment');
       expect(mocks.phaseService.listPhaseEquipmentBindings).toHaveBeenCalledWith('phase-1', tenantId);
-
-      await get('/api/master-data/procedures');
-      expect(mocks.masterDataService.listProcedures).toHaveBeenCalledWith(tenantId);
-
-      await get('/api/master-data/procedures/procedure-1');
-      expect(mocks.masterDataService.getProcedure).toHaveBeenCalledWith('procedure-1', tenantId);
 
       await get('/api/master-data/boms');
       expect(mocks.masterDataService.listBoms).toHaveBeenCalledWith(tenantId);
@@ -891,33 +870,50 @@ describe('route tenant propagation', () => {
 
       await injectJson('POST', '/api/workflows', {
         name: 'AmGraft',
-        code: 'AMGRAFT',
-        phases: [{ phaseId: 'phase-1', sortOrder: 10 }],
+        code: 'AMG',
+        description: 'AmGraft processing workflow',
       });
       expect(mocks.workflowService.createWorkflow).toHaveBeenCalledWith(
-        { name: 'AmGraft', code: 'AMGRAFT', phases: [{ phaseId: 'phase-1', sortOrder: 10 }] },
+        { name: 'AmGraft', code: 'AMG', description: 'AmGraft processing workflow' },
         adminActorId,
         tenantId,
       );
 
-      await injectJson('PATCH', '/api/workflows/workflow-1', {
-        active: false,
-        phases: [{ phaseId: 'phase-2', sortOrder: 20 }],
-      });
+      await injectJson('PATCH', '/api/workflows/workflow-1', { active: false, name: 'AmGraft v2' });
       expect(mocks.workflowService.updateWorkflow).toHaveBeenCalledWith(
         'workflow-1',
-        { active: false, phases: [{ phaseId: 'phase-2', sortOrder: 20 }] },
+        { active: false, name: 'AmGraft v2' },
         adminActorId,
         tenantId,
       );
 
-      await injectJson('POST', '/api/phases', {
-        phaseName: 'Intake',
-        phaseShort: 'INT',
-        phaseOrder: 10,
+      await injectJson('DELETE', '/api/workflows/workflow-1');
+      expect(mocks.workflowService.deleteWorkflow).toHaveBeenCalledWith('workflow-1', adminActorId, tenantId);
+
+      await injectJson('POST', '/api/workflows/workflow-1/phases', {
+        phaseShort: 'A',
+        phaseName: 'Material Acquisition',
+        blocksCombine: true,
       });
-      expect(mocks.phaseService.createPhase).toHaveBeenCalledWith(
-        { phaseName: 'Intake', phaseShort: 'INT', phaseOrder: 10 },
+      expect(mocks.workflowService.addPhase).toHaveBeenCalledWith(
+        'workflow-1',
+        { phaseShort: 'A', phaseName: 'Material Acquisition', blocksCombine: true },
+        adminActorId,
+        tenantId,
+      );
+
+      await injectJson('POST', '/api/workflows/workflow-1/phases/reorder', { phaseIds: ['phase-2', 'phase-1'] });
+      expect(mocks.workflowService.reorderPhases).toHaveBeenCalledWith(
+        'workflow-1',
+        ['phase-2', 'phase-1'],
+        adminActorId,
+        tenantId,
+      );
+
+      await injectJson('POST', '/api/workflows/workflow-1/steps', { code: 'A1', name: 'HET Collection', phaseId: 'phase-1' });
+      expect(mocks.stepService.createStep).toHaveBeenCalledWith(
+        'workflow-1',
+        { code: 'A1', name: 'HET Collection', phaseId: 'phase-1' },
         adminActorId,
         tenantId,
       );
@@ -933,11 +929,13 @@ describe('route tenant propagation', () => {
       await injectJson('DELETE', '/api/phases/phase-1');
       expect(mocks.phaseService.deletePhase).toHaveBeenCalledWith('phase-1', adminActorId, tenantId);
 
-      await injectJson('POST', '/api/phases/phase-1/procedures', { procedureId: 'procedure-1' });
-      expect(mocks.phaseService.addPhaseProcedure).toHaveBeenCalledWith('phase-1', 'procedure-1', adminActorId, tenantId);
-
-      await injectJson('DELETE', '/api/phases/phase-1/procedures/procedure-1');
-      expect(mocks.phaseService.deletePhaseProcedure).toHaveBeenCalledWith('phase-1', 'procedure-1', adminActorId, tenantId);
+      await injectJson('POST', '/api/phases/phase-1/steps/reorder', { stepIds: ['step-2', 'step-1'] });
+      expect(mocks.stepService.reorderPhaseSteps).toHaveBeenCalledWith(
+        'phase-1',
+        ['step-2', 'step-1'],
+        adminActorId,
+        tenantId,
+      );
 
       await injectJson('POST', '/api/phases/phase-1/equipment', { phaseEquipId: 'equip-1' });
       expect(mocks.phaseService.addPhaseEquipment).toHaveBeenCalledWith('phase-1', 'equip-1', adminActorId, tenantId);
@@ -945,26 +943,27 @@ describe('route tenant propagation', () => {
       await injectJson('DELETE', '/api/phases/phase-1/equipment/equip-1');
       expect(mocks.phaseService.deletePhaseEquipment).toHaveBeenCalledWith('phase-1', 'equip-1', adminActorId, tenantId);
 
-      await injectJson('POST', '/api/master-data/procedures', {
-        procedureName: 'Intake checklist',
-        procedureShort: 'INTAKE',
-      });
-      expect(mocks.masterDataService.createProcedure).toHaveBeenCalledWith(
-        { procedureName: 'Intake checklist', procedureShort: 'INTAKE' },
+      await injectJson('PATCH', '/api/steps/step-1', { name: 'HET Collection (revised)' });
+      expect(mocks.stepService.updateStep).toHaveBeenCalledWith(
+        'step-1',
+        { name: 'HET Collection (revised)' },
         adminActorId,
         tenantId,
       );
 
-      await injectJson('PATCH', '/api/master-data/procedures/procedure-1', { procedureDesc: 'Updated' });
-      expect(mocks.masterDataService.updateProcedure).toHaveBeenCalledWith(
-        'procedure-1',
-        { procedureDesc: 'Updated' },
+      await injectJson('DELETE', '/api/steps/step-1');
+      expect(mocks.stepService.deleteStep).toHaveBeenCalledWith('step-1', adminActorId, tenantId);
+
+      await injectJson('POST', '/api/steps/step-1/place', { phaseId: 'phase-1', sortOrder: 0 });
+      expect(mocks.stepService.placeStep).toHaveBeenCalledWith(
+        'step-1',
+        { phaseId: 'phase-1', sortOrder: 0 },
         adminActorId,
         tenantId,
       );
 
-      await injectJson('DELETE', '/api/master-data/procedures/procedure-1');
-      expect(mocks.masterDataService.deleteProcedure).toHaveBeenCalledWith('procedure-1', adminActorId, tenantId);
+      await injectJson('POST', '/api/steps/step-1/unplace');
+      expect(mocks.stepService.unplaceStep).toHaveBeenCalledWith('step-1', adminActorId, tenantId);
 
       await injectJson('POST', '/api/master-data/boms', { bomName: 'Intake BOM' });
       expect(mocks.masterDataService.createBom).toHaveBeenCalledWith(

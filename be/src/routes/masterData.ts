@@ -12,24 +12,6 @@ const counted = z.object({
   _count: z.record(z.string(), z.number()).optional(),
 });
 
-const procedureSchema = z.object({
-  id: z.string(),
-  tenantId: z.string(),
-  procedureName: z.string().nullable(),
-  procedureDesc: z.string().nullable(),
-  procedureShort: z.string().nullable(),
-  keyText: z.string().nullable(),
-  createdAt: z.date(),
-  updatedAt: z.date(),
-});
-
-const procedureMutationSchema = z.object({
-  procedureName: z.string().trim().min(1).nullable().optional(),
-  procedureDesc: z.string().trim().nullable().optional(),
-  procedureShort: z.string().trim().min(1).nullable().optional(),
-  keyText: z.string().trim().nullable().optional(),
-});
-
 const bomSchema = z.object({
   id: z.string(),
   tenantId: z.string(),
@@ -103,103 +85,6 @@ function handleKnownError(reply: any, err: unknown, labels: { notFound: string; 
 }
 
 export const masterDataRoutes: FastifyPluginAsyncZod = async function (app) {
-  app.get('/procedures', {
-    onRequest: [app.authenticate],
-    schema: {
-      tags: ['Workflows', 'Master Data'],
-      summary: 'List procedures',
-      description: 'Read tenant procedure master data used by phase procedure bindings.',
-      operationId: 'listProcedures',
-      security: [{ bearerAuth: [] }],
-      'x-route-kind': 'resource-crud',
-      'x-auth': 'authenticated',
-      response: { 200: z.array(procedureSchema), 401: errorResponse },
-    },
-  }, async (req) => masterDataService.listProcedures(tenantIdOf(req)));
-
-  app.post('/procedures', {
-    onRequest: [app.requireRole('admin', 'owner')],
-    schema: {
-      tags: ['Workflows', 'Master Data'],
-      summary: 'Create procedure',
-      description: 'Create a tenant procedure master-data entry for controlled production instructions.',
-      operationId: 'createProcedure',
-      security: [{ bearerAuth: [] }],
-      'x-route-kind': 'resource-crud',
-      'x-auth': 'role',
-      'x-required-roles': ['admin', 'owner'],
-      body: procedureMutationSchema,
-      response: { 201: procedureSchema, 401: errorResponse, 403: errorResponse },
-    },
-  }, async (req, reply) => reply.status(201).send(await masterDataService.createProcedure(req.body, actorIdOf(req), tenantIdOf(req))));
-
-  app.get('/procedures/:id', {
-    onRequest: [app.authenticate],
-    schema: {
-      tags: ['Workflows', 'Master Data'],
-      summary: 'Get procedure',
-      description: 'Read one tenant procedure master-data entry by id.',
-      operationId: 'getProcedure',
-      security: [{ bearerAuth: [] }],
-      'x-route-kind': 'resource-crud',
-      'x-auth': 'authenticated',
-      params: z.object({ id: z.string() }),
-      response: { 200: procedureSchema, 401: errorResponse, 404: errorResponse },
-    },
-  }, async (req, reply) => {
-    const procedure = await masterDataService.getProcedure(req.params.id, tenantIdOf(req));
-    return procedure ?? reply.status(404).send({ error: 'Procedure not found' });
-  });
-
-  app.patch('/procedures/:id', {
-    onRequest: [app.requireRole('admin', 'owner')],
-    schema: {
-      tags: ['Workflows', 'Master Data'],
-      summary: 'Update procedure',
-      description: 'Update tenant procedure master-data metadata.',
-      operationId: 'updateProcedure',
-      security: [{ bearerAuth: [] }],
-      'x-route-kind': 'resource-crud',
-      'x-auth': 'role',
-      'x-required-roles': ['admin', 'owner'],
-      params: z.object({ id: z.string() }),
-      body: procedureMutationSchema,
-      response: { 200: procedureSchema, 401: errorResponse, 403: errorResponse, 404: errorResponse },
-    },
-  }, async (req, reply) => {
-    try {
-      return await masterDataService.updateProcedure(req.params.id, req.body, actorIdOf(req), tenantIdOf(req));
-    } catch (err) {
-      const handled = handleKnownError(reply, err, { notFound: 'Procedure not found' });
-      if (handled) return handled;
-      throw err;
-    }
-  });
-
-  app.delete('/procedures/:id', {
-    onRequest: [app.requireRole('admin', 'owner')],
-    schema: {
-      tags: ['Workflows', 'Master Data'],
-      summary: 'Delete procedure',
-      description: 'Delete an unused tenant procedure. Phase-bound procedures are protected by database constraints.',
-      operationId: 'deleteProcedure',
-      security: [{ bearerAuth: [] }],
-      'x-route-kind': 'resource-crud',
-      'x-auth': 'role',
-      'x-required-roles': ['admin', 'owner'],
-      params: z.object({ id: z.string() }),
-      response: { 200: successResponse, 401: errorResponse, 403: errorResponse, 404: errorResponse, 409: errorResponse },
-    },
-  }, async (req, reply) => {
-    try {
-      return await masterDataService.deleteProcedure(req.params.id, actorIdOf(req), tenantIdOf(req));
-    } catch (err) {
-      const handled = handleKnownError(reply, err, { notFound: 'Procedure not found', conflict: 'Procedure is in use and cannot be deleted' });
-      if (handled) return handled;
-      throw err;
-    }
-  });
-
   app.get('/boms', {
     onRequest: [app.authenticate],
     schema: {

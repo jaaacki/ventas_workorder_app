@@ -61,6 +61,7 @@ describe('Microsoft OAuth scopes', () => {
     LOG_LEVEL: 'info',
     DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
     JWT_SECRET: 'test-secret-at-least-16-chars',
+    JWT_EXPIRES_IN: '7d',
     FRONTEND_URL: 'http://localhost:3000',
     MS_CLIENT_ID: 'client-id',
     MS_TENANT: 'ventas-bio',

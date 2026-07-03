@@ -5,6 +5,7 @@ import jwt from '@fastify/jwt';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { parseEnv } from './config/env.js';
 import authPlugin from './plugins/auth.js';
+import { AUTH_COOKIE_NAME } from './auth/session.js';
 import { registerOpenApi } from './plugins/openapi.js';
 import { authRoutes } from './auth/routes.js';
 import { oauthRoutes } from './auth/oauth.js';
@@ -51,6 +52,10 @@ async function buildServer() {
 
   await app.register(jwt, {
     secret: config.JWT_SECRET,
+    sign: { expiresIn: config.JWT_EXPIRES_IN },
+    // Verify reads the token from the httpOnly auth cookie (Authorization header
+    // still works too, for non-browser API clients).
+    cookie: { cookieName: AUTH_COOKIE_NAME, signed: false },
   });
 
   await app.register(authPlugin);

@@ -32,13 +32,13 @@ export interface User {
 }
 
 export interface AuthResponse {
-  token: string;
   user: User;
 }
 
-export async function login(email: string, password: string): Promise<AuthResponse> {
+// The session JWT comes back in an httpOnly cookie; only the user profile is in the body.
+export async function login(email: string, password: string): Promise<User> {
   const { data } = await api.post<AuthResponse>('/api/auth/login', { email, password });
-  return data;
+  return data.user;
 }
 
 export async function register(payload: {

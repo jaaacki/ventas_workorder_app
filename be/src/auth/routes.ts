@@ -4,6 +4,7 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../db/prisma.js';
 import type { JwtPayload } from '../plugins/auth.js';
+import { clearAuthCookie, issueAuthCookie } from './session.js';
 import { tenantIdOrDefault } from '../services/tenant.js';
 
 const errorResponse = z.object({ error: z.string() });
@@ -89,7 +90,7 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
       schema: {
         tags: ['Auth'],
         summary: 'Log in',
-        description: 'Authenticate with local email/password credentials and receive a JWT.',
+        description: 'Authenticate with local email/password credentials. The session JWT is returned in an httpOnly cookie.',
         operationId: 'login',
         'x-route-kind': 'auth',
         'x-auth': 'anonymous',
@@ -99,7 +100,6 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
         }),
         response: {
           200: z.object({
-            token: z.string(),
             user: userSchema,
           }),
           401: errorResponse,
@@ -126,7 +126,8 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
         tenantId: tenantIdOrDefault(staff.tenantId),
         name: staff.name,
       });
-      return { token, user: serializeUser(staff) };
+      issueAuthCookie(reply, token, app.config);
+      return { user: serializeUser(staff) };
     }
   );
 
@@ -213,7 +214,7 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
       schema: {
         tags: ['Auth'],
         summary: 'Log out',
-        description: 'Client-side logout acknowledgement for JWT-based sessions.',
+        description: 'Clear the httpOnly session cookie, ending the current browser session.',
         operationId: 'logout',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'auth',
@@ -224,7 +225,8 @@ export const authRoutes: FastifyPluginAsyncZod = async function (app) {
         },
       },
     },
-    async () => {
+    async (_req, reply) => {
+      clearAuthCookie(reply, app.config);
       return { success: true };
     }
   );

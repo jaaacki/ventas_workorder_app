@@ -910,6 +910,8 @@ describe('workOrderService', () => {
       prodEnd: null,
     });
     mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
+    // No same-HET peers: this run's only work order is the one being started.
+    mocks.workOrder.findMany.mockResolvedValue([]);
     mocks.workOrder.findFirstOrThrow.mockResolvedValueOnce({
       id: 'wo-1',
       tenantId: 'ventas',
@@ -921,6 +923,7 @@ describe('workOrderService', () => {
       prodEnd: null,
     }).mockResolvedValue({
       id: 'wo-1',
+      phaseOrder: 0,
       hetId: 'h1',
       prodStart: new Date('2026-06-30T08:00:00Z'),
       prodEnd: null,
@@ -928,6 +931,7 @@ describe('workOrderService', () => {
       sterilises: [],
       woSerials: [],
       phaseEquips: [],
+      batchHets: [],
     });
 
     const result = await startWorkOrderPhase('wo-1', 'actor1');
@@ -1046,6 +1050,8 @@ describe('workOrderService', () => {
         prodDuration: null,
       });
       mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
+      // No same-HET peers: this run's only work order is the one being finished.
+      mocks.workOrder.findMany.mockResolvedValue([]);
       mocks.workOrder.findFirstOrThrow.mockResolvedValueOnce({
         id: 'wo-1',
         tenantId: 'ventas',
@@ -1058,6 +1064,7 @@ describe('workOrderService', () => {
         prodDuration: { toString: () => '60.0000' },
       }).mockResolvedValue({
         id: 'wo-1',
+        phaseOrder: 0,
         hetId: 'h1',
         prodStart: new Date('2026-06-30T08:00:00Z'),
         prodEnd: new Date('2026-06-30T09:00:00Z'),
@@ -1065,6 +1072,7 @@ describe('workOrderService', () => {
         sterilises: [],
         woSerials: [],
         phaseEquips: [],
+        batchHets: [],
       });
 
       const result = await finishWorkOrderPhase('wo-1', 'actor1');

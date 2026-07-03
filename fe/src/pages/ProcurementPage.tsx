@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import type { AxiosError } from 'axios';
@@ -898,16 +898,18 @@ export default function ProcurementPage() {
   // resolver rebuilds its zod schema (including boolean fields) from the active
   // session, and reset() reseeds the fields when a new editor opens.
   const editorKindRef = useRef<EditableKind | null>(null);
+  // buildEditorSchema mixes string and boolean fields, so zod widens the resolver's
+  // inferred value type to Record<string, unknown>; the return cast realigns it with
+  // the form's value type. Runtime validation is unaffected — the real zod schema runs.
+  const editorResolver: Resolver<Record<string, string | boolean>> = (values, context, options) => {
+    const kind = editorKindRef.current;
+    if (!kind) return { values, errors: {} };
+    return zodResolver(buildEditorSchema(kind, values))(values, context, options) as unknown as ReturnType<
+      Resolver<Record<string, string | boolean>>
+    >;
+  };
   const editorForm = useForm<Record<string, string | boolean>>({
-    resolver: (values, context, options) => {
-      const kind = editorKindRef.current;
-      if (!kind) return { values, errors: {} };
-      // buildEditorSchema mixes string and boolean fields, so zod widens the inferred
-      // shape to Record<string, unknown>; assert it back to the form's value type.
-      // Runtime validation is unaffected — the real zod schema still runs.
-      const schema = buildEditorSchema(kind, values) as unknown as z.ZodType<Record<string, string | boolean>>;
-      return zodResolver(schema)(values, context, options);
-    },
+    resolver: editorResolver,
     defaultValues: {},
   });
   useEffect(() => {

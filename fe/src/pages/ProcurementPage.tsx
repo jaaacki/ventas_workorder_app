@@ -899,14 +899,13 @@ export default function ProcurementPage() {
   // session, and reset() reseeds the fields when a new editor opens.
   const editorKindRef = useRef<EditableKind | null>(null);
   // buildEditorSchema mixes string and boolean fields, so zod widens the resolver's
-  // inferred value type to Record<string, unknown>; the return cast realigns it with
-  // the form's value type. Runtime validation is unaffected — the real zod schema runs.
+  // inferred value type to Record<string, unknown>; cast the built resolver to the
+  // form's value type so its args and result line up. Runtime validation is unaffected.
   const editorResolver: Resolver<Record<string, string | boolean>> = (values, context, options) => {
     const kind = editorKindRef.current;
     if (!kind) return { values, errors: {} };
-    return zodResolver(buildEditorSchema(kind, values))(values, context, options) as unknown as ReturnType<
-      Resolver<Record<string, string | boolean>>
-    >;
+    const resolve = zodResolver(buildEditorSchema(kind, values)) as unknown as Resolver<Record<string, string | boolean>>;
+    return resolve(values, context, options);
   };
   const editorForm = useForm<Record<string, string | boolean>>({
     resolver: editorResolver,

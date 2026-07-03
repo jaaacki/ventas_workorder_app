@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     findMany: vi.fn(),
   },
   workflowPhase: { createMany: vi.fn(), deleteMany: vi.fn() },
+  auditLog: { create: vi.fn() },
   $transaction: vi.fn(),
 }));
 
@@ -20,6 +21,7 @@ vi.mock('../../db/prisma.js', () => ({
     workflow: mocks.workflow,
     phase: mocks.phase,
     workflowPhase: mocks.workflowPhase,
+    auditLog: mocks.auditLog,
     $transaction: mocks.$transaction.mockImplementation(
       async (fn: (tx: unknown) => Promise<unknown>) =>
         fn({ workflow: mocks.workflow, phase: mocks.phase, workflowPhase: mocks.workflowPhase }),
@@ -82,6 +84,9 @@ describe('workflowService', () => {
         }),
       }),
     );
+    expect(mocks.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ entityType: 'Workflow', entityId: 'w1', action: 'create', actorId: 'actor1' }),
+    }));
   });
 
   it('createWorkflow uses the caller tenant instead of the default tenant', async () => {
@@ -149,6 +154,9 @@ describe('workflowService', () => {
     expect(mocks.workflowPhase.createMany).toHaveBeenCalledWith({
       data: [{ workflowId: 'w1', phaseId: 'p2', sortOrder: 0 }],
     });
+    expect(mocks.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ entityType: 'Workflow', entityId: 'w1', action: 'update', actorId: 'actor1' }),
+    }));
   });
 
   it('updateWorkflow leaves phase bindings untouched when phases not provided', async () => {

@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { tenantIdOrDefault } from './tenant.js';
+import { writeAuditLog } from './auditLogService.js';
 
 /**
  * Detail include for the Het view: the in-use / finished work-order links plus
@@ -91,6 +92,7 @@ export async function useHet(hetId: string, input: UseHetInput) {
     });
   });
 
+  await writeAuditLog({ tenantId: scopedTenantId, actorId: input.actorId, entityType: 'Het', entityId: hetId, action: 'use', after: updated, metadata: { workOrderId: input.workOrderId } });
   return updated;
 }
 
@@ -121,12 +123,12 @@ export async function finishHet(hetId: string, input: FinishHetInput) {
       clientVersion: 'unknown',
     });
   }
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.het.updateMany({
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.het.updateMany({
       where: { id: hetId, tenantId: scopedTenantId, deleted: false },
       data: { finishedById: input.workOrderId },
     });
-    if (updated.count === 0) {
+    if (result.count === 0) {
       throw new Prisma.PrismaClientKnownRequestError('HET not found', {
         code: 'P2025',
         clientVersion: 'unknown',
@@ -138,4 +140,7 @@ export async function finishHet(hetId: string, input: FinishHetInput) {
       include: hetDetailInclude,
     });
   });
+
+  await writeAuditLog({ tenantId: scopedTenantId, actorId: input.actorId, entityType: 'Het', entityId: hetId, action: 'finish', after: updated, metadata: { workOrderId: input.workOrderId } });
+  return updated;
 }

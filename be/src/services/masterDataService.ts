@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { tenantIdOrDefault } from './tenant.js';
+import { writeAuditLog } from './auditLogService.js';
 
 export interface ProcedureInput {
   procedureName?: string | null;
@@ -116,10 +117,11 @@ export async function getProcedure(id: string, tenantId?: string | null) {
 }
 
 export async function createProcedure(input: ProcedureInput, actorId: string, tenantId?: string | null) {
-  return prisma.procedure.create({
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const created = await prisma.procedure.create({
     data: {
       id: randomUUID(),
-      tenantId: tenantIdOrDefault(tenantId),
+      tenantId: scopedTenantId,
       procedureName: input.procedureName ?? null,
       procedureDesc: input.procedureDesc ?? null,
       procedureShort: input.procedureShort ?? null,
@@ -129,10 +131,13 @@ export async function createProcedure(input: ProcedureInput, actorId: string, te
     },
     select: procedureSelect,
   });
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Procedure', entityId: created.id, action: 'create', after: created });
+  return created;
 }
 
 export async function updateProcedure(id: string, input: ProcedureInput, actorId: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
+  const before = await prisma.procedure.findFirst({ where: { id, tenantId: scopedTenantId }, select: procedureSelect });
   const updated = await prisma.procedure.updateMany({
     where: { id, tenantId: scopedTenantId },
     data: {
@@ -145,14 +150,18 @@ export async function updateProcedure(id: string, input: ProcedureInput, actorId
   });
   if (updated.count === 0) throw notFound('Procedure not found');
 
-  return prisma.procedure.findFirstOrThrow({ where: { id, tenantId: scopedTenantId }, select: procedureSelect });
+  const after = await prisma.procedure.findFirstOrThrow({ where: { id, tenantId: scopedTenantId }, select: procedureSelect });
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Procedure', entityId: id, action: 'update', before, after });
+  return after;
 }
 
-export async function deleteProcedure(id: string, tenantId?: string | null) {
+export async function deleteProcedure(id: string, actorId: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
+  const before = await prisma.procedure.findFirst({ where: { id, tenantId: scopedTenantId }, select: procedureSelect });
   const deleted = await prisma.procedure.deleteMany({ where: { id, tenantId: scopedTenantId } });
   if (deleted.count === 0) throw notFound('Procedure not found');
 
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Procedure', entityId: id, action: 'delete', before });
   return { success: true as const };
 }
 
@@ -169,10 +178,11 @@ export async function getBom(id: string, tenantId?: string | null) {
 }
 
 export async function createBom(input: BomInput, actorId: string, tenantId?: string | null) {
-  return prisma.bom.create({
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const created = await prisma.bom.create({
     data: {
       id: randomUUID(),
-      tenantId: tenantIdOrDefault(tenantId),
+      tenantId: scopedTenantId,
       bomName: input.bomName ?? null,
       keyText: input.keyText ?? null,
       createdById: actorId,
@@ -180,10 +190,13 @@ export async function createBom(input: BomInput, actorId: string, tenantId?: str
     },
     select: bomSelect,
   });
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Bom', entityId: created.id, action: 'create', after: created });
+  return created;
 }
 
 export async function updateBom(id: string, input: BomInput, actorId: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
+  const before = await prisma.bom.findFirst({ where: { id, tenantId: scopedTenantId }, select: bomSelect });
   const updated = await prisma.bom.updateMany({
     where: { id, tenantId: scopedTenantId },
     data: {
@@ -194,14 +207,18 @@ export async function updateBom(id: string, input: BomInput, actorId: string, te
   });
   if (updated.count === 0) throw notFound('BOM not found');
 
-  return prisma.bom.findFirstOrThrow({ where: { id, tenantId: scopedTenantId }, select: bomSelect });
+  const after = await prisma.bom.findFirstOrThrow({ where: { id, tenantId: scopedTenantId }, select: bomSelect });
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Bom', entityId: id, action: 'update', before, after });
+  return after;
 }
 
-export async function deleteBom(id: string, tenantId?: string | null) {
+export async function deleteBom(id: string, actorId: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
+  const before = await prisma.bom.findFirst({ where: { id, tenantId: scopedTenantId }, select: bomSelect });
   const deleted = await prisma.bom.deleteMany({ where: { id, tenantId: scopedTenantId } });
   if (deleted.count === 0) throw notFound('BOM not found');
 
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Bom', entityId: id, action: 'delete', before });
   return { success: true as const };
 }
 
@@ -228,7 +245,7 @@ export async function createBomLine(input: BomLineInput & { bomId: string }, act
   const scopedTenantId = tenantIdOrDefault(tenantId);
   const bom = await assertTenantBom(input.bomId, scopedTenantId);
 
-  return prisma.bomLine.create({
+  const created = await prisma.bomLine.create({
     data: {
       id: randomUUID(),
       tenantId: scopedTenantId,
@@ -245,6 +262,8 @@ export async function createBomLine(input: BomLineInput & { bomId: string }, act
     },
     select: bomLineSelect,
   });
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'BomLine', entityId: created.id, action: 'create', after: created });
+  return created;
 }
 
 export async function updateBomLine(id: string, input: BomLineInput, actorId: string, tenantId?: string | null) {
@@ -252,6 +271,7 @@ export async function updateBomLine(id: string, input: BomLineInput, actorId: st
   if (input.bomId) await assertTenantBom(input.bomId, scopedTenantId);
   const quantity = decimalOrNull(input.quantity);
 
+  const before = await prisma.bomLine.findFirst({ where: { id, tenantId: scopedTenantId, deleted: false }, select: bomLineSelect });
   const updated = await prisma.bomLine.updateMany({
     where: { id, tenantId: scopedTenantId, deleted: false },
     data: {
@@ -267,17 +287,21 @@ export async function updateBomLine(id: string, input: BomLineInput, actorId: st
   });
   if (updated.count === 0) throw notFound('BOM line not found');
 
-  return prisma.bomLine.findFirstOrThrow({ where: { id, tenantId: scopedTenantId, deleted: false }, select: bomLineSelect });
+  const after = await prisma.bomLine.findFirstOrThrow({ where: { id, tenantId: scopedTenantId, deleted: false }, select: bomLineSelect });
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'BomLine', entityId: id, action: 'update', before, after });
+  return after;
 }
 
 export async function deleteBomLine(id: string, actorId: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
+  const before = await prisma.bomLine.findFirst({ where: { id, tenantId: scopedTenantId, deleted: false }, select: bomLineSelect });
   const updated = await prisma.bomLine.updateMany({
     where: { id, tenantId: scopedTenantId, deleted: false },
     data: { deleted: true, updatedById: actorId },
   });
   if (updated.count === 0) throw notFound('BOM line not found');
 
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'BomLine', entityId: id, action: 'delete', before, metadata: { softDelete: true } });
   return { success: true as const };
 }
 
@@ -294,10 +318,11 @@ export async function getPhaseEquipment(id: string, tenantId?: string | null) {
 }
 
 export async function createPhaseEquipment(input: PhaseEquipInput, actorId: string, tenantId?: string | null) {
-  return prisma.phaseEquip.create({
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const created = await prisma.phaseEquip.create({
     data: {
       id: randomUUID(),
-      tenantId: tenantIdOrDefault(tenantId),
+      tenantId: scopedTenantId,
       equipId: input.equipId ?? null,
       name: input.name ?? null,
       description: input.description ?? null,
@@ -307,10 +332,13 @@ export async function createPhaseEquipment(input: PhaseEquipInput, actorId: stri
     },
     select: phaseEquipSelect,
   });
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'PhaseEquip', entityId: created.id, action: 'create', after: created });
+  return created;
 }
 
 export async function updatePhaseEquipment(id: string, input: PhaseEquipInput, actorId: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
+  const before = await prisma.phaseEquip.findFirst({ where: { id, tenantId: scopedTenantId }, select: phaseEquipSelect });
   const updated = await prisma.phaseEquip.updateMany({
     where: { id, tenantId: scopedTenantId },
     data: {
@@ -323,13 +351,17 @@ export async function updatePhaseEquipment(id: string, input: PhaseEquipInput, a
   });
   if (updated.count === 0) throw notFound('Phase equipment not found');
 
-  return prisma.phaseEquip.findFirstOrThrow({ where: { id, tenantId: scopedTenantId }, select: phaseEquipSelect });
+  const after = await prisma.phaseEquip.findFirstOrThrow({ where: { id, tenantId: scopedTenantId }, select: phaseEquipSelect });
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'PhaseEquip', entityId: id, action: 'update', before, after });
+  return after;
 }
 
-export async function deletePhaseEquipment(id: string, tenantId?: string | null) {
+export async function deletePhaseEquipment(id: string, actorId: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
+  const before = await prisma.phaseEquip.findFirst({ where: { id, tenantId: scopedTenantId }, select: phaseEquipSelect });
   const deleted = await prisma.phaseEquip.deleteMany({ where: { id, tenantId: scopedTenantId } });
   if (deleted.count === 0) throw notFound('Phase equipment not found');
 
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'PhaseEquip', entityId: id, action: 'delete', before });
   return { success: true as const };
 }

@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
     findFirst: vi.fn(),
     updateMany: vi.fn(),
   },
+  auditLog: { create: vi.fn() },
 }));
 
 vi.mock('../../db/prisma.js', () => {
@@ -24,6 +25,7 @@ vi.mock('../../db/prisma.js', () => {
     sterilise: mocks.sterilise,
     het: mocks.het,
     workOrder: mocks.workOrder,
+    auditLog: mocks.auditLog,
     $transaction: vi.fn(async (fn: (tx: typeof prisma) => unknown) => fn(prisma)),
   };
   return { prisma };
@@ -88,6 +90,9 @@ describe('sterilisationService', () => {
     });
 
     expect(result).toEqual({ id: 'ster-1', workOrderId: 'wo-1' });
+    expect(mocks.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ entityType: 'Sterilise', entityId: 'ster-1', action: 'create', actorId: 'actor1' }),
+    }));
   });
 
   it('createSterilisation throws P2025 when the work order is missing', async () => {
@@ -184,6 +189,9 @@ describe('sterilisationService', () => {
       include: { batchHets: { include: { het: { select: { id: true, hetNumber: true } } } } },
     });
     expect(result).toEqual({ id: 'ster-1', result: false });
+    expect(mocks.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ entityType: 'Sterilise', entityId: 'ster-1', action: 'update', actorId: 'actor1' }),
+    }));
   });
 
   it('setSterilisationResult scopes the preflight lookup to the caller tenant', async () => {

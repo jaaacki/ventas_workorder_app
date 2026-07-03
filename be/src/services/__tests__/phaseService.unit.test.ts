@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
     findUnique: vi.fn(),
     upsert: vi.fn(),
   },
+  auditLog: { create: vi.fn() },
 }));
 
 vi.mock('../../db/prisma.js', () => ({
@@ -36,6 +37,7 @@ vi.mock('../../db/prisma.js', () => ({
     phaseProcedure: mocks.phaseProcedure,
     phaseEquip: mocks.phaseEquip,
     phasePhaseEquip: mocks.phasePhaseEquip,
+    auditLog: mocks.auditLog,
   },
 }));
 
@@ -113,6 +115,9 @@ describe('phaseService', () => {
         }),
       }),
     );
+    expect(mocks.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ tenantId: 'tenant-a', actorId: 'actor1', entityType: 'Phase', entityId: 'phase-1', action: 'create' }),
+    }));
   });
 
   it('updates a tenant phase after ownership preflight', async () => {
@@ -142,15 +147,18 @@ describe('phaseService', () => {
   it('deletes an unused phase after ownership preflight', async () => {
     mocks.phase.deleteMany.mockResolvedValue({ count: 1 });
 
-    await expect(deletePhase('phase-1', 'tenant-a')).resolves.toEqual({ success: true });
+    await expect(deletePhase('phase-1', 'actor1', 'tenant-a')).resolves.toEqual({ success: true });
 
     expect(mocks.phase.deleteMany).toHaveBeenCalledWith({ where: { id: 'phase-1', tenantId: 'tenant-a' } });
+    expect(mocks.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ entityType: 'Phase', entityId: 'phase-1', action: 'delete', actorId: 'actor1' }),
+    }));
   });
 
   it('rejects delete when the phase is outside the caller tenant', async () => {
     mocks.phase.deleteMany.mockResolvedValue({ count: 0 });
 
-    await expect(deletePhase('phase-1', 'tenant-a')).rejects.toMatchObject({ code: 'P2025' });
+    await expect(deletePhase('phase-1', 'actor1', 'tenant-a')).rejects.toMatchObject({ code: 'P2025' });
 
     expect(mocks.phase.deleteMany).toHaveBeenCalledWith({ where: { id: 'phase-1', tenantId: 'tenant-a' } });
   });
@@ -180,7 +188,7 @@ describe('phaseService', () => {
     mocks.procedure.findFirst.mockResolvedValue({ id: 'procedure-1' });
     mocks.phaseProcedure.upsert.mockResolvedValue({ phaseId: 'phase-1', procedureId: 'procedure-1' });
 
-    await addPhaseProcedure('phase-1', 'procedure-1', 'tenant-a');
+    await addPhaseProcedure('phase-1', 'procedure-1', 'actor1', 'tenant-a');
 
     expect(mocks.procedure.findFirst).toHaveBeenCalledWith({
       where: { id: 'procedure-1', tenantId: 'tenant-a' },
@@ -191,13 +199,16 @@ describe('phaseService', () => {
       create: { phaseId: 'phase-1', procedureId: 'procedure-1' },
       update: {},
     }));
+    expect(mocks.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ entityType: 'Phase', entityId: 'phase-1', action: 'link', actorId: 'actor1' }),
+    }));
   });
 
   it('rejects procedure binding when procedure is outside the caller tenant', async () => {
     mocks.phase.findFirst.mockResolvedValue({ id: 'phase-1' });
     mocks.procedure.findFirst.mockResolvedValue(null);
 
-    await expect(addPhaseProcedure('phase-1', 'procedure-1', 'tenant-a')).rejects.toMatchObject({ code: 'P2025' });
+    await expect(addPhaseProcedure('phase-1', 'procedure-1', 'actor1', 'tenant-a')).rejects.toMatchObject({ code: 'P2025' });
 
     expect(mocks.phaseProcedure.upsert).not.toHaveBeenCalled();
   });
@@ -207,7 +218,7 @@ describe('phaseService', () => {
     mocks.phaseProcedure.findUnique.mockResolvedValue({ phaseId: 'phase-1' });
     mocks.phaseProcedure.delete.mockResolvedValue({ phaseId: 'phase-1', procedureId: 'procedure-1' });
 
-    await expect(deletePhaseProcedure('phase-1', 'procedure-1', 'tenant-a')).resolves.toEqual({ success: true });
+    await expect(deletePhaseProcedure('phase-1', 'procedure-1', 'actor1', 'tenant-a')).resolves.toEqual({ success: true });
 
     expect(mocks.phaseProcedure.delete).toHaveBeenCalledWith({
       where: { phaseId_procedureId: { phaseId: 'phase-1', procedureId: 'procedure-1' } },
@@ -219,7 +230,7 @@ describe('phaseService', () => {
     mocks.phaseEquip.findFirst.mockResolvedValue({ id: 'equip-1' });
     mocks.phasePhaseEquip.upsert.mockResolvedValue({ phaseId: 'phase-1', phaseEquipId: 'equip-1' });
 
-    await addPhaseEquipment('phase-1', 'equip-1', 'tenant-a');
+    await addPhaseEquipment('phase-1', 'equip-1', 'actor1', 'tenant-a');
 
     expect(mocks.phaseEquip.findFirst).toHaveBeenCalledWith({
       where: { id: 'equip-1', tenantId: 'tenant-a' },
@@ -237,7 +248,7 @@ describe('phaseService', () => {
     mocks.phasePhaseEquip.findUnique.mockResolvedValue({ phaseId: 'phase-1' });
     mocks.phasePhaseEquip.delete.mockResolvedValue({ phaseId: 'phase-1', phaseEquipId: 'equip-1' });
 
-    await expect(deletePhaseEquipment('phase-1', 'equip-1', 'tenant-a')).resolves.toEqual({ success: true });
+    await expect(deletePhaseEquipment('phase-1', 'equip-1', 'actor1', 'tenant-a')).resolves.toEqual({ success: true });
 
     expect(mocks.phasePhaseEquip.delete).toHaveBeenCalledWith({
       where: { phaseId_phaseEquipId: { phaseId: 'phase-1', phaseEquipId: 'equip-1' } },

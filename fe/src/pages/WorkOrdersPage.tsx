@@ -122,6 +122,7 @@ function WorkOrderCard({
   selected: boolean;
   onOpen: () => void;
 }) {
+  const stepTags = (workOrder.phase?.steps ?? []).filter((s) => s.code || s.name);
   return (
     <button
       type="button"
@@ -151,9 +152,9 @@ function WorkOrderCard({
         <span>{workOrder.counts?.serials ?? 0}/{workOrder.serialRequiredCount ?? 0} serials</span>
       </div>
 
-      {(workOrder.phase?.steps?.length ?? 0) > 0 && (
+      {stepTags.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1">
-          {workOrder.phase!.steps!.map((step) => (
+          {stepTags.map((step) => (
             <span
               key={step.id}
               className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400"

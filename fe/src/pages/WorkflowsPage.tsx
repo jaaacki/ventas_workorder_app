@@ -46,7 +46,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { EmptyState, MetricCard, PageHeader } from '@/components/tailadmin';
 import { toast } from 'sonner';
-import { ArrowDown, ArrowLeft, ArrowUp, Edit3, GripVertical, ListChecks, Plus, Trash2, Workflow as WorkflowIcon } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, Edit3, ListChecks, Plus, Trash2, Workflow as WorkflowIcon } from 'lucide-react';
 
 function apiError(e: AxiosError<{ error?: string }>, fallback: string) {
   return e.response?.data?.error || fallback;
@@ -465,10 +465,10 @@ function StepsDrawer({
               steps.map((step, index) => (
                 <div key={step.id} className="flex items-start gap-2 rounded-lg border border-border p-3">
                   <div className="flex flex-col">
-                    <button className="text-muted-foreground disabled:opacity-30" disabled={index === 0} onClick={() => move(index, -1)}>
+                    <button aria-label={`Move step ${stepTitle(step)} up`} className="text-muted-foreground disabled:opacity-30" disabled={index === 0} onClick={() => move(index, -1)}>
                       <ArrowUp className="h-3.5 w-3.5" />
                     </button>
-                    <button className="text-muted-foreground disabled:opacity-30" disabled={index === steps.length - 1} onClick={() => move(index, 1)}>
+                    <button aria-label={`Move step ${stepTitle(step)} down`} className="text-muted-foreground disabled:opacity-30" disabled={index === steps.length - 1} onClick={() => move(index, 1)}>
                       <ArrowDown className="h-3.5 w-3.5" />
                     </button>
                   </div>
@@ -476,16 +476,17 @@ function StepsDrawer({
                   <div className="min-w-0 flex-1">
                     <input
                       className="w-full bg-transparent text-sm font-medium text-foreground focus:outline-none"
-                      defaultValue={stepTitle(step)}
+                      aria-label={`Rename step ${stepTitle(step)}`}
+                      defaultValue={step.name ?? ''}
                       onBlur={(e) => {
                         const name = e.target.value.trim();
-                        if (name && name !== stepTitle(step)) renameMutation.mutate({ id: step.id, name });
+                        if (name && name !== (step.name ?? '')) renameMutation.mutate({ id: step.id, name });
                       }}
                     />
                     {step.description && <div className="truncate text-xs text-muted-foreground">{step.description}</div>}
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => unplaceMutation.mutate(step.id)}>Unplace</Button>
-                  <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(step.id)}>
+                  <Button aria-label={`Delete step ${stepTitle(step)}`} variant="ghost" size="icon" onClick={() => deleteMutation.mutate(step.id)}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
@@ -553,7 +554,7 @@ function WorkflowEditor({ workflowId, onBack }: { workflowId: string; onBack: ()
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [phaseDialog, setPhaseDialog] = useState<{ phase: PhaseItem | null } | null>(null);
   const [manageStepsFor, setManageStepsFor] = useState<string | null>(null);
-  const [deletePhaseTarget, setDeletePhaseTarget] = useState<PhaseItem | null>(null);
+  const [deletePhaseTarget, setDeletePhaseTarget] = useState<{ phase: PhaseItem; index: number } | null>(null);
   const [deleteWorkflowOpen, setDeleteWorkflowOpen] = useState(false);
 
   const { data: workflow, isLoading } = useQuery({
@@ -691,12 +692,11 @@ function WorkflowEditor({ workflowId, onBack }: { workflowId: string; onBack: ()
                 <TableRow key={phase.id}>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      <GripVertical className="h-4 w-4 text-muted-foreground/50" />
                       <div className="flex flex-col">
-                        <button className="text-muted-foreground disabled:opacity-30" disabled={index === 0} onClick={() => movePhase(index, -1)}>
+                        <button aria-label={`Move phase ${phaseTitle(phase, index)} up`} className="text-muted-foreground disabled:opacity-30" disabled={index === 0} onClick={() => movePhase(index, -1)}>
                           <ArrowUp className="h-3.5 w-3.5" />
                         </button>
-                        <button className="text-muted-foreground disabled:opacity-30" disabled={index === phases.length - 1} onClick={() => movePhase(index, 1)}>
+                        <button aria-label={`Move phase ${phaseTitle(phase, index)} down`} className="text-muted-foreground disabled:opacity-30" disabled={index === phases.length - 1} onClick={() => movePhase(index, 1)}>
                           <ArrowDown className="h-3.5 w-3.5" />
                         </button>
                       </div>
@@ -730,10 +730,10 @@ function WorkflowEditor({ workflowId, onBack }: { workflowId: string; onBack: ()
                         <ListChecks className="h-4 w-4" />
                         Manage steps
                       </Button>
-                      <Button variant="ghost" size="icon" onClick={() => setPhaseDialog({ phase })}>
+                      <Button aria-label={`Edit phase ${phaseTitle(phase, index)}`} variant="ghost" size="icon" onClick={() => setPhaseDialog({ phase })}>
                         <Edit3 className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" onClick={() => setDeletePhaseTarget(phase)}>
+                      <Button aria-label={`Delete phase ${phaseTitle(phase, index)}`} variant="ghost" size="icon" onClick={() => setDeletePhaseTarget({ phase, index })}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -768,10 +768,10 @@ function WorkflowEditor({ workflowId, onBack }: { workflowId: string; onBack: ()
       <ConfirmDialog
         open={Boolean(deletePhaseTarget)}
         title="Delete phase"
-        description={`Delete phase "${deletePhaseTarget ? phaseTitle(deletePhaseTarget, phases.indexOf(deletePhaseTarget)) : ''}"? Its steps move back to the pool.`}
+        description={`Delete phase "${deletePhaseTarget ? phaseTitle(deletePhaseTarget.phase, deletePhaseTarget.index) : ''}"? Its steps move back to the pool.`}
         busy={deletePhaseMutation.isPending}
         onOpenChange={(open) => !open && setDeletePhaseTarget(null)}
-        onConfirm={() => deletePhaseTarget && deletePhaseMutation.mutate(deletePhaseTarget.id)}
+        onConfirm={() => deletePhaseTarget && deletePhaseMutation.mutate(deletePhaseTarget.phase.id)}
       />
       <ConfirmDialog
         open={deleteWorkflowOpen}

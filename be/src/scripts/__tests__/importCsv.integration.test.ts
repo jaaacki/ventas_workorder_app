@@ -153,6 +153,38 @@ describe('importCsv — D3 idempotency + validation report', () => {
     expect(report.totals.upserted).toBeGreaterThan(0);
   });
 
+  it('binds every phase to the resolved AMG workflow (tenant + code)', async () => {
+    writeCsv('staff.csv', ['email'], [['a@b.c']]);
+    writeCsv('manufacturer.csv', ['manuId'], [['MAN-1']]);
+    writeCsv('bom.csv', ['bomId'], [['BOM-1']]);
+    writeCsv('bomLine.csv', ['bomLineId'], [['BOL-1']]);
+    writeCsv('het.csv', ['hetId'], [['HET-1']]);
+    writeCsv('phase.csv', ['phaseId'], [['PHS-1']]);
+    writeCsv('phaseEquip.csv', ['phaseEquipId'], [['PHQ-1']]);
+    writeCsv('workOrder.csv', ['woId'], [['WKO-1']]);
+    writeCsv('woSerial.csv', ['woSerialId'], [['WSR-1']]);
+    writeCsv('sterilise.csv', ['steriliseId'], [['STR-1']]);
+    writeCsv('printLabels.csv', ['_ID'], [['PL-1']]);
+
+    // phase.beforeImport resolves the AMG workflow up-front; give it an id to bind.
+    mocks.workflow.upsert.mockResolvedValue({ id: 'workflow-amg' });
+
+    await importAll(tmpDir, { dryRun: false });
+
+    // AMG cutover: workflow resolved once by tenant + code.
+    expect(mocks.workflow.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { tenantId_code: expect.objectContaining({ code: 'AMG' }) },
+      }),
+    );
+    // Every phase row is upserted carrying the resolved workflowId.
+    expect(mocks.phase.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ id: 'PHS-1', workflowId: 'workflow-amg' }),
+      }),
+    );
+  });
+
   it('manufacturerafterImport hook derives ManufacturerHet rows (GAP-1)', async () => {
     // Manufacture a workOrder with manuId, plus a WorkOrderHet join with HET-X.
     // Then the manufacturer.afterImport hook should produce a ManufacturerHet row.

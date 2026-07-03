@@ -294,12 +294,11 @@ model Workflow {
   @@map("workflow")
 }
 
-
-// A Phase is a letter-grouped stage (e.g. "A · Material Acquisition") owned by
-// exactly one Workflow and ordered within it via sortOrder. phaseShort holds the
-// letter ("A"). isGate marks a sterilisation/BET gate that requires a passing
-// result before advancing; blocksCombine forbids running the phase on a combined
-// (multi-HET) batch. These replace the hardcoded phaseOrder magic numbers.
+// A Phase is a letter-grouped stage owned by exactly one Workflow and ordered
+// within it via sortOrder. phaseShort holds the grouped step codes for the phase
+// (e.g. "A3, A4, A5"). isGate marks a sterilisation/BET gate that requires a
+// passing result before advancing; blocksCombine forbids running the phase on a
+// combined (multi-HET) batch. These replace the hardcoded phaseOrder magic numbers.
 model Phase {
   id            String   @id @default(cuid())
   tenantId      String   @default("ventas")
@@ -330,7 +329,6 @@ model Phase {
   @@index([workflowId])
   @@map("phase")
 }
-
 
 model PhaseEquip {
   id          String   @id

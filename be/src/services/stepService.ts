@@ -162,6 +162,17 @@ export async function reorderPhaseSteps(phaseId: string, stepIds: string[], acto
   const phase = await prisma.phase.findFirst({ where: { id: phaseId, tenantId: scopedTenantId }, select: { id: true } });
   if (!phase) throw notFound('Phase not found');
 
+  // A short/wrong id list would silently no-op (each updateMany is parent-scoped),
+  // leaving stale sortOrders. Require the list to be exactly the current step set.
+  const current = await prisma.step.findMany({ where: { phaseId, tenantId: scopedTenantId }, select: { id: true } });
+  if (
+    stepIds.length !== current.length ||
+    new Set(stepIds).size !== stepIds.length ||
+    !stepIds.every((id) => current.some((s) => s.id === id))
+  ) {
+    throw notFound('reorder list must be exactly the phase\'s current steps');
+  }
+
   await prisma.$transaction(
     stepIds.map((stepId, index) =>
       prisma.step.updateMany({

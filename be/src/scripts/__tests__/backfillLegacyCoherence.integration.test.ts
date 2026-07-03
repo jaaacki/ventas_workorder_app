@@ -158,4 +158,35 @@ describe('backfillLegacyCoherence (integration)', () => {
     expect(rerun.totals.finishedGoodsBridged).toBe(0);
     expect(rerun.totals.chainLinked).toBe(0);
   });
+
+  it('step 2b rebinds a foreign-workflow phase that an AMG work order sits on', async () => {
+    // Own tenant + workflows so this scenario never perturbs the run above.
+    // Runs before the file afterAll, so the shared prisma client is still live.
+    const c2 = `${code}-REBIND`;
+    const t2 = `TENANT-${c2}`;
+    await prisma.tenant.create({ data: { id: t2, slug: t2, name: `Test ${c2}` } });
+    const amg = await prisma.workflow.create({ data: { tenantId: t2, name: `AMG ${c2}`, code: c2, active: true } });
+    const foreign = await prisma.workflow.create({ data: { tenantId: t2, name: `Foreign ${c2}`, code: `${c2}-F`, active: true } });
+    const phaseId = `${c2}:P`;
+    // Phase owned by the FOREIGN workflow...
+    await prisma.phase.create({ data: { id: phaseId, tenantId: t2, workflowId: foreign.id, phaseName: 'Stray', phaseShort: 'S1', sortOrder: 1 } });
+    const hetId = `${c2}:HET`;
+    await prisma.het.create({ data: { id: hetId, tenantId: t2, hetNumber: `${c2}-H`, quantity: 1 } });
+    const woId = `${c2}:WO`;
+    // ...but an AMG work order already sits on it (legacy incoherence).
+    await prisma.workOrder.create({ data: { id: woId, tenantId: t2, woNumber: woId, workflowId: amg.id, hetId, phaseId, phaseOrder: 1 } });
+
+    try {
+      const report = await backfillLegacyCoherence({ tenantId: t2, workflowCode: c2 });
+      expect(report.totals.phasesBound).toBe(1);
+      const rebound = await prisma.phase.findUniqueOrThrow({ where: { id: phaseId } });
+      expect(rebound.workflowId).toBe(amg.id);
+    } finally {
+      await prisma.workOrder.deleteMany({ where: { id: woId } }).catch(() => undefined);
+      await prisma.het.deleteMany({ where: { id: hetId } }).catch(() => undefined);
+      await prisma.phase.deleteMany({ where: { id: phaseId } }).catch(() => undefined);
+      await prisma.workflow.deleteMany({ where: { id: { in: [amg.id, foreign.id] } } }).catch(() => undefined);
+      await prisma.tenant.deleteMany({ where: { id: t2 } }).catch(() => undefined);
+    }
+  });
 });

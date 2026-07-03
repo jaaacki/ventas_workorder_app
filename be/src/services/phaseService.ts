@@ -47,13 +47,26 @@ function notFound(message: string) {
   });
 }
 
+function referenced(message: string) {
+  return new Prisma.PrismaClientKnownRequestError(message, {
+    code: 'P2003',
+    clientVersion: 'unknown',
+  });
+}
+
 async function assertTenantPhase(id: string, tenantId: string) {
   const phase = await prisma.phase.findFirst({ where: { id, tenantId }, select: { id: true } });
   if (!phase) throw notFound('Phase not found');
 }
 
+async function assertTenantBom(bomId: string, tenantId: string) {
+  const bom = await prisma.bom.findFirst({ where: { id: bomId, tenantId }, select: { id: true } });
+  if (!bom) throw referenced('Referenced BOM does not exist');
+}
+
 export async function updatePhase(id: string, input: UpdatePhaseInput, actorId: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
+  if (input.bomId != null) await assertTenantBom(input.bomId, scopedTenantId);
   const before = await prisma.phase.findFirst({ where: { id, tenantId: scopedTenantId }, select: phaseSelect });
   const updated = await prisma.phase.updateMany({
     where: { id, tenantId: scopedTenantId },
@@ -82,6 +95,10 @@ export async function updatePhase(id: string, input: UpdatePhaseInput, actorId: 
 export async function deletePhase(id: string, actorId: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
   const before = await prisma.phase.findFirst({ where: { id, tenantId: scopedTenantId }, select: phaseSelect });
+  // workOrder.phaseId & nextPhaseId are ON DELETE SET NULL, so a plain delete
+  // would strand live work orders (nulling their phase pointers).
+  const live = await prisma.workOrder.count({ where: { tenantId: scopedTenantId, deleted: false, OR: [{ phaseId: id }, { nextPhaseId: id }] } });
+  if (live > 0) throw referenced('Phase is referenced by a work order and cannot be deleted');
   // Owned steps survive: Step.phaseId is ON DELETE SET NULL, so they fall back
   // to the workflow's unplaced pool rather than being deleted with the phase.
   const deleted = await prisma.phase.deleteMany({ where: { id, tenantId: scopedTenantId } });

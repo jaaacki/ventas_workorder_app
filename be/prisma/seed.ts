@@ -120,9 +120,8 @@ async function seedOwner(ownerRoleId: string) {
 
 async function seedAmGraftWorkflow() {
   // Real AmGraft A–H production recipe. Each phase (letter group) owns an
-  // ordered set of steps. phaseShort is the letter; phaseName is the group.
-  // isGate marks the sterilisation/BET gate; blocksCombine forbids running the
-  // phase on a combined (multi-HET) batch.
+  // ordered set of steps. isGate marks the sterilisation/BET gate; blocksCombine
+  // forbids running the phase on a combined (multi-HET) batch.
   const recipe: Array<{
     phaseShort: string;
     phaseName: string;
@@ -231,37 +230,41 @@ async function seedAmGraftWorkflow() {
     return workflow;
   }
 
+  // One transaction so a mid-loop failure can't strand a partial recipe that the
+  // `existingPhases > 0` guard above would then skip forever.
   let stepCount = 0;
-  for (let phaseIndex = 0; phaseIndex < recipe.length; phaseIndex += 1) {
-    const group = recipe[phaseIndex];
-    const phase = await prisma.phase.create({
-      data: {
-        tenantId: DEFAULT_TENANT_ID,
-        workflowId: workflow.id,
-        sortOrder: phaseIndex,
-        phaseShort: group.phaseShort,
-        phaseName: group.phaseName,
-        isGate: group.isGate ?? false,
-        blocksCombine: group.blocksCombine ?? false,
-        keyText: `AMG:${group.phaseShort}`,
-      },
-    });
-    for (let stepIndex = 0; stepIndex < group.steps.length; stepIndex += 1) {
-      const step = group.steps[stepIndex];
-      await prisma.step.create({
+  await prisma.$transaction(async (tx) => {
+    for (let phaseIndex = 0; phaseIndex < recipe.length; phaseIndex += 1) {
+      const group = recipe[phaseIndex];
+      const phase = await tx.phase.create({
         data: {
           tenantId: DEFAULT_TENANT_ID,
           workflowId: workflow.id,
-          phaseId: phase.id,
-          sortOrder: stepIndex,
-          code: step.code,
-          name: step.name,
-          keyText: `AMG:${step.code}`,
+          sortOrder: phaseIndex,
+          phaseShort: group.phaseShort,
+          phaseName: group.phaseName,
+          isGate: group.isGate ?? false,
+          blocksCombine: group.blocksCombine ?? false,
+          keyText: `AMG:${group.phaseShort}`,
         },
       });
-      stepCount += 1;
+      for (let stepIndex = 0; stepIndex < group.steps.length; stepIndex += 1) {
+        const step = group.steps[stepIndex];
+        await tx.step.create({
+          data: {
+            tenantId: DEFAULT_TENANT_ID,
+            workflowId: workflow.id,
+            phaseId: phase.id,
+            sortOrder: stepIndex,
+            code: step.code,
+            name: step.name,
+            keyText: `AMG:${step.code}`,
+          },
+        });
+        stepCount += 1;
+      }
     }
-  }
+  });
 
   console.log(`Seeded AmGraft workflow (${workflow.code}) with ${recipe.length} phases and ${stepCount} steps`);
   return workflow;

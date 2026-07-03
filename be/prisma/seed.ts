@@ -143,6 +143,16 @@ async function seedAmGraftWorkflow() {
     },
   });
 
+  // Only seed + bind the placeholder demo phases on a fresh workflow. Once the
+  // real phases are bound (by the legacy import + `db:backfill:legacy-coherence`),
+  // leave the binding alone — otherwise every deploy would wipe the real 16-phase
+  // binding and re-hide all legacy work orders behind the 5 demo phases.
+  const existingBindings = await prisma.workflowPhase.count({ where: { workflowId: workflow.id } });
+  if (existingBindings > 0) {
+    console.log(`AmGraft workflow (${workflow.code}) already has ${existingBindings} phase bindings; leaving them intact`);
+    return workflow;
+  }
+
   // Upsert each Phase with a stable id. Phase.id is `String @id` with no
   // default, so we supply an explicit id (and matching keyText).
   for (let index = 0; index < phases.length; index += 1) {

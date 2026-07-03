@@ -1,4 +1,5 @@
 import { type FormEvent, type ReactNode, useState } from 'react';
+import { Controller, type Control, type FieldValues, type Path } from 'react-hook-form';
 import { Archive, Edit3, History, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -216,22 +217,27 @@ export function CrudSheet({
   );
 }
 
-export function TextField({
+// The field components are driven by react-hook-form: pass the form `control` and
+// the field `name`; validation errors come from `error`. Field-level messages are
+// rendered inline, replacing the old native `required`-only validation.
+export function TextField<T extends FieldValues>({
+  control,
+  name,
   label,
-  value,
-  onChange,
   placeholder,
   type = 'text',
   className,
   required,
+  error,
 }: {
+  control: Control<T>;
+  name: Path<T>;
   label: string;
-  value: string;
-  onChange: (value: string) => void;
   placeholder?: string;
   type?: string;
   className?: string;
   required?: boolean;
+  error?: string;
 }) {
   return (
     <label className={className}>
@@ -239,29 +245,45 @@ export function TextField({
         {label}
         {required && <span className="ml-1 text-error-500">*</span>}
       </Label>
-      <Input required={required} type={type} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+      <Controller
+        control={control}
+        name={name}
+        render={({ field }) => (
+          <Input
+            type={type}
+            placeholder={placeholder}
+            value={(field.value as string | undefined) ?? ''}
+            onChange={field.onChange}
+            onBlur={field.onBlur}
+            aria-invalid={error ? true : undefined}
+          />
+        )}
+      />
+      {error && <p className="mt-1 text-sm text-error-500">{error}</p>}
     </label>
   );
 }
 
 const EMPTY_SELECT_VALUE = '__empty__';
 
-export function SelectField({
+export function SelectField<T extends FieldValues>({
+  control,
+  name,
   label,
-  value,
   options,
-  onChange,
   placeholder = 'Select value',
   allowEmpty = true,
   required,
+  error,
 }: {
+  control: Control<T>;
+  name: Path<T>;
   label: string;
-  value: string;
   options: Array<{ value: string; label: string }>;
-  onChange: (value: string) => void;
   placeholder?: string;
   allowEmpty?: boolean;
   required?: boolean;
+  error?: string;
 }) {
   return (
     <label>
@@ -269,42 +291,58 @@ export function SelectField({
         {label}
         {required && <span className="ml-1 text-error-500">*</span>}
       </Label>
-      <Select value={value || (allowEmpty ? EMPTY_SELECT_VALUE : '')} onValueChange={(next) => onChange(next === EMPTY_SELECT_VALUE ? '' : next)}>
-        <SelectTrigger>
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          {allowEmpty && <SelectItem value={EMPTY_SELECT_VALUE}>None</SelectItem>}
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <Controller
+        control={control}
+        name={name}
+        render={({ field }) => (
+          <Select
+            value={(field.value as string) || (allowEmpty ? EMPTY_SELECT_VALUE : '')}
+            onValueChange={(next) => field.onChange(next === EMPTY_SELECT_VALUE ? '' : next)}
+          >
+            <SelectTrigger aria-invalid={error ? true : undefined}>
+              <SelectValue placeholder={placeholder} />
+            </SelectTrigger>
+            <SelectContent>
+              {allowEmpty && <SelectItem value={EMPTY_SELECT_VALUE}>None</SelectItem>}
+              {options.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      />
+      {error && <p className="mt-1 text-sm text-error-500">{error}</p>}
     </label>
   );
 }
 
-export function CheckboxField({
+export function CheckboxField<T extends FieldValues>({
+  control,
+  name,
   label,
-  checked,
-  onChange,
 }: {
+  control: Control<T>;
+  name: Path<T>;
   label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex min-h-11 items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm dark:border-gray-800">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        className="h-4 w-4 rounded border-gray-300"
-      />
-      <span>{label}</span>
-    </label>
+    <Controller
+      control={control}
+      name={name}
+      render={({ field }) => (
+        <label className="flex min-h-11 items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm dark:border-gray-800">
+          <input
+            type="checkbox"
+            checked={Boolean(field.value)}
+            onChange={(event) => field.onChange(event.target.checked)}
+            className="h-4 w-4 rounded border-gray-300"
+          />
+          <span>{label}</span>
+        </label>
+      )}
+    />
   );
 }
 

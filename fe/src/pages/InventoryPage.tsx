@@ -1,6 +1,9 @@
-import { type FormEvent, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import type { AxiosError } from 'axios';
 import { toast } from 'sonner';
 import {
@@ -218,6 +221,17 @@ const requiredFields: Record<EditableKind, string[]> = {
   genealogy: ['parentInventoryLotId', 'childInventoryLotId', 'relationshipType'],
   consumption: ['workOrderId'],
 };
+
+// Build the react-hook-form validation schema for an editor session from the same
+// field config that drives the form: required fields must be non-empty, everything
+// else is an optional string. Blank optional values are normalised to null at submit
+// by cleanPayload, preserving the existing request shape.
+function buildEditorSchema(kind: EditableKind, keys: string[]) {
+  const required = new Set(requiredFields[kind] ?? []);
+  return z.object(
+    Object.fromEntries(keys.map((key) => [key, required.has(key) ? z.string().trim().min(1, 'Required') : z.string()])),
+  );
+}
 
 function formatDate(value?: string | null) {
   return value ? new Date(value).toLocaleString() : '-';
@@ -779,6 +793,25 @@ export default function InventoryPage() {
   const [includeDeletedByKind, setIncludeDeletedByKind] = useState<Partial<Record<ActionKind, boolean>>>({});
   const [editor, setEditor] = useState<EditorState>(null);
   const [audit, setAudit] = useState<AuditState>(null);
+
+  // One react-hook-form instance drives the create/edit sheet across all kinds; the
+  // resolver rebuilds its zod schema from the active kind, and reset() reseeds the
+  // fields whenever a new editor session opens.
+  const editorKindRef = useRef<EditableKind | null>(null);
+  const editorForm = useForm<Record<string, string>>({
+    resolver: (values, context, options) => {
+      const kind = editorKindRef.current;
+      if (!kind) return { values, errors: {} };
+      return zodResolver(buildEditorSchema(kind, Object.keys(values)))(values, context, options);
+    },
+    defaultValues: {},
+  });
+  useEffect(() => {
+    if (editor) {
+      editorKindRef.current = editor.kind;
+      editorForm.reset(editor.values);
+    }
+  }, [editor, editorForm]);
   const canReadImports = hasPermission('inventory.importReport.read');
   const can = (kind: ActionKind, action: string) => hasPermission(`${resourceByKind[kind]}.${action}`);
   const permissions = (kind: ActionKind) => ({
@@ -904,16 +937,14 @@ export default function InventoryPage() {
   const hasError = overview.isError || lots.isError || transactions.isError || skus.isError || references.isError || locations.isError || balances.isError || genealogyLinks.isError || consumptions.isError;
   const mutationBusy = archiveMutation.isPending || restoreMutation.isPending || updateMutation.isPending || createMutation.isPending;
 
-  const setField = (key: string, value: string) => setEditor((current) => current && { ...current, values: { ...current.values, [key]: value } });
-  const submitEditor = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submitEditor = editorForm.handleSubmit((values) => {
     if (!editor) return;
     if (editor.mode === 'create') {
-      createMutation.mutate({ kind: editor.kind, values: editor.values });
+      createMutation.mutate({ kind: editor.kind, values });
       return;
     }
-    if (editor.id) updateMutation.mutate({ kind: editor.kind, id: editor.id, values: editor.values });
-  };
+    if (editor.id) updateMutation.mutate({ kind: editor.kind, id: editor.id, values });
+  });
   const openLotEditor = (lot: InventoryLot) => setEditor({ mode: 'edit', kind: 'lot', id: lot.id, label: lotLabel(lot), values: {
     inventorySkuId: lot.inventorySkuId || '', lotNumber: lot.lotNumber || '', inventoryType: lot.inventoryType || '', status: lot.status || '', quantityInitial: String(lot.quantityInitial ?? ''), quantityCurrent: String(lot.quantityCurrent ?? ''), uom: lot.uom || '', currentLocationId: lot.currentLocationId || '', collectionUnitId: lot.collectionUnitId || '', hetId: lot.hetId || '', workOrderId: lot.workOrderId || '', sourceSystem: lot.sourceSystem || '', legacyItemSerialId: lot.legacyItemSerialId || '', legacyCheckInOutId: lot.legacyCheckInOutId || '', legacyHetId: lot.legacyHetId || '',
   } });
@@ -956,10 +987,11 @@ export default function InventoryPage() {
     if (!editor) return null;
     const labels = editorFieldLabels[editor.kind];
     const orderedKeys = [...Object.keys(labels), ...Object.keys(editor.values).filter((key) => !labels[key])];
-    const value = (key: string) => editor.values[key] ?? '';
+    const errors = editorForm.formState.errors;
     const isRequired = (key: string) => requiredFields[editor.kind].includes(key);
+    const errorFor = (key: string) => errors[key]?.message as string | undefined;
     const selectField = (key: string, options: Array<{ value: string; label: string }>, label?: string) => (
-      <SelectField key={key} label={label ?? labels[key]} value={value(key)} options={options} required={isRequired(key)} allowEmpty={!isRequired(key)} onChange={(next) => setField(key, next)} />
+      <SelectField key={key} control={editorForm.control} name={key} label={label ?? labels[key]} options={options} required={isRequired(key)} allowEmpty={!isRequired(key)} error={errorFor(key)} />
     );
     const enumField = (key: string, values: string[], label?: string) => selectField(key, values.map((entry) => ({ value: entry, label: entry.replace(/_/g, ' ') })), label);
     const relationshipField = (key: string) => {
@@ -982,7 +1014,7 @@ export default function InventoryPage() {
                 ? enumField(key, ['consumed_into', 'produced_from', 'split_from', 'merged_into'])
                 : key === 'locationType'
                   ? enumField(key, ['warehouse', 'room', 'rack', 'bin', 'production_area'])
-                  : <TextField key={key} label={labels[key] ?? key.replace(/([A-Z])/g, ' $1')} value={value(key)} required={isRequired(key)} onChange={(next) => setField(key, next)} />)
+                  : <TextField key={key} control={editorForm.control} name={key} label={labels[key] ?? key.replace(/([A-Z])/g, ' $1')} required={isRequired(key)} error={errorFor(key)} />)
     ));
   };
 

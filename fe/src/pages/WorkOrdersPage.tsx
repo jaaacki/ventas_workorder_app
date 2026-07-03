@@ -96,7 +96,9 @@ function groupByPhase(workOrders: WorkOrderSummary[], columns: PhaseColumn[]) {
   for (const workOrder of workOrders) {
     // Superseded chain steps (the HET moved on to the next phase's work order)
     // are history, not active board work — they stay visible on the HET detail.
-    if (workOrder.legacyStateBucket === '5. WO Completed') continue;
+    // Keyed off the first-class lifecycle field rather than the legacy bucket
+    // label so the board tracks the intended semantic, not a string constant.
+    if (workOrder.lifecycleState === 'Completed') continue;
     const key = workOrderColumnId(workOrder);
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)?.push(workOrder);

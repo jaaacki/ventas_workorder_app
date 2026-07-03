@@ -1,6 +1,19 @@
+import { randomBytes } from 'node:crypto';
 import { Prisma, type WorkOrder } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { tenantIdOrDefault } from './tenant.js';
+
+/**
+ * Mint a human-readable work-order number that is also the primary key
+ * (WorkOrder.id has no @default). The millisecond timestamp keeps ids roughly
+ * sortable/readable; the random suffix prevents same-millisecond collisions
+ * when two work orders are created concurrently (two advances, or an advance
+ * racing a create) — without it a PK clash aborts the transaction and surfaces
+ * as an opaque 500.
+ */
+function generateWoNumber() {
+  return `WO-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString('hex').toUpperCase()}`;
+}
 
 export interface CreateWorkOrderInput {
   workflowId: string;
@@ -304,7 +317,7 @@ export async function createWorkOrder(input: CreateWorkOrderInput, actorId: stri
   }
 
   const firstPhase = workflow.phases[0];
-  const woNumber = `WO-${Date.now().toString(36).toUpperCase()}`;
+  const woNumber = generateWoNumber();
 
   // WorkOrder.id has no @default; reuse woNumber as the id so the work order is
   // addressable by the same human-readable identifier used in the UI.
@@ -905,9 +918,12 @@ export async function recordWorkOrderRelease(
 
     // A released run consumes its HET: the final (release-phase) work order is
     // recorded as the HET's finisher. Quarantine/reject leave the HET open.
+    // Guarded on finishedById=null (symmetric to createWorkOrder's usedById
+    // claim) so a HET already finished by an earlier run keeps its original
+    // finisher pointer instead of being silently overwritten.
     if (input.releaseStatus === 'released' && workOrder.hetId) {
       await tx.het.updateMany({
-        where: { id: workOrder.hetId, tenantId: scopedTenantId },
+        where: { id: workOrder.hetId, tenantId: scopedTenantId, finishedById: null },
         data: { finishedById: id },
       });
     }
@@ -1191,7 +1207,7 @@ export async function advanceWorkOrder(id: string, actorId: string, tenantId?: s
   // The HET is the state that carries through the workflow: advancing completes
   // this work order (evidence retained) and initialises the next phase as a NEW
   // work order chained via previousWoId, carrying the HET and batch-HET links.
-  const nextWoNumber = `WO-${Date.now().toString(36).toUpperCase()}`;
+  const nextWoNumber = generateWoNumber();
 
   const { completed, spawned } = await prisma.$transaction(async (tx) => {
     const completed = await updateTenantWorkOrderForAudit(tx, id, scopedTenantId, {
@@ -1199,6 +1215,9 @@ export async function advanceWorkOrder(id: string, actorId: string, tenantId?: s
       updatedById: actorId,
     });
 
+    // previousWoId carries a UNIQUE constraint, so a concurrent second advance of
+    // the same source work order collides here instead of forking the chain into
+    // two active next-phase work orders for one HET.
     const spawned = await tx.workOrder.create({
       data: {
         id: nextWoNumber,

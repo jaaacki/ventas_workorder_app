@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
     create: vi.fn(),
     findFirst: vi.fn(),
     findFirstOrThrow: vi.fn(),
+    findMany: vi.fn(),
     update: vi.fn(),
     updateMany: vi.fn(),
     deleteMany: vi.fn(),
@@ -101,6 +102,7 @@ describe('stepService', () => {
 
   it('reorderPhaseSteps sets each step sortOrder to its index within the phase', async () => {
     mocks.phase.findFirst.mockResolvedValue({ id: 'p1' });
+    mocks.step.findMany.mockResolvedValue([{ id: 's1' }, { id: 's2' }]);
     mocks.step.updateMany.mockResolvedValue({ count: 1 });
 
     await expect(stepService.reorderPhaseSteps('p1', ['s2', 's1'], 'actor1', 'tenant-a')).resolves.toEqual({ success: true });
@@ -113,6 +115,14 @@ describe('stepService', () => {
       where: { id: 's1', phaseId: 'p1', tenantId: 'tenant-a' },
       data: { sortOrder: 1, updatedById: 'actor1' },
     });
+  });
+
+  it('reorderPhaseSteps throws P2025 when the id list is not exactly the phase step set', async () => {
+    mocks.phase.findFirst.mockResolvedValue({ id: 'p1' });
+    mocks.step.findMany.mockResolvedValue([{ id: 's1' }, { id: 's2' }]);
+    // Wrong id (s3 is not a step of this phase) must be rejected, not silently no-op.
+    await expect(stepService.reorderPhaseSteps('p1', ['s1', 's3'], 'actor1', 'tenant-a')).rejects.toMatchObject({ code: 'P2025' });
+    expect(mocks.step.updateMany).not.toHaveBeenCalled();
   });
 
   it('updateStep throws P2025 when the step is outside the caller tenant', async () => {

@@ -105,12 +105,15 @@ export async function backfillLegacyCoherence(options: {
     //     workflow-owned now (phase.workflowId), set at import/seed, so no join
     //     table is involved. This is a safety net: any phase whose work order
     //     routes here but whose workflowId still points elsewhere gets rebound.
+    //     Assumes a single production line per tenant (AMG); cross-workflow phase
+    //     re-attachment is out of scope.
     report.totals.phasesBound = await tx.$executeRaw`
       UPDATE "phase" SET "workflowId" = ${workflowId}
       WHERE "tenantId" = ${tenantId} AND "workflowId" <> ${workflowId}
         AND "id" IN (
           SELECT DISTINCT o."phaseId" FROM "workOrder" o
-          WHERE o."workflowId" = ${workflowId} AND o."phaseId" IS NOT NULL AND o."deleted" = false
+          WHERE o."workflowId" = ${workflowId} AND o."tenantId" = ${tenantId}
+            AND o."phaseId" IS NOT NULL AND o."deleted" = false
         )`;
 
     // 3. Chain each HET run: previousWoId = prior-phase work order,
@@ -143,7 +146,7 @@ export async function backfillLegacyCoherence(options: {
         AND o."phaseId" = (
           SELECT p."id" FROM "phase" p
           WHERE p."workflowId" = ${workflowId}
-          ORDER BY p."sortOrder" DESC LIMIT 1
+          ORDER BY p."sortOrder" DESC, p."id" DESC LIMIT 1
         )`;
 
     // 5. Bridge finished-goods inventory lots to the run that produced them,
@@ -159,7 +162,7 @@ export async function backfillLegacyCoherence(options: {
         AND o."phaseId" = (
           SELECT p."id" FROM "phase" p
           WHERE p."workflowId" = ${workflowId}
-          ORDER BY p."sortOrder" DESC LIMIT 1
+          ORDER BY p."sortOrder" DESC, p."id" DESC LIMIT 1
         )`;
 
     if (dryRun) {

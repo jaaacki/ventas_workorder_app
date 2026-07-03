@@ -12,7 +12,10 @@ const mocks = vi.hoisted(() => ({
     aggregate: vi.fn(),
     create: vi.fn(),
     updateMany: vi.fn(),
+    findMany: vi.fn(),
   },
+  workOrder: { count: vi.fn() },
+  bom: { findFirst: vi.fn() },
   auditLog: { create: vi.fn() },
   $transaction: vi.fn(),
 }));
@@ -21,6 +24,8 @@ vi.mock('../../db/prisma.js', () => ({
   prisma: {
     workflow: mocks.workflow,
     phase: mocks.phase,
+    workOrder: mocks.workOrder,
+    bom: mocks.bom,
     auditLog: mocks.auditLog,
     $transaction: mocks.$transaction.mockImplementation(async (ops: unknown) =>
       Array.isArray(ops) ? Promise.all(ops) : (ops as (tx: unknown) => Promise<unknown>)({ workflow: mocks.workflow, phase: mocks.phase }),
@@ -114,6 +119,7 @@ describe('workflowService', () => {
 
   it('deleteWorkflow deletes and audits, cascading owned phases/steps', async () => {
     mocks.workflow.findFirst.mockResolvedValue(detail);
+    mocks.workOrder.count.mockResolvedValue(0);
     mocks.workflow.deleteMany.mockResolvedValue({ count: 1 });
     await expect(workflowService.deleteWorkflow('w1', 'actor1', 'tenant-a')).resolves.toEqual({ success: true });
     expect(mocks.workflow.deleteMany).toHaveBeenCalledWith({ where: { id: 'w1', tenantId: 'tenant-a' } });
@@ -122,8 +128,16 @@ describe('workflowService', () => {
     }));
   });
 
+  it('deleteWorkflow throws P2003 when live work orders still reference it', async () => {
+    mocks.workflow.findFirst.mockResolvedValue(detail);
+    mocks.workOrder.count.mockResolvedValue(3);
+    await expect(workflowService.deleteWorkflow('w1', 'actor1', 'tenant-a')).rejects.toMatchObject({ code: 'P2003' });
+    expect(mocks.workflow.deleteMany).not.toHaveBeenCalled();
+  });
+
   it('deleteWorkflow throws P2025 when nothing was deleted', async () => {
     mocks.workflow.findFirst.mockResolvedValue(null);
+    mocks.workOrder.count.mockResolvedValue(0);
     mocks.workflow.deleteMany.mockResolvedValue({ count: 0 });
     await expect(workflowService.deleteWorkflow('w1', 'actor1', 'tenant-a')).rejects.toMatchObject({ code: 'P2025' });
   });
@@ -160,8 +174,18 @@ describe('workflowService', () => {
     expect(mocks.phase.create).not.toHaveBeenCalled();
   });
 
+  it('addPhase rejects a bomId that belongs to another tenant (P2003)', async () => {
+    mocks.workflow.findFirst.mockResolvedValue({ id: 'w1' });
+    mocks.phase.aggregate.mockResolvedValue({ _max: { sortOrder: 0 } });
+    mocks.bom.findFirst.mockResolvedValue(null);
+    await expect(workflowService.addPhase('w1', { bomId: 'bom-other' }, 'actor1', 'tenant-a')).rejects.toMatchObject({ code: 'P2003' });
+    expect(mocks.bom.findFirst).toHaveBeenCalledWith({ where: { id: 'bom-other', tenantId: 'tenant-a' }, select: { id: true } });
+    expect(mocks.phase.create).not.toHaveBeenCalled();
+  });
+
   it('reorderPhases sets each phase sortOrder to its index within the tenant workflow', async () => {
     mocks.workflow.findFirst.mockResolvedValue({ id: 'w1' });
+    mocks.phase.findMany.mockResolvedValue([{ id: 'p1' }, { id: 'p2' }]);
     mocks.phase.updateMany.mockResolvedValue({ count: 1 });
     await expect(workflowService.reorderPhases('w1', ['p2', 'p1'], 'actor1', 'tenant-a')).resolves.toEqual({ success: true });
     expect(mocks.phase.updateMany).toHaveBeenCalledWith({
@@ -172,5 +196,13 @@ describe('workflowService', () => {
       where: { id: 'p1', workflowId: 'w1', tenantId: 'tenant-a' },
       data: { sortOrder: 1, updatedById: 'actor1' },
     });
+  });
+
+  it('reorderPhases throws P2025 when the id list is not exactly the current phase set', async () => {
+    mocks.workflow.findFirst.mockResolvedValue({ id: 'w1' });
+    mocks.phase.findMany.mockResolvedValue([{ id: 'p1' }, { id: 'p2' }]);
+    // Short list (missing p2) must be rejected rather than silently no-op.
+    await expect(workflowService.reorderPhases('w1', ['p1'], 'actor1', 'tenant-a')).rejects.toMatchObject({ code: 'P2025' });
+    expect(mocks.phase.updateMany).not.toHaveBeenCalled();
   });
 });

@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
     findUnique: vi.fn(),
     upsert: vi.fn(),
   },
+  workOrder: { count: vi.fn() },
+  bom: { findFirst: vi.fn() },
   auditLog: { create: vi.fn() },
 }));
 
@@ -24,6 +26,8 @@ vi.mock('../../db/prisma.js', () => ({
     phase: mocks.phase,
     phaseEquip: mocks.phaseEquip,
     phasePhaseEquip: mocks.phasePhaseEquip,
+    workOrder: mocks.workOrder,
+    bom: mocks.bom,
     auditLog: mocks.auditLog,
   },
 }));
@@ -68,7 +72,19 @@ describe('phaseService', () => {
     expect(mocks.phase.findFirstOrThrow).not.toHaveBeenCalled();
   });
 
+  it('rejects a bomId that belongs to another tenant (P2003) before touching the phase', async () => {
+    mocks.bom.findFirst.mockResolvedValue(null);
+
+    await expect(updatePhase('phase-1', { bomId: 'bom-other' }, 'actor1', 'tenant-a')).rejects.toMatchObject({
+      code: 'P2003',
+    });
+
+    expect(mocks.bom.findFirst).toHaveBeenCalledWith({ where: { id: 'bom-other', tenantId: 'tenant-a' }, select: { id: true } });
+    expect(mocks.phase.updateMany).not.toHaveBeenCalled();
+  });
+
   it('deletes a phase after ownership preflight (its steps fall back to the pool)', async () => {
+    mocks.workOrder.count.mockResolvedValue(0);
     mocks.phase.deleteMany.mockResolvedValue({ count: 1 });
 
     await expect(deletePhase('phase-1', 'actor1', 'tenant-a')).resolves.toEqual({ success: true });
@@ -79,7 +95,16 @@ describe('phaseService', () => {
     }));
   });
 
+  it('rejects delete (P2003) when a live work order still references the phase', async () => {
+    mocks.workOrder.count.mockResolvedValue(2);
+
+    await expect(deletePhase('phase-1', 'actor1', 'tenant-a')).rejects.toMatchObject({ code: 'P2003' });
+
+    expect(mocks.phase.deleteMany).not.toHaveBeenCalled();
+  });
+
   it('rejects delete when the phase is outside the caller tenant', async () => {
+    mocks.workOrder.count.mockResolvedValue(0);
     mocks.phase.deleteMany.mockResolvedValue({ count: 0 });
 
     await expect(deletePhase('phase-1', 'actor1', 'tenant-a')).rejects.toMatchObject({ code: 'P2025' });

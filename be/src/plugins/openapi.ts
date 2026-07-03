@@ -547,14 +547,14 @@ const methodPolicies: Record<string, MethodPolicy> = {
     completeness: 'complete',
     allowedMethods: ['POST'],
     destructiveDeletes: 'not-applicable',
-    notes: 'JWT sessions are stateless; logout is a client-side acknowledgement endpoint.',
+    notes: 'Issues the session JWT in an httpOnly cookie (never in the response body or a URL); the response returns only the user profile.',
   },
   logout: {
     resource: 'Auth session',
     completeness: 'complete',
     allowedMethods: ['POST'],
     destructiveDeletes: 'not-applicable',
-    notes: 'JWT sessions are stateless; no server-side session delete is required.',
+    notes: 'Clears the httpOnly session cookie server-side, ending the current browser session.',
   },
   authorizeOAuthProvider: {
     resource: 'OAuth flow',

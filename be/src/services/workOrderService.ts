@@ -578,7 +578,13 @@ export async function listWorkOrders(tenantId?: string | null) {
     orderBy: { createdAt: 'desc' },
   });
   const context = buildLegacyWorkOrderContext(workOrders);
-  return workOrders.map((workOrder) => decorateOperationalWorkOrder(workOrder, context));
+  return workOrders.map((workOrder) => {
+    const decorated = decorateOperationalWorkOrder(workOrder, context);
+    // List payloads must not ship the inline base64 evidence (imagePath can be up to
+    // 5 MB per work order). The board only needs the `imageCaptured` boolean, which is
+    // already computed; the detail view refetches the full record with imagePath intact.
+    return { ...decorated, imagePath: null };
+  });
 }
 
 export async function listQaWorkOrderQueue(tenantId?: string | null) {

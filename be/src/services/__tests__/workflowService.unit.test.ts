@@ -87,7 +87,8 @@ describe('workflowService', () => {
     expect(mocks.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ entityType: 'Workflow', entityId: 'w1', action: 'create', actorId: 'actor1' }),
     }));
-    expect(result).toBe(detail);
+    expect(result).toMatchObject({ id: 'w1', phases: detail.phases, unplacedSteps: detail.steps });
+    expect((result as Record<string, unknown>).steps).toBeUndefined();
   });
 
   it('updateWorkflow patches metadata and audits before/after', async () => {

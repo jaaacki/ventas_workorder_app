@@ -16,13 +16,12 @@ const workflowRefSchema = z.object({
   phases: z
     .array(
       z.object({
+        id: z.string(),
+        phaseName: z.string().nullable(),
+        phaseShort: z.string().nullable(),
         sortOrder: z.number(),
-        phase: z.object({
-          id: z.string(),
-          phaseName: z.string().nullable(),
-          phaseShort: z.string().nullable(),
-          phaseOrder: z.number().nullable(),
-        }),
+        isGate: z.boolean(),
+        blocksCombine: z.boolean(),
       }),
     )
     .optional(),
@@ -32,14 +31,13 @@ const phaseRefSchema = z.object({
   id: z.string(),
   phaseName: z.string().nullable(),
   phaseShort: z.string().nullable(),
-  phaseOrder: z.number().nullable(),
+  sortOrder: z.number().nullable(),
 });
 
 const workOrderPhaseTimelineSchema = z.object({
   id: z.string(),
   phaseName: z.string().nullable(),
   phaseShort: z.string().nullable(),
-  phaseOrder: z.number().nullable(),
   sortOrder: z.number(),
   state: z.string(),
 });

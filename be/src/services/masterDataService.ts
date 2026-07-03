@@ -4,13 +4,6 @@ import { prisma } from '../db/prisma.js';
 import { tenantIdOrDefault } from './tenant.js';
 import { writeAuditLog } from './auditLogService.js';
 
-export interface ProcedureInput {
-  procedureName?: string | null;
-  procedureDesc?: string | null;
-  procedureShort?: string | null;
-  keyText?: string | null;
-}
-
 export interface BomInput {
   bomName?: string | null;
   keyText?: string | null;
@@ -32,17 +25,6 @@ export interface PhaseEquipInput {
   description?: string | null;
   keyText?: string | null;
 }
-
-const procedureSelect = {
-  id: true,
-  tenantId: true,
-  procedureName: true,
-  procedureDesc: true,
-  procedureShort: true,
-  keyText: true,
-  createdAt: true,
-  updatedAt: true,
-} as const;
 
 const bomSelect = {
   id: true,
@@ -102,67 +84,6 @@ function decimalOrNull(value: string | number | Prisma.Decimal | null | undefine
   } catch {
     throw new Error('Invalid BOM line quantity');
   }
-}
-
-export async function listProcedures(tenantId?: string | null) {
-  return prisma.procedure.findMany({
-    where: { tenantId: tenantIdOrDefault(tenantId) },
-    select: procedureSelect,
-    orderBy: [{ procedureName: 'asc' }, { procedureShort: 'asc' }, { id: 'asc' }],
-  });
-}
-
-export async function getProcedure(id: string, tenantId?: string | null) {
-  return prisma.procedure.findFirst({ where: { id, tenantId: tenantIdOrDefault(tenantId) }, select: procedureSelect });
-}
-
-export async function createProcedure(input: ProcedureInput, actorId: string, tenantId?: string | null) {
-  const scopedTenantId = tenantIdOrDefault(tenantId);
-  const created = await prisma.procedure.create({
-    data: {
-      id: randomUUID(),
-      tenantId: scopedTenantId,
-      procedureName: input.procedureName ?? null,
-      procedureDesc: input.procedureDesc ?? null,
-      procedureShort: input.procedureShort ?? null,
-      keyText: input.keyText ?? null,
-      createdById: actorId,
-      updatedById: actorId,
-    },
-    select: procedureSelect,
-  });
-  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Procedure', entityId: created.id, action: 'create', after: created });
-  return created;
-}
-
-export async function updateProcedure(id: string, input: ProcedureInput, actorId: string, tenantId?: string | null) {
-  const scopedTenantId = tenantIdOrDefault(tenantId);
-  const before = await prisma.procedure.findFirst({ where: { id, tenantId: scopedTenantId }, select: procedureSelect });
-  const updated = await prisma.procedure.updateMany({
-    where: { id, tenantId: scopedTenantId },
-    data: {
-      ...(input.procedureName !== undefined && { procedureName: input.procedureName }),
-      ...(input.procedureDesc !== undefined && { procedureDesc: input.procedureDesc }),
-      ...(input.procedureShort !== undefined && { procedureShort: input.procedureShort }),
-      ...(input.keyText !== undefined && { keyText: input.keyText }),
-      updatedById: actorId,
-    },
-  });
-  if (updated.count === 0) throw notFound('Procedure not found');
-
-  const after = await prisma.procedure.findFirstOrThrow({ where: { id, tenantId: scopedTenantId }, select: procedureSelect });
-  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Procedure', entityId: id, action: 'update', before, after });
-  return after;
-}
-
-export async function deleteProcedure(id: string, actorId: string, tenantId?: string | null) {
-  const scopedTenantId = tenantIdOrDefault(tenantId);
-  const before = await prisma.procedure.findFirst({ where: { id, tenantId: scopedTenantId }, select: procedureSelect });
-  const deleted = await prisma.procedure.deleteMany({ where: { id, tenantId: scopedTenantId } });
-  if (deleted.count === 0) throw notFound('Procedure not found');
-
-  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Procedure', entityId: id, action: 'delete', before });
-  return { success: true as const };
 }
 
 export async function listBoms(tenantId?: string | null) {

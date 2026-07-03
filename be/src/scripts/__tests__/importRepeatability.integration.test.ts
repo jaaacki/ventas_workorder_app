@@ -169,15 +169,6 @@ function writeSeed(dir: string, seed = 1): void {
     ]),
   );
 
-  // procedure (sourceIdColumn = procedureId → id)
-  fs.writeFileSync(
-    path.join(dir, 'procedure.csv'),
-    csv([
-      ['procedureId', 'procedureName'],
-      [`PRO-${stem(1)}`, `Proc ${seed}`],
-    ]),
-  );
-
   // bom (sourceIdColumn = bomId → id)
   fs.writeFileSync(
     path.join(dir, 'bom.csv'),
@@ -294,7 +285,6 @@ beforeEach(async () => {
   await prisma.het.deleteMany();
   await prisma.bomLine.deleteMany();
   await prisma.bom.deleteMany();
-  await prisma.procedure.deleteMany();
   await prisma.manufacturer.deleteMany();
   await prisma.printLabel.deleteMany();
   await prisma.staff.deleteMany();

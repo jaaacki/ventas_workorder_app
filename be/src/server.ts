@@ -12,6 +12,7 @@ import { oauthRoutes } from './auth/oauth.js';
 import { healthRoutes } from './routes/health.js';
 import { workflowRoutes } from './routes/workflows.js';
 import { phaseRoutes } from './routes/phases.js';
+import { stepRoutes } from './routes/steps.js';
 import { masterDataRoutes } from './routes/masterData.js';
 import { workOrderRoutes } from './routes/workOrders.js';
 import { sterilisationRoutes } from './routes/sterilisation.js';
@@ -63,6 +64,7 @@ async function buildServer() {
   await app.register(healthRoutes, { prefix: '/api/health' });
   await app.register(workflowRoutes, { prefix: '/api/workflows' });
   await app.register(phaseRoutes, { prefix: '/api/phases' });
+  await app.register(stepRoutes, { prefix: '/api/steps' });
   await app.register(masterDataRoutes, { prefix: '/api/master-data' });
   await app.register(workOrderRoutes, { prefix: '/api/work-orders' });
   await app.register(sterilisationRoutes, { prefix: '/api/sterilisation' });

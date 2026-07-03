@@ -78,6 +78,7 @@ const tenantScopedModels = new Set([
   'bomLine',
   'het',
   'workflow',
+  'phase',
   'phaseEquip',
   'workOrder',
   'woSerial',
@@ -115,6 +116,13 @@ export interface TableConfig {
       targetFk: string;
     }
   >;
+  /**
+   * Hook called after the CSV rows are read but before they are mapped/upserted.
+   * The returned object is merged onto every create+update for this table — use
+   * it to inject a dynamically-resolved value that is not in the legacy CSV
+   * (e.g. the AMG workflowId every phase must carry). Return void for none.
+   */
+  beforeImport?: (ctx: ImportContext) => Promise<Record<string, unknown> | void>;
   /**
    * Hook called after the rows are imported but before returning.
    * Use for cross-table derivations like ManufacturerHet (GAP-1).
@@ -279,8 +287,46 @@ export const tableConfigs: TableConfig[] = [
       updatedOn: { field: 'updatedAt', type: 'date' },
     },
   },
-  // Legacy `phase` import removed: phases are now workflow-owned (require a
-  // workflowId) and come from the seed / configurator, not the legacy CSV.
+  {
+    fileName: 'phase.csv',
+    model: 'phase',
+    sourceIdColumn: 'phaseId',
+    // AMG coupling: legacy phases predate workflow ownership, but Phase.workflowId
+    // is now required. This is a single-line legacy cutover — every imported phase
+    // is bound to the AmGraft workflow (tenant + code 'AMG'), resolved once in
+    // `beforeImport` and merged onto every phase create+update as a static field.
+    beforeImport: async ({ prisma: p, dryRun }: ImportContext) => {
+      const tenantId = process.env.TENANT_ID || DEFAULT_TENANT_ID;
+      if (dryRun) {
+        // Dry-run must not write: look up the workflow if it already exists.
+        const wf = await (p as any).workflow.findFirst({
+          where: { tenantId, code: 'AMG' },
+          select: { id: true },
+        });
+        return { workflowId: wf?.id ?? 'DRYRUN-AMG' };
+      }
+      // Create-if-absent so a clean cutover DB still resolves the workflow.
+      const wf = await (p as any).workflow.upsert({
+        where: { tenantId_code: { tenantId, code: 'AMG' } },
+        update: {},
+        create: { tenantId, code: 'AMG', name: 'AmGraft' },
+      });
+      return { workflowId: wf?.id };
+    },
+    columnMap: {
+      phaseId: { field: 'id', type: 'text' },
+      phaseName: { field: 'phaseName', type: 'text' },
+      phaseShort: { field: 'phaseShort', type: 'text' },
+      // Both legacy column names map to sortOrder; whichever the CSV carries wins.
+      phaseOrder: { field: 'sortOrder', type: 'number' },
+      order: { field: 'sortOrder', type: 'number' },
+      description: { field: 'description', type: 'text' },
+      bomId: { field: 'bomId', type: 'text' },
+      keyText: { field: 'keyText', type: 'text' },
+      createdOn: { field: 'createdAt', type: 'date' },
+      updatedOn: { field: 'updatedAt', type: 'date' },
+    },
+  },
   {
     fileName: 'phaseEquip.csv',
     model: 'phaseEquip',
@@ -303,8 +349,10 @@ export const tableConfigs: TableConfig[] = [
     columnMap: {
       woId: { field: 'id', type: 'text' },
       hetId: { field: 'hetId', type: 'text' },
-      // Legacy phaseId / nextPhase FKs dropped: phases are workflow-owned now and
-      // are not imported from the legacy CSV, so work orders import unphased.
+      // Phases are workflow-owned and imported (see the `phase` config above), so
+      // work orders resolve their current/next phase FKs from the legacy CSV.
+      phaseId: { field: 'phaseId', type: 'text' },
+      nextPhase: { field: 'nextPhaseId', type: 'text' },
       phaseOrder: { field: 'phaseOrder', type: 'number' },
       phaseShort: { field: 'phaseShort', type: 'text' },
       prodStart: { field: 'prodStart', type: 'date' },
@@ -637,6 +685,12 @@ export async function importTable(
   entityStats.read = rows.length;
   report.totals.read += rows.length;
 
+  // Pre-import hook: resolve dynamic static fields (e.g. the AMG workflowId every
+  // phase must carry) once, then merge them onto every row below.
+  const staticFields = config.beforeImport
+    ? (await config.beforeImport({ prisma, config, rows, report, dryRun })) || undefined
+    : undefined;
+
   const pkColumn = config.pkColumn ?? 'id';
   const mapped: Record<string, unknown>[] = [];
   const unmappedCols = new Set<string>();
@@ -657,6 +711,7 @@ export async function importTable(
     if (tenantScopedModels.has(config.model) && m.tenantId === undefined) {
       m.tenantId = process.env.TENANT_ID || DEFAULT_TENANT_ID;
     }
+    if (staticFields) Object.assign(m, staticFields);
     mapped.push(m);
   }
 

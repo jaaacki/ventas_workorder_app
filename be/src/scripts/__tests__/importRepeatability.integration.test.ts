@@ -196,6 +196,16 @@ function writeSeed(dir: string, seed = 1): void {
     ]),
   );
 
+  // phase (sourceIdColumn = phaseId → id; workflowId injected via beforeImport →
+  // the AmGraft workflow, created-if-absent by the importer's beforeImport hook)
+  fs.writeFileSync(
+    path.join(dir, 'phase.csv'),
+    csv([
+      ['phaseId', 'phaseName', 'phaseOrder'],
+      [`PHS-${stem(1)}`, `Phase ${seed}`, '1'],
+    ]),
+  );
+
   // phaseEquip (sourceIdColumn = phaseEquipId → id)
   fs.writeFileSync(
     path.join(dir, 'phaseEquip.csv'),
@@ -205,16 +215,17 @@ function writeSeed(dir: string, seed = 1): void {
     ]),
   );
 
-  // workOrder (sourceIdColumn = woId → id; FKs: manuId, batchHetIds/phaseEquipIds via relations)
+  // workOrder (sourceIdColumn = woId → id; FKs: manuId, phaseId, batchHetIds/phaseEquipIds via relations)
   // batchHetIds + phaseEquipIds are split into workOrderHet / workOrderPhaseEquip join tables.
-  // Phases are workflow-owned and no longer imported, so work orders import unphased.
+  // phaseId points at the imported (workflow-owned) phase seeded above.
   fs.writeFileSync(
     path.join(dir, 'workOrder.csv'),
     csv([
-      ['woId', 'manuId', 'batchHetIds', 'phaseEquipIds'],
+      ['woId', 'manuId', 'phaseId', 'batchHetIds', 'phaseEquipIds'],
       [
         `WKO-${stem(1)}`,
         `MAN-${stem(1)}`,
+        `PHS-${stem(1)}`,
         `HET-${stem(1)}`,
         `PHQ-${stem(1)}`,
       ],

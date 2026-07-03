@@ -3,7 +3,7 @@ import { prisma } from '../../db/prisma.js';
 import { backfillLegacyCoherence } from '../backfillLegacyCoherence.js';
 
 // Retrofits chain coherence onto unwired legacy work orders (workflowId /
-// previousWoId / nextPhaseId / releaseStatus all NULL, phases unbound, finished-
+// previousWoId / nextPhaseId / releaseStatus all NULL, phases keyless, finished-
 // goods lot orphaned) and asserts every work order ends up with a terminal state
 // and a forward destination. Self-contained; cleans up afterwards.
 
@@ -35,9 +35,17 @@ beforeAll(async () => {
   for (let i = 0; i < phaseNames.length; i += 1) {
     const phaseId = `${code}:P${i + 1}`;
     ctx.phaseIds.push(phaseId);
-    // Keyless on purpose — the backfill must fill keyText from phaseShort.
+    // Owned phases (workflowId + sortOrder). Keyless on purpose — the backfill
+    // must fill keyText from phaseShort.
     await prisma.phase.create({
-      data: { id: phaseId, tenantId: ctx.tenantId, phaseName: phaseNames[i], phaseShort: `P${i + 1}`, phaseOrder: i + 1 },
+      data: {
+        id: phaseId,
+        tenantId: ctx.tenantId,
+        workflowId: ctx.workflowId,
+        phaseName: phaseNames[i],
+        phaseShort: `P${i + 1}`,
+        sortOrder: i + 1,
+      },
     });
   }
 
@@ -94,7 +102,6 @@ afterAll(async () => {
   await prisma.workOrder.updateMany({ where: { id: { in: ctx.woIds } }, data: { previousWoId: null } }).catch(() => undefined);
   await prisma.workOrder.deleteMany({ where: { id: { in: ctx.woIds } } }).catch(() => undefined);
   await prisma.het.deleteMany({ where: { id: { in: ctx.hetIds } } }).catch(() => undefined);
-  await prisma.workflowPhase.deleteMany({ where: { workflowId: ctx.workflowId } }).catch(() => undefined);
   await prisma.phase.deleteMany({ where: { id: { in: ctx.phaseIds } } }).catch(() => undefined);
   await prisma.workflow.deleteMany({ where: { id: ctx.workflowId } }).catch(() => undefined);
   await prisma.tenant.deleteMany({ where: { id: ctx.tenantId } }).catch(() => undefined);
@@ -110,9 +117,11 @@ describe('backfillLegacyCoherence (integration)', () => {
     const attached = await prisma.workOrder.count({ where: { id: { in: ctx.woIds }, workflowId: ctx.workflowId } });
     expect(attached).toBe(4);
 
-    // 2. Workflow bound to exactly the phases its work orders sit on, keyed.
-    const bindings = await prisma.workflowPhase.findMany({ where: { workflowId: ctx.workflowId }, orderBy: { sortOrder: 'asc' } });
-    expect(bindings.map((b) => b.phaseId)).toEqual(ctx.phaseIds);
+    // 2. Every phase a work order sits on is owned by the workflow, keyed. The
+    //    phases were seeded already owned, so step 2b is a no-op safety net (0).
+    expect(report.totals.phasesBound).toBe(0);
+    const boundPhases = await prisma.phase.count({ where: { id: { in: ctx.phaseIds }, workflowId: ctx.workflowId } });
+    expect(boundPhases).toBe(3);
     const keyed = await prisma.phase.count({ where: { id: { in: ctx.phaseIds }, keyText: { not: null } } });
     expect(keyed).toBe(3);
 

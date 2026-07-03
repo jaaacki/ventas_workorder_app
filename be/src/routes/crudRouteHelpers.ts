@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { JwtPayload } from '../plugins/auth.js';
+import { tenantIdOf, actorOf } from './requestContext.js';
 import { CrudConflictError, CrudValidationError, type CrudListOptions, type CrudResourceConfig } from '../services/auditedCrudService.js';
 
 const errorResponse = z.object({ error: z.string() });
@@ -68,14 +69,6 @@ interface CrudRouteServices<ResourceKey extends string> {
   archive: (key: ResourceKey, input: { id: string; tenantId?: string | null; actor: JwtPayload }) => Promise<unknown>;
   restore: (key: ResourceKey, input: { id: string; tenantId?: string | null; actor: JwtPayload }) => Promise<unknown>;
   audit: (key: ResourceKey, input: { id: string; tenantId?: string | null }) => Promise<unknown>;
-}
-
-function tenantIdOf(req: { user: unknown }): string {
-  return (req.user as JwtPayload).tenantId;
-}
-
-function actorOf(req: { user: unknown }): JwtPayload {
-  return req.user as JwtPayload;
 }
 
 function operationSuffix(path: string) {

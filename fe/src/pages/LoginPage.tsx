@@ -34,8 +34,8 @@ export default function LoginPage() {
   const onSubmit = async (values: LoginForm) => {
     setError('');
     try {
-      const { token, user } = await login(values.email, values.password);
-      setAuth(token, user);
+      const user = await login(values.email, values.password);
+      setAuth(user);
       navigate('/dashboard', { replace: true });
     } catch {
       setError('Invalid email or password');

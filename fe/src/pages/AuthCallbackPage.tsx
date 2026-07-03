@@ -1,31 +1,24 @@
 import { useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { me } from '@/lib/auth-api';
 import { useAuthStore } from '@/store/authStore';
 
 export default function AuthCallbackPage() {
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { setAuth, clearAuth } = useAuthStore();
 
   useEffect(() => {
-    const token = searchParams.get('token');
-    if (!token) {
-      clearAuth();
-      navigate('/login', { replace: true });
-      return;
-    }
-    localStorage.setItem('wo_token', token);
+    // OAuth set the httpOnly session cookie during the redirect; confirm it via /me.
     me()
       .then((user) => {
-        setAuth(token, user);
+        setAuth(user);
         navigate('/dashboard', { replace: true });
       })
       .catch(() => {
         clearAuth();
         navigate('/login', { replace: true });
       });
-  }, [searchParams, setAuth, clearAuth, navigate]);
+  }, [setAuth, clearAuth, navigate]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-900">

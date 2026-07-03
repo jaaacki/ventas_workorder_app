@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import type { Prisma as PrismaTypes } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { tenantIdOrDefault } from './tenant.js';
+import { writeAuditLog } from './auditLogService.js';
 
 /**
  * Detail include for the batch-record view: the actor stamps and the work
@@ -23,7 +24,7 @@ export async function generateBatchRecord(workOrderId: string, actorId: string, 
   const manuNumber = `MANU-${Date.now().toString(36).toUpperCase()}`;
   const scopedTenantId = tenantIdOrDefault(tenantId);
 
-  return prisma.$transaction(async (tx) => {
+  const manufacturer = await prisma.$transaction(async (tx) => {
     // Confirm the work order exists; a missing row surfaces as P2025 below.
     const workOrder = await tx.workOrder.findFirst({ where: { id: workOrderId, tenantId: scopedTenantId } });
     if (!workOrder) {
@@ -33,7 +34,7 @@ export async function generateBatchRecord(workOrderId: string, actorId: string, 
       });
     }
 
-    const manufacturer = await tx.manufacturer.create({
+    const created = await tx.manufacturer.create({
       data: {
         tenantId: scopedTenantId,
         manuNumber,
@@ -46,7 +47,7 @@ export async function generateBatchRecord(workOrderId: string, actorId: string, 
     const updated = await tx.workOrder.updateMany({
       where: { id: workOrderId, tenantId: scopedTenantId },
       data: {
-        manuId: manufacturer.id,
+        manuId: created.id,
         manuNumber,
         updatedById: actorId,
       },
@@ -58,8 +59,11 @@ export async function generateBatchRecord(workOrderId: string, actorId: string, 
       });
     }
 
-    return manufacturer;
+    return created;
   });
+
+  await writeAuditLog({ tenantId: scopedTenantId, actorId, entityType: 'Manufacturer', entityId: manufacturer.id, action: 'create', after: manufacturer, metadata: { workOrderId, manuNumber } });
+  return manufacturer;
 }
 
 export async function getBatchRecord(id: string, tenantId?: string | null) {

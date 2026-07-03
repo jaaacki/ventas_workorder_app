@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     findFirst: vi.fn(),
     updateMany: vi.fn(),
   },
+  auditLog: { create: vi.fn() },
   $transaction: vi.fn(),
 }));
 
@@ -16,6 +17,7 @@ vi.mock('../../db/prisma.js', () => ({
   prisma: {
     manufacturer: mocks.manufacturer,
     workOrder: mocks.workOrder,
+    auditLog: mocks.auditLog,
     $transaction: mocks.$transaction.mockImplementation(
       async (fn: (tx: unknown) => Promise<unknown>) =>
         fn({ manufacturer: mocks.manufacturer, workOrder: mocks.workOrder }),
@@ -57,6 +59,10 @@ describe('manufacturingService', () => {
     expect(updateCall.data.manuId).toBe('m1');
     expect(updateCall.data.manuNumber).toMatch(/^MANU-/);
     expect(updateCall.data.updatedById).toBe('actor1');
+
+    expect(mocks.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ entityType: 'Manufacturer', entityId: 'm1', action: 'create', actorId: 'actor1' }),
+    }));
   });
 
   it('generateBatchRecord throws a P2025-shaped error when the work order is missing', async () => {

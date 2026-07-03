@@ -315,7 +315,7 @@ const generatedCrudSuccessExamples: Array<[string, Record<string, unknown>]> = [
 
 const successExamples: Record<string, unknown> = {
   getHealth: { status: 'ok' },
-  login: { token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example', user: userExample },
+  login: { user: userExample },
   registerStaff: userExample,
   getCurrentUser: userExample,
   logout: { success: true },
@@ -325,7 +325,7 @@ const successExamples: Record<string, unknown> = {
   updateStaffRole: userExample,
   updateStaffActive: { ...userExample, active: false },
   authorizeOAuthProvider: 'https://accounts.google.com/o/oauth2/v2/auth?...',
-  handleOAuthCallback: 'http://localhost:3000/auth/callback?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example',
+  handleOAuthCallback: 'http://localhost:3000/auth/callback',
   listWorkflows: [{
     id: workflowExample.id,
     name: workflowExample.name,
@@ -547,14 +547,14 @@ const methodPolicies: Record<string, MethodPolicy> = {
     completeness: 'complete',
     allowedMethods: ['POST'],
     destructiveDeletes: 'not-applicable',
-    notes: 'JWT sessions are stateless; logout is a client-side acknowledgement endpoint.',
+    notes: 'Issues the session JWT in an httpOnly cookie (never in the response body or a URL); the response returns only the user profile.',
   },
   logout: {
     resource: 'Auth session',
     completeness: 'complete',
     allowedMethods: ['POST'],
     destructiveDeletes: 'not-applicable',
-    notes: 'JWT sessions are stateless; no server-side session delete is required.',
+    notes: 'Clears the httpOnly session cookie server-side, ending the current browser session.',
   },
   authorizeOAuthProvider: {
     resource: 'OAuth flow',

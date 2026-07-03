@@ -395,7 +395,7 @@ model WorkOrder {
   deleted                Boolean   @default(false)
   forceField             Int?
   keyText                String?
-  previousWoId           String?
+  previousWoId           String?   @unique
   steralisationCurrentId String?   @unique
   nextPhaseId            String?
   workflowId             String?
@@ -409,7 +409,7 @@ model WorkOrder {
   releaseDecisionBy     Staff?                          @relation("WorkOrderReleaseDecisionBy", fields: [releaseDecisionById], references: [id])
   manufacturer          Manufacturer?                   @relation(fields: [manuId], references: [id])
   previousWo            WorkOrder?                      @relation("WorkOrderPrevious", fields: [previousWoId], references: [id])
-  nextWorkOrders        WorkOrder[]                     @relation("WorkOrderPrevious")
+  nextWorkOrder         WorkOrder?                      @relation("WorkOrderPrevious")
   steralisationCurrent  Sterilise?                      @relation("WorkOrderSterilisationCurrent", fields: [steralisationCurrentId], references: [id])
   nextPhase             Phase?                          @relation("WorkOrderNextPhase", fields: [nextPhaseId], references: [id])
   workflow              Workflow?                       @relation(fields: [workflowId], references: [id])

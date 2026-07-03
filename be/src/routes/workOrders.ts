@@ -700,6 +700,11 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
           if (err.code === 'P2025') {
             return reply.status(404).send({ error: 'Work order not found' });
           }
+          // P2002 = a concurrent advance already spawned this phase's next work
+          // order (previousWoId unique). Report a retryable conflict, not a 500.
+          if (err.code === 'P2002') {
+            return reply.status(409).send({ error: 'work order already advanced' });
+          }
         }
         throw err;
       }

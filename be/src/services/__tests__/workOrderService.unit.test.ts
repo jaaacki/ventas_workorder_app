@@ -531,9 +531,10 @@ describe('workOrderService', () => {
         updatedById: 'actor1',
       }),
     });
-    // A released run consumes its HET: the releasing work order becomes the finisher.
+    // A released run consumes its HET: the releasing work order becomes the finisher,
+    // guarded on finishedById=null so an already-finished HET keeps its pointer.
     expect(mocks.het.updateMany).toHaveBeenCalledWith({
-      where: { id: 'het-1', tenantId: 'tenant-a' },
+      where: { id: 'het-1', tenantId: 'tenant-a', finishedById: null },
       data: { finishedById: 'wo-1' },
     });
     expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(

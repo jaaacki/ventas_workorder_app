@@ -146,6 +146,17 @@ const qaWorkOrderQueueSchema = z.object({
   release: z.array(workOrderSummarySchema),
 });
 
+const collectionWorkOrderQueueSchema = z.object({
+  counts: z.object({
+    awaiting: z.number(),
+    inTransit: z.number(),
+    received: z.number(),
+  }),
+  awaiting: z.array(workOrderSummarySchema),
+  inTransit: z.array(workOrderSummarySchema),
+  received: z.array(workOrderSummarySchema),
+});
+
 const auditStateSchema = z.object({
   id: z.string(),
   tenantId: z.string(),
@@ -307,6 +318,26 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req) => {
       return workOrderService.listQaWorkOrderQueue(tenantIdOf(req));
+    },
+  );
+
+  app.get(
+    '/collection-queue',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        tags: ['Work Orders'],
+        summary: 'List collection/logistics work-order queue',
+        description: 'Read the HET collection/logistics queue: runs awaiting collection, containers in transit to the clinic, and collections received. Modelled on the QA queue.',
+        operationId: 'listCollectionQueue',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
+        response: { 200: collectionWorkOrderQueueSchema, 401: errorResponse },
+      },
+    },
+    async (req) => {
+      return workOrderService.listCollectionQueue(tenantIdOf(req));
     },
   );
 

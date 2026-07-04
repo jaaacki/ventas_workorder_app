@@ -14,6 +14,7 @@ import WorkOrdersPage from './pages/WorkOrdersPage';
 import WorkOrderDetailPage from './pages/WorkOrderDetailPage';
 import MyQueuePage from './pages/MyQueuePage';
 import QaQueuePage from './pages/QaQueuePage';
+import CollectionQueuePage from './pages/CollectionQueuePage';
 import QuarantinePage from './pages/QuarantinePage';
 import ProcurementPage from './pages/ProcurementPage';
 import CollectionUnitDetailPage from './pages/CollectionUnitDetailPage';
@@ -130,6 +131,16 @@ function App() {
               <ProtectedRoute>
                 <DashboardLayout>
                   <QuarantinePage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/collection-queue"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <CollectionQueuePage />
                 </DashboardLayout>
               </ProtectedRoute>
             }

@@ -26,6 +26,7 @@ import {
   Columns3,
   Search,
   Boxes,
+  Truck,
   Warehouse,
   PackageCheck,
   ArrowRight,
@@ -93,6 +94,7 @@ const navGroups: NavGroup[] = [
     heading: 'Material',
     items: [
       { label: 'Collections', href: '/dashboard/procurement', icon: Boxes, roles: ALL_ROLES, keywords: ['collection units', 'clinic', 'het', 'intake', 'procurement'] },
+      { label: 'Collection queue', href: '/dashboard/collection-queue', icon: Truck, roles: ALL_ROLES, keywords: ['collection', 'logistics', 'awaiting', 'in transit', 'received', 'clinic', 'courier', 'queue'] },
       { label: 'Inventory', href: '/dashboard/inventory', icon: Warehouse, roles: ALL_ROLES, keywords: ['lots', 'sku', 'stock', 'reagents', 'locations'] },
       { label: 'Finished goods', href: '/dashboard/lots', icon: PackageCheck, roles: ['owner', 'admin', 'qa_manager', 'production_manager'], keywords: ['lots', 'batch record', 'finished goods', 'released', 'genealogy', 'certificate'] },
       { label: 'Traceability', href: '/dashboard/traceability', icon: Waypoints, roles: ALL_ROLES, keywords: ['genealogy', 'chain of custody', 'trace', 'parent', 'child'] },

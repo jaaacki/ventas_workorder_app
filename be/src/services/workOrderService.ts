@@ -790,6 +790,35 @@ export async function listQaWorkOrderQueue(tenantId?: string | null) {
   };
 }
 
+// Collection/logistics queue (epic #186 phase 4, #191): the awaiting → in-transit →
+// received view for the courier round-trip, modelled on listQaWorkOrderQueue. Every
+// bucket is derived from the already-decorated collection-phase work orders, so no
+// extra query is needed:
+//   - awaiting:   at a collection phase, no container issued and no HET yet.
+//   - inTransit:  a container has been issued out to the clinic (issuanceOrderId set)
+//                 but the filled HET has not been collected back yet.
+//   - received:   the collection has minted and attached its HET (collection done).
+// isCollectionPhase stays true for the collection work order for the life of the run
+// (the run advances by spawning the next phase's work order, not by moving this one),
+// so a collected run reads as "received" — the logistics record of what was taken in.
+export async function listCollectionQueue(tenantId?: string | null) {
+  const workOrders = (await listWorkOrders(tenantId)).filter((workOrder) => workOrder.isCollectionPhase);
+  const awaiting = workOrders.filter((workOrder) => !workOrder.hetId && !workOrder.issuanceOrderId);
+  const inTransit = workOrders.filter((workOrder) => !workOrder.hetId && workOrder.issuanceOrderId);
+  const received = workOrders.filter((workOrder) => workOrder.hetId);
+
+  return {
+    counts: {
+      awaiting: awaiting.length,
+      inTransit: inTransit.length,
+      received: received.length,
+    },
+    awaiting,
+    inTransit,
+    received,
+  };
+}
+
 export async function getWorkOrder(id: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
   const workOrder = await prisma.workOrder.findFirst({

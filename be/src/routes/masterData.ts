@@ -37,6 +37,10 @@ const bomLineSchema = z.object({
   hasSerial: z.boolean(),
   deleted: z.boolean(),
   keyText: z.string().nullable(),
+  inventorySkuId: z.string().nullable(),
+  inventorySku: z
+    .object({ id: z.string(), sku: z.string().nullable(), description: z.string().nullable() })
+    .nullable(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });

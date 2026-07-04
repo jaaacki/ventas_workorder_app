@@ -50,13 +50,29 @@ export async function useHet(hetId: string, input: UseHetInput) {
   const scopedTenantId = tenantIdOrDefault(input.tenantId);
   const workOrder = await prisma.workOrder.findFirst({
     where: { id: input.workOrderId, tenantId: scopedTenantId, deleted: false },
-    select: { id: true },
+    select: {
+      id: true,
+      hetId: true,
+      phase: { select: { blocksCombine: true } },
+      batchHets: { select: { hetId: true } },
+    },
   });
   if (!workOrder) {
     throw new Prisma.PrismaClientKnownRequestError('Work order not found', {
       code: 'P2025',
       clientVersion: 'unknown',
     });
+  }
+
+  // Respect the phase combine lever: linking a HET is fine, but linking a
+  // second, distinct HET on a phase that blocks combining would build a combined
+  // batch behind the driven combine action's back. Reject it; use `combineHets`
+  // on a combine-allowed phase instead.
+  const resultingHetIds = new Set(
+    [workOrder.hetId, ...(workOrder.batchHets ?? []).map((batchHet) => batchHet.hetId), hetId].filter(Boolean) as string[],
+  );
+  if (workOrder.phase?.blocksCombine && resultingHetIds.size > 1) {
+    throw new Error('cannot use: the current phase does not allow combining HETs');
   }
   const het = await prisma.het.findFirst({
     where: { id: hetId, tenantId: scopedTenantId, deleted: false },

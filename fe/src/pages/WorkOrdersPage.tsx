@@ -136,10 +136,14 @@ function WorkOrderCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
+          {/* Card identity = the HET run: the het number leads, with the current
+              work order and workflow as secondary context. One card per active run. */}
           <div className="truncate text-sm font-semibold text-gray-800 dark:text-white/90">
-            {workOrder.woNumber || workOrder.id}
+            {workOrder.het?.hetNumber || workOrder.hetId || (workOrder.isCollectionPhase ? 'Collection pending' : 'No HET')}
           </div>
-          <div className="mt-1 truncate text-xs text-muted-foreground">{workflowLabel(workOrder)}</div>
+          <div className="mt-1 truncate text-xs text-muted-foreground">
+            {workflowLabel(workOrder)} · {workOrder.woNumber || workOrder.id}
+          </div>
         </div>
         {(() => {
           const status = humanStatus(workOrder.operationalStatus);
@@ -148,10 +152,17 @@ function WorkOrderCard({
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-        <span className="truncate">{workOrder.het?.hetNumber || workOrder.hetId || 'No HET'}</span>
+        <span className="truncate">{workOrder.het?.clinicName || '—'}</span>
         <span>{unitsLabel(workOrder.het?.quantity) ?? '—'}</span>
         <span>{workOrder.counts?.serials ?? 0}/{workOrder.serialRequiredCount ?? 0} serials</span>
       </div>
+
+      {workOrder.combinedHetCheck && (
+        <div className="mt-2 inline-flex items-center gap-1 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+          <Boxes className="h-3 w-3" />
+          Combined batch
+        </div>
+      )}
 
       {stepTags.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1">
@@ -445,6 +456,7 @@ export function WorkOrderWorkspace({
   advancing,
   starting,
   finishing,
+  hidePhaseTimeline = false,
 }: {
   workOrder: WorkOrderSummary;
   onAdvance: (id: string) => void;
@@ -453,6 +465,9 @@ export function WorkOrderWorkspace({
   advancing: boolean;
   starting: boolean;
   finishing: boolean;
+  // The detail page renders the full run chain instead of the compact,
+  // decorative phase-timeline pills, so it hides them here.
+  hidePhaseTimeline?: boolean;
 }) {
   const [startSignature, setStartSignature] = useState('');
   const [finishSignature, setFinishSignature] = useState('');
@@ -496,26 +511,28 @@ export function WorkOrderWorkspace({
         </div>
       </div>
 
-      <div>
-        <div className="mb-2 text-sm font-semibold text-gray-800 dark:text-white/90">Phase timeline</div>
-        <div className="grid gap-2 md:grid-cols-5">
-          {workOrder.phaseTimeline?.map((phase) => (
-            <div
-              key={phase.id}
-              className={`rounded-lg border px-3 py-2 text-sm ${
-                phase.state === 'complete'
-                  ? 'border-success-500/30 bg-success-50 text-success-600 dark:border-success-500/30 dark:bg-success-500/10 dark:text-success-500'
-                  : phase.state === 'current'
-                    ? 'border-brand-300 bg-brand-50 text-brand-600 dark:border-brand-500/40 dark:bg-brand-500/10 dark:text-brand-400'
-                    : 'border-gray-200 bg-gray-50 text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400'
-              }`}
-            >
-              <div className="truncate font-medium">{phase.phaseName || phase.phaseShort || `Phase ${phase.sortOrder + 1}`}</div>
-              <div className="mt-1 text-xs capitalize opacity-80">{phase.state}</div>
-            </div>
-          ))}
+      {!hidePhaseTimeline && (
+        <div>
+          <div className="mb-2 text-sm font-semibold text-gray-800 dark:text-white/90">Phase timeline</div>
+          <div className="grid gap-2 md:grid-cols-5">
+            {workOrder.phaseTimeline?.map((phase) => (
+              <div
+                key={phase.id}
+                className={`rounded-lg border px-3 py-2 text-sm ${
+                  phase.state === 'complete'
+                    ? 'border-success-500/30 bg-success-50 text-success-600 dark:border-success-500/30 dark:bg-success-500/10 dark:text-success-500'
+                    : phase.state === 'current'
+                      ? 'border-brand-300 bg-brand-50 text-brand-600 dark:border-brand-500/40 dark:bg-brand-500/10 dark:text-brand-400'
+                      : 'border-gray-200 bg-gray-50 text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400'
+                }`}
+              >
+                <div className="truncate font-medium">{phase.phaseName || phase.phaseShort || `Phase ${phase.sortOrder + 1}`}</div>
+                <div className="mt-1 text-xs capitalize opacity-80">{phase.state}</div>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-3">
         <MetricCard icon={<Boxes className="h-5 w-5" />} label="Serial records" value={`${workOrder.counts?.serials ?? 0}/${workOrder.serialRequiredCount ?? 0}`} />

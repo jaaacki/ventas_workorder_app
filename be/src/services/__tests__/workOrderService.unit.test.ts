@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   },
   het: {
     updateMany: vi.fn(),
+    findMany: vi.fn(),
   },
   workOrderHet: {
     createMany: vi.fn(),
@@ -80,7 +81,35 @@ import {
   startWorkOrderPhase,
   finishWorkOrderPhase,
   advanceWorkOrder,
+  combineHets,
+  amendWorkOrderEvidence,
 } from '../workOrderService.js';
+
+// A decorated-work-order stub for findFirstOrThrow so getDecoratedWorkOrderOrThrow
+// can re-read + decorate after a mutation in these tests.
+function decoratedStub(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'wo-1',
+    tenantId: 'tenant-a',
+    workflowId: 'workflow-1',
+    phaseId: 'phase-1',
+    phaseOrder: 10,
+    hetId: 'het-1',
+    prodStart: new Date('2026-07-01T09:00:00Z'),
+    prodEnd: new Date('2026-07-01T11:00:00Z'),
+    prodDuration: null,
+    outputQuantity: null,
+    releaseStatus: null,
+    releaseDecisionAt: null,
+    workflow: { phases: [] },
+    phase: { id: 'phase-1', phaseShort: 'P1', blocksCombine: false, bom: { lines: [] }, phaseEquips: [] },
+    sterilises: [],
+    woSerials: [],
+    phaseEquips: [],
+    batchHets: [],
+    ...overrides,
+  };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -1724,5 +1753,168 @@ describe('workOrderService', () => {
       missingAdvanceRequirements: [],
       parityGaps: [],
     });
+  });
+
+  it('recordWorkOrderSerial rejects evidence on a superseded (advanced) work order', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: new Date('2026-07-01T09:00:00Z'),
+      prodEnd: new Date('2026-07-01T11:00:00Z'),
+      prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: null,
+      nextPhaseId: 'phase-2',
+      phase: { bom: { lines: [{ id: 'bom-line-1', hasSerial: true }] } },
+      woSerials: [],
+    });
+
+    await expect(
+      recordWorkOrderSerial('wo-1', { bomRefId: 'bom-line-1', serialNumber: 'SER-001' }, 'actor1', 'tenant-a'),
+    ).rejects.toThrow('cannot record serial: work order is locked (advanced to the next phase)');
+
+    expect(mocks.woSerial.upsert).not.toHaveBeenCalled();
+    expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('amendWorkOrderEvidence bypasses the lock and writes an evidence_amended audit event', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: new Date('2026-07-01T09:00:00Z'),
+      prodEnd: new Date('2026-07-01T11:00:00Z'),
+      prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: null,
+      nextPhaseId: 'phase-2',
+      phase: { bom: { lines: [{ id: 'bom-line-1', hasSerial: true }] } },
+      woSerials: [],
+    });
+    mocks.workOrder.findMany.mockResolvedValue([]);
+    mocks.workOrder.findFirstOrThrow.mockResolvedValue(decoratedStub({ nextPhaseId: 'phase-2' }));
+
+    await amendWorkOrderEvidence('wo-1', { kind: 'serial', bomRefId: 'bom-line-1', serialNumber: 'SER-002' }, 'actor1', 'tenant-a');
+
+    expect(mocks.woSerial.upsert).toHaveBeenCalled();
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'work_order.serial_recorded' }) }),
+    );
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'work_order.evidence_amended',
+          source: 'workOrderService.amendWorkOrderEvidence:serial',
+        }),
+      }),
+    );
+  });
+
+  it('combineHets rejects when the current phase blocks combining', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: new Date('2026-07-01T09:00:00Z'),
+      prodEnd: null,
+      prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: null,
+      nextPhaseId: null,
+      phase: { blocksCombine: true },
+      batchHets: [],
+    });
+
+    await expect(combineHets('wo-1', ['het-2'], 'actor1', 'tenant-a')).rejects.toThrow(
+      'cannot combine: the current phase does not allow combining HETs',
+    );
+
+    expect(mocks.workOrderHet.createMany).not.toHaveBeenCalled();
+    expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('combineHets attaches source HETs, writes COMBINATION edges, and audits', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: new Date('2026-07-01T09:00:00Z'),
+      prodEnd: null,
+      prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: null,
+      nextPhaseId: null,
+      phase: { blocksCombine: false },
+      batchHets: [],
+    });
+    mocks.het.findMany.mockResolvedValue([{ id: 'het-2' }, { id: 'het-3' }]);
+    mocks.inventoryLot.findFirst.mockResolvedValue({ id: 'lot-het-1' });
+    mocks.inventoryLot.findFirst.mockImplementation(async ({ where }: { where: { hetId?: string } }) =>
+      where.hetId === 'het-1' ? { id: 'lot-het-1' } : { id: `lot-${where.hetId}` },
+    );
+    mocks.inventoryGenealogy.upsert.mockResolvedValue({});
+    mocks.workOrderHet.createMany.mockResolvedValue({ count: 2 });
+    mocks.workOrder.findMany.mockResolvedValue([]);
+    mocks.workOrder.findFirstOrThrow.mockResolvedValue(decoratedStub());
+
+    const result = await combineHets('wo-1', ['het-2', 'het-3'], 'actor1', 'tenant-a');
+
+    expect(mocks.workOrderHet.createMany).toHaveBeenCalledWith({
+      data: [
+        { workOrderId: 'wo-1', hetId: 'het-2' },
+        { workOrderId: 'wo-1', hetId: 'het-3' },
+      ],
+      skipDuplicates: true,
+    });
+    // COMBINATION edges from each source HET lot -> the run's primary HET lot.
+    expect(mocks.inventoryGenealogy.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ childInventoryLotId: 'lot-het-1', relationshipType: 'COMBINATION' }),
+      }),
+    );
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'work_order.hets_combined' }) }),
+    );
+    expect(result).toMatchObject({ id: 'wo-1' });
+  });
+
+  it('combineHets rejects unknown HET ids before attaching anything', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: new Date('2026-07-01T09:00:00Z'),
+      prodEnd: null,
+      prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: null,
+      nextPhaseId: null,
+      phase: { blocksCombine: false },
+      batchHets: [],
+    });
+    mocks.het.findMany.mockResolvedValue([{ id: 'het-2' }]);
+
+    await expect(combineHets('wo-1', ['het-2', 'het-missing'], 'actor1', 'tenant-a')).rejects.toThrow(
+      'cannot combine: one or more HETs do not exist',
+    );
+
+    expect(mocks.workOrderHet.createMany).not.toHaveBeenCalled();
+    expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
   });
 });

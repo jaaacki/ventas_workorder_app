@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 import { toast } from 'sonner';
-import { AlertTriangle, FlaskConical, PackageCheck } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, ChevronRight, FlaskConical, PackageCheck, X } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/tailadmin';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dialog';
 import {
   fetchQaWorkOrderQueue,
+  fetchWorkOrder,
   recordWorkOrderRelease,
   type WorkOrderSummary,
 } from '@/lib/work-orders-api';
@@ -91,6 +92,84 @@ function BetBadge({ status }: { status: BetResult['status'] }) {
   return <Badge variant="outline">Pending</Badge>;
 }
 
+// Expandable release row: chevron reveals an inline evidence summary so QA can
+// sign off without opening the full work order. The detail is fetched lazily on
+// expand from the same ['work-order', id] cache the detail page uses.
+function ReleaseRow({ workOrder }: { workOrder: WorkOrderSummary }) {
+  const [open, setOpen] = useState(false);
+  const detailQuery = useQuery({
+    queryKey: ['work-order', workOrder.id],
+    queryFn: () => fetchWorkOrder(workOrder.id),
+    enabled: open,
+  });
+  const detail = detailQuery.data;
+  const bet = detail ? betResult(detail) : null;
+
+  return (
+    <>
+      <TableRow className="cursor-pointer" onClick={() => setOpen((v) => !v)}>
+        <TableCell className="w-8">
+          {open ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+        </TableCell>
+        <TableCell className="font-medium text-foreground">{workOrder.woNumber || workOrder.id}</TableCell>
+        <TableCell className="text-muted-foreground">{productLabel(workOrder)}</TableCell>
+        <TableCell className="text-muted-foreground">{unitsLabel(workOrder.het?.quantity) ?? '—'}</TableCell>
+        <TableCell className="text-muted-foreground">{workOrder.currentPhaseLabel}</TableCell>
+        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+          <ReleaseDialog workOrder={workOrder} />
+        </TableCell>
+      </TableRow>
+      {open && (
+        <TableRow>
+          <TableCell colSpan={6} className="bg-muted/30">
+            {detailQuery.isLoading ? (
+              <div className="py-3 text-sm text-muted-foreground">Loading evidence…</div>
+            ) : detailQuery.isError || !detail ? (
+              <div className="py-3 text-sm text-muted-foreground">Evidence could not be loaded.</div>
+            ) : (
+              <div className="space-y-3 py-2">
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+                  <span className="flex items-center gap-2">
+                    <span className="text-muted-foreground">BET / gate:</span>
+                    <BetBadge status={bet!.status} />
+                    {bet!.reading != null ? <span className="text-xs text-muted-foreground">{bet!.reading} EU/mL</span> : null}
+                  </span>
+                  <span className="text-muted-foreground">
+                    Output: <span className="font-medium text-foreground">{detail.outputQuantity ?? '—'}</span>
+                  </span>
+                  <span className="text-muted-foreground">
+                    Signatures: <span className="font-medium text-foreground">start {detail.startSignPath ? '✓' : '—'} · end {detail.endSignPath ? '✓' : '—'}</span>
+                  </span>
+                </div>
+                <div>
+                  <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Evidence checklist</div>
+                  <div className="flex flex-wrap gap-2">
+                    {detail.advanceRequirements.map((req) => (
+                      <span
+                        key={req.key}
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${req.met ? 'bg-success-50 text-success-600 dark:bg-success-500/15 dark:text-success-500' : 'bg-error-50 text-error-600 dark:bg-error-500/15 dark:text-error-500'}`}
+                      >
+                        {req.met ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                        {req.label}
+                      </span>
+                    ))}
+                  </div>
+                  {detail.missingAdvanceRequirements.length ? (
+                    <p className="mt-2 text-xs text-error-600 dark:text-error-500">Missing: {detail.missingAdvanceRequirements.join(', ')}</p>
+                  ) : null}
+                </div>
+                <Link to={`/dashboard/work-orders/${encodeURIComponent(workOrder.id)}`} className="inline-block text-xs text-muted-foreground hover:underline">
+                  Open full work order
+                </Link>
+              </div>
+            )}
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  );
+}
+
 export default function QaQueuePage() {
   const { activeWorkflowId } = useWorkflowContext();
   const { data, isLoading, isError } = useQuery({ queryKey: ['qa-queue'], queryFn: fetchQaWorkOrderQueue });
@@ -131,6 +210,7 @@ export default function QaQueuePage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-8" />
                       <TableHead>Work order</TableHead>
                       <TableHead>Product</TableHead>
                       <TableHead>Units</TableHead>
@@ -140,15 +220,7 @@ export default function QaQueuePage() {
                   </TableHeader>
                   <TableBody>
                     {release.map((wo) => (
-                      <TableRow key={wo.id}>
-                        <TableCell className="font-medium text-foreground">{wo.woNumber || wo.id}</TableCell>
-                        <TableCell className="text-muted-foreground">{productLabel(wo)}</TableCell>
-                        <TableCell className="text-muted-foreground">{unitsLabel(wo.het?.quantity) ?? '—'}</TableCell>
-                        <TableCell className="text-muted-foreground">{wo.currentPhaseLabel}</TableCell>
-                        <TableCell className="text-right">
-                          <ReleaseDialog workOrder={wo} />
-                        </TableCell>
-                      </TableRow>
+                      <ReleaseRow key={wo.id} workOrder={wo} />
                     ))}
                   </TableBody>
                 </Table>

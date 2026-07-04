@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { Prisma, type WorkOrder } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { tenantIdOrDefault } from './tenant.js';
@@ -15,6 +15,53 @@ function generateWoNumber() {
   return `WO-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString('hex').toUpperCase()}`;
 }
 
+// Fallback finished-goods lot number when the releasing work order has no
+// manuNumber. Same shape/idiom as generateWoNumber so ids stay roughly
+// sortable and collision-resistant across concurrent releases.
+function generateLotNumber() {
+  return `LOT-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString('hex').toUpperCase()}`;
+}
+
+/**
+ * Write CONVERSION genealogy edges from each source HET's inventory lot to the
+ * child (finished-goods) lot minted by this run. Idempotent via the
+ * (parent, child, relationshipType) unique triple. A source HET without a lot
+ * is skipped silently — nothing to link. Exported so the C12 combine action
+ * (epic #207) can reuse the exact same edge-writing convention.
+ */
+export async function writeConversionEdges(
+  tx: Prisma.TransactionClient,
+  params: { sourceHetIds: string[]; childLotId: string; workOrderId: string; phaseId: string | null; tenantId: string },
+) {
+  const uniqueHetIds = Array.from(new Set(params.sourceHetIds.filter(Boolean)));
+  for (const hetId of uniqueHetIds) {
+    const parentLot = await tx.inventoryLot.findFirst({
+      where: { tenantId: params.tenantId, hetId, deleted: false },
+      select: { id: true },
+    });
+    if (!parentLot || parentLot.id === params.childLotId) continue;
+    await tx.inventoryGenealogy.upsert({
+      where: {
+        parentInventoryLotId_childInventoryLotId_relationshipType: {
+          parentInventoryLotId: parentLot.id,
+          childInventoryLotId: params.childLotId,
+          relationshipType: 'CONVERSION',
+        },
+      },
+      create: {
+        tenantId: params.tenantId,
+        parentInventoryLotId: parentLot.id,
+        childInventoryLotId: params.childLotId,
+        relationshipType: 'CONVERSION',
+        workOrderId: params.workOrderId,
+        phaseId: params.phaseId,
+        sourceSystem: 'api',
+      },
+      update: {},
+    });
+  }
+}
+
 export interface CreateWorkOrderInput {
   workflowId: string;
   hetId?: string;
@@ -29,7 +76,8 @@ type WorkOrderAuditAction =
   | 'work_order.serial_recorded'
   | 'work_order.phase_started'
   | 'work_order.phase_finished'
-  | 'work_order.phase_advanced';
+  | 'work_order.phase_advanced'
+  | 'work_order.lot_minted';
 
 const MAX_PHOTO_EVIDENCE_DECODED_BYTES = 5 * 1024 * 1024;
 
@@ -899,13 +947,82 @@ export async function recordWorkOrderRelease(
     throw new Error(`cannot release: missing ${blockers.join(', ')}`);
   }
 
-  const updated = await prisma.$transaction(async (tx) => {
+  // released -> real available finished-goods lot; quarantined -> the material
+  // physically exists and must stay traceable, so mint the same lot marked
+  // quarantined; rejected -> no lot (scrapped, nothing to hold in inventory).
+  const mintsLot = input.releaseStatus === 'released' || input.releaseStatus === 'quarantined';
+
+  const { updated, newLot } = await prisma.$transaction(async (tx) => {
+    let mintedLot: { id: string; lotNumber: string | null } | null = null;
+    let newLot: { id: string; lotNumber: string | null } | null = null;
+
+    if (mintsLot) {
+      // Idempotency: one finished-goods lot per releasing work order. Query
+      // first inside the tx and reuse it rather than adding a unique constraint
+      // on lotNumber (legacy lotNumber values are not reliably unique).
+      const existing = await tx.inventoryLot.findFirst({
+        where: { tenantId: scopedTenantId, workOrderId: id, inventoryType: 'FINISHED_GOOD' },
+        select: { id: true, lotNumber: true },
+      });
+      if (existing) {
+        mintedLot = existing;
+      } else {
+        // Link the finished lot to the run's HET only if that HET has no lot yet
+        // (InventoryLot.hetId is @unique) — otherwise leave it null so the raw
+        // HET lot stays the genealogy parent, not the finished-goods child.
+        let lotHetId: string | null = null;
+        if (workOrder.hetId) {
+          const hetLot = await tx.inventoryLot.findFirst({ where: { tenantId: scopedTenantId, hetId: workOrder.hetId }, select: { id: true } });
+          if (!hetLot) lotHetId = workOrder.hetId;
+        }
+        const quantity = positiveDecimalish(workOrder.outputQuantity)
+          ? new Prisma.Decimal(workOrder.outputQuantity!.toString())
+          : new Prisma.Decimal(1);
+        mintedLot = await tx.inventoryLot.create({
+          data: {
+            id: randomUUID(),
+            tenantId: scopedTenantId,
+            inventoryType: 'FINISHED_GOOD',
+            status: input.releaseStatus === 'released' ? 'available' : 'quarantined',
+            lotNumber: workOrder.manuNumber || generateLotNumber(),
+            hetId: lotHetId,
+            workOrderId: id,
+            quantityInitial: quantity,
+            quantityCurrent: quantity,
+            sourceSystem: 'api',
+            createdById: actorId,
+            updatedById: actorId,
+          },
+          select: { id: true, lotNumber: true },
+        });
+        newLot = mintedLot;
+        // Genealogy: raw HET lot(s) -> finished lot. Sources = this run's HET
+        // plus any combined batch HETs. Combine edges (each combined HET lot ->
+        // combined output) are out of scope here and land with C12 in #207.
+        await writeConversionEdges(tx, {
+          sourceHetIds: [
+            ...(workOrder.hetId ? [workOrder.hetId] : []),
+            ...workOrder.batchHets.map((batchHet) => batchHet.hetId),
+          ],
+          childLotId: mintedLot.id,
+          workOrderId: id,
+          phaseId: workOrder.phaseId,
+          tenantId: scopedTenantId,
+        });
+      }
+    }
+
     const released = await updateTenantWorkOrderForAudit(tx, id, scopedTenantId, {
       releaseStatus: input.releaseStatus,
       releaseDecisionAt: new Date(),
       releaseDecisionById: actorId,
       releaseRemarks: input.remarks?.trim() || null,
       updatedById: actorId,
+      // Pointer only; the PDF is rendered on demand from the immutable record so
+      // it always reflects the assembled batch record, never a stale snapshot.
+      ...(mintedLot?.lotNumber
+        ? { reportPdfPath: `/api/lots/${encodeURIComponent(mintedLot.lotNumber)}/batch-record.pdf` }
+        : {}),
     });
 
     // A released run consumes its HET: the final (release-phase) work order is
@@ -920,7 +1037,7 @@ export async function recordWorkOrderRelease(
       });
     }
 
-    return released;
+    return { updated: released, newLot };
   });
 
   await recordWorkOrderAuditEvent({
@@ -932,6 +1049,18 @@ export async function recordWorkOrderRelease(
     previousState: auditState(workOrder),
     newState: auditState(updated),
   });
+
+  if (newLot) {
+    await recordWorkOrderAuditEvent({
+      tenantId: scopedTenantId,
+      workOrderId: id,
+      action: 'work_order.lot_minted',
+      actorId,
+      source: 'workOrderService.recordWorkOrderRelease',
+      previousState: null,
+      newState: auditState(updated),
+    });
+  }
 
   return getDecoratedWorkOrderOrThrow(id, scopedTenantId);
 }

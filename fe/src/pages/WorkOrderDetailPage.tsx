@@ -730,6 +730,33 @@ export default function WorkOrderDetailPage() {
 
       <SerialEvidencePanel workOrder={workOrder} onSaved={recordSerialSaved} />
 
+      {(workOrder.startSignPath || workOrder.endSignPath) && (
+        <AdminPanel title="Signatures" description="Operator start and end sign-off captured for this phase.">
+          <div className="grid gap-4 sm:grid-cols-2">
+            {workOrder.startSignPath ? (
+              <div className="rounded-lg border border-border bg-background p-3">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Start signature</div>
+                <img src={workOrder.startSignPath} alt="Start signature" className="mt-2 h-16 w-auto max-w-full bg-white object-contain" />
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {workOrder.startSignById || '—'}
+                  {workOrder.prodStart ? ` · ${formatDate(workOrder.prodStart)}` : ''}
+                </div>
+              </div>
+            ) : null}
+            {workOrder.endSignPath ? (
+              <div className="rounded-lg border border-border bg-background p-3">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">End signature</div>
+                <img src={workOrder.endSignPath} alt="End signature" className="mt-2 h-16 w-auto max-w-full bg-white object-contain" />
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {workOrder.endSignById || '—'}
+                  {workOrder.prodEnd ? ` · ${formatDate(workOrder.prodEnd)}` : ''}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </AdminPanel>
+      )}
+
       <details className="group rounded-2xl border border-border bg-card">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-semibold text-foreground">
           <span>Source record — audit trail &amp; inventory movements</span>

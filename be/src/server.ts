@@ -20,6 +20,7 @@ import { manufacturingRoutes } from './routes/manufacturing.js';
 import { hetRoutes } from './routes/hets.js';
 import { procurementRoutes } from './routes/procurement.js';
 import { inventoryRoutes } from './routes/inventory.js';
+import { lotRoutes } from './routes/lots.js';
 
 async function buildServer() {
   const config = parseEnv();
@@ -72,6 +73,7 @@ async function buildServer() {
   await app.register(hetRoutes, { prefix: '/api/hets' });
   await app.register(procurementRoutes, { prefix: '/api/procurement' });
   await app.register(inventoryRoutes, { prefix: '/api/inventory' });
+  await app.register(lotRoutes, { prefix: '/api/lots' });
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(oauthRoutes, { prefix: '/api/auth/oauth' });
 

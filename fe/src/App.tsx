@@ -19,6 +19,8 @@ import CollectionUnitDetailPage from './pages/CollectionUnitDetailPage';
 import HetDetailPage from './pages/HetDetailPage';
 import InventoryPage from './pages/InventoryPage';
 import InventoryLotDetailPage from './pages/InventoryLotDetailPage';
+import LotsPage from './pages/LotsPage';
+import LotBatchRecordPage from './pages/LotBatchRecordPage';
 import TraceabilityPage from './pages/TraceabilityPage';
 import NotFoundPage from './pages/NotFoundPage';
 
@@ -167,6 +169,26 @@ function App() {
               <ProtectedRoute>
                 <DashboardLayout>
                   <InventoryPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/lots/:lotNumber"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <LotBatchRecordPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/lots"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <LotsPage />
                 </DashboardLayout>
               </ProtectedRoute>
             }

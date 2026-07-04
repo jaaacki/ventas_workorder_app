@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 import DashboardHome from './pages/DashboardHome';
 import ManagerDashboardPage from './pages/ManagerDashboardPage';
+import CollectionReportPage from './pages/CollectionReportPage';
 import UsersRolesPage from './pages/UsersRolesPage';
 import WorkflowsPage from './pages/WorkflowsPage';
 import MasterDataPage from './pages/MasterDataPage';
@@ -81,6 +82,16 @@ function App() {
               <ProtectedRoute roles={['owner', 'admin', 'production_manager', 'qa_manager']}>
                 <DashboardLayout>
                   <ManagerDashboardPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/reports/collections"
+            element={
+              <ProtectedRoute roles={['owner', 'admin', 'production_manager', 'qa_manager']}>
+                <DashboardLayout>
+                  <CollectionReportPage />
                 </DashboardLayout>
               </ProtectedRoute>
             }

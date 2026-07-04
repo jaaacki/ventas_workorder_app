@@ -1,18 +1,20 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowUp, ArrowDown, ExternalLink, GitBranch, Search } from 'lucide-react';
+import { ArrowUp, ArrowDown, ArrowRight, Building2, ExternalLink, GitBranch, Package, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader, EmptyState } from '@/components/tailadmin';
-import { humanStatus, toneToBadgeVariant } from '@/lib/format';
+import { formatDate, humanStatus, toneToBadgeVariant } from '@/lib/format';
 import {
   fetchInventoryLots,
   fetchInventoryLot,
   fetchInventoryGenealogy,
+  fetchLotInventoryTrace,
   type InventoryGenealogyEdge,
   type InventoryLot,
+  type InventoryTraceCollection,
 } from '@/lib/inventory-api';
 
 function lotLabel(lot?: Pick<InventoryLot, 'lotNumber' | 'id'> | null) {
@@ -21,6 +23,58 @@ function lotLabel(lot?: Pick<InventoryLot, 'lotNumber' | 'id'> | null) {
 
 function skuLabel(lot?: InventoryLot | null) {
   return lot?.inventorySku?.description || lot?.inventorySku?.sku || lot?.inventorySkuId || null;
+}
+
+// One step in the upstream collection chain: clinic → container → deliver → collect.
+function OriginNode({ icon, label, detail }: { icon: ReactNode; label: string; detail?: string | null }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
+      <span className="text-muted-foreground">{icon}</span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-medium text-foreground">{label}</span>
+        {detail && <span className="block truncate text-xs text-muted-foreground">{detail}</span>}
+      </span>
+    </div>
+  );
+}
+
+// Upstream collection origin of the selected lot: where the HET was collected from.
+// Renders nothing when the lot has no collection provenance (e.g. a reagent lot).
+function CollectionOrigin({ collection }: { collection: InventoryTraceCollection }) {
+  const clinic = collection.collectionPoints[0];
+  const supply = collection.supplyEntities[0];
+  const unit = collection.collectionUnits[0];
+  const issuance = collection.issuanceOrders[0];
+  const receipt = collection.collectionReceipts[0];
+  const clinicLabel = clinic?.displayName || supply?.name || clinic?.id || supply?.id;
+  if (!clinicLabel && !unit && !receipt) return null;
+
+  const nodes: ReactNode[] = [];
+  if (clinicLabel) nodes.push(<OriginNode key="clinic" icon={<Building2 className="h-4 w-4" />} label={clinicLabel} detail={clinic?.hciCode || supply?.legalName} />);
+  if (unit) nodes.push(<OriginNode key="unit" icon={<Package className="h-4 w-4" />} label={unit.unitNumber || unit.id} detail={humanStatus(unit.status).label} />);
+  if (issuance) nodes.push(<OriginNode key="issuance" icon={<ArrowRight className="h-4 w-4" />} label="Delivered empty" detail={formatDate(issuance.issuedAt)} />);
+  if (receipt) nodes.push(<OriginNode key="receipt" icon={<ArrowDown className="h-4 w-4" />} label="Collected filled" detail={formatDate(receipt.receivedAt)} />);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Building2 className="h-4 w-4 text-muted-foreground" />
+          Collection origin
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap items-center gap-2">
+          {nodes.map((node, index) => (
+            <div key={index} className="flex items-center gap-2">
+              {index > 0 && <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+              {node}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 // A walkable genealogy node — clicking re-centres the tree on this lot.
@@ -70,6 +124,13 @@ export default function TraceabilityPage() {
   const genealogyQuery = useQuery({
     queryKey: ['inventory', 'genealogy', selectedLotId],
     queryFn: () => fetchInventoryGenealogy(selectedLotId!),
+    enabled: Boolean(selectedLotId),
+    retry: false,
+  });
+
+  const traceQuery = useQuery({
+    queryKey: ['inventory', 'lot-trace', selectedLotId],
+    queryFn: () => fetchLotInventoryTrace(selectedLotId!),
     enabled: Boolean(selectedLotId),
     retry: false,
   });
@@ -146,6 +207,8 @@ export default function TraceabilityPage() {
           </CardContent>
         </Card>
       )}
+
+      {selectedLotId && traceQuery.data && <CollectionOrigin collection={traceQuery.data.collection} />}
 
       {selectedLotId && (
         <Card>

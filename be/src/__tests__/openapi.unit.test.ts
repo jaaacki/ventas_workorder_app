@@ -217,8 +217,10 @@ const expectedOperations: ExpectedOperation[] = [
   { method: 'get', path: '/api/inventory/lots/{lotId}/genealogy', operationId: 'getInventoryLotGenealogy', routeKind: 'read-model', auth: 'permission', requiredPermissions: ['inventory.genealogy.read'] },
   { method: 'get', path: '/api/inventory/import-reports', operationId: 'listInventoryImportReports', routeKind: 'resource-crud', auth: 'permission', requiredPermissions: ['inventory.importReport.read'] },
   { method: 'get', path: '/api/lots', operationId: 'listFinishedGoodsLots', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/lots/{id}/inventory-trace', operationId: 'getLotInventoryTrace', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/lots/{lotNumber}/batch-record', operationId: 'getLotBatchRecord', routeKind: 'read-model', auth: 'role', requiredRoles: ['admin', 'owner', 'qa_manager', 'production_manager'] },
   { method: 'get', path: '/api/metrics/overview', operationId: 'getMetricsOverview', routeKind: 'read-model', auth: 'role', requiredRoles: ['owner', 'admin', 'production_manager', 'qa_manager'] },
+  { method: 'get', path: '/api/reports/collections', operationId: 'getCollectionReport', routeKind: 'read-model', auth: 'role', requiredRoles: ['owner', 'admin', 'production_manager', 'qa_manager'] },
   ...crudExpectedOperations(procurementCrudExpectedResources),
   ...crudExpectedOperations(inventoryCrudExpectedResources),
 ];

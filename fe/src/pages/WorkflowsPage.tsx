@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 import {
   fetchWorkflows,
@@ -18,6 +18,7 @@ import {
   unplaceStep,
   reorderSteps,
   fetchBoms,
+  fetchBomLines,
   type WorkflowSummary,
   type PhaseItem,
   type StepItem,
@@ -46,7 +47,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { EmptyState, MetricCard, PageHeader } from '@/components/tailadmin';
 import { toast } from 'sonner';
-import { ArrowDown, ArrowLeft, ArrowUp, Edit3, ListChecks, Plus, Trash2, Workflow as WorkflowIcon } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, Boxes, Edit3, ListChecks, Plus, Trash2, Workflow as WorkflowIcon } from 'lucide-react';
 
 function apiError(e: AxiosError<{ error?: string }>, fallback: string) {
   return e.response?.data?.error || fallback;
@@ -546,6 +547,97 @@ function StepsDrawer({
 
 // ── Workflow editor ─────────────────────────────────────────────────────────
 
+// Read-only "Materials & inventory links" — every phase's BOM lines and the
+// InventorySku each resolves to (epic #181). Purely to evaluate link coverage;
+// editing links is Phase 2. Fetches each BOM's lines in parallel via useQueries.
+function MaterialsPanel({ phases }: { phases: PhaseItem[] }) {
+  const bomPhases = phases.map((phase, index) => ({ phase, index })).filter((p) => p.phase.bomId);
+  const results = useQueries({
+    queries: bomPhases.map(({ phase }) => ({
+      queryKey: ['bom-lines', phase.bomId],
+      queryFn: () => fetchBomLines(phase.bomId as string),
+    })),
+  });
+  const groups = bomPhases.map((bp, i) => ({
+    ...bp,
+    lines: results[i]?.data ?? [],
+    loading: results[i]?.isLoading ?? false,
+  }));
+  const allLines = groups.flatMap((g) => g.lines);
+  const total = allLines.length;
+  const linked = allLines.filter((l) => l.inventorySku).length;
+  const unlinked = total - linked;
+
+  return (
+    <div className="rounded-xl border border-border bg-card">
+      <div className="flex flex-wrap items-center justify-between gap-2 p-4">
+        <div>
+          <div className="text-lg font-semibold text-foreground">Materials &amp; inventory links</div>
+          <div className="text-sm text-muted-foreground">
+            Each BOM material and the inventory SKU it resolves to. Read-only.
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline">{linked}/{total} linked</Badge>
+          {unlinked > 0 && (
+            <span className="rounded-full border border-warning-500/40 bg-warning-50 px-2 py-0.5 text-xs text-warning-600 dark:bg-warning-500/10 dark:text-warning-500">
+              {unlinked} unlinked
+            </span>
+          )}
+        </div>
+      </div>
+      {!groups.length ? (
+        <EmptyState icon={<Boxes className="h-6 w-6" />} title="No BOMs on phases" description="Attach a BOM to a phase to see its materials." />
+      ) : (
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Phase</TableHead>
+                <TableHead>Material</TableHead>
+                <TableHead>Qty</TableHead>
+                <TableHead>Serial</TableHead>
+                <TableHead>Inventory SKU</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {groups.map(({ phase, index, lines, loading }) =>
+                lines.length === 0 ? (
+                  <TableRow key={phase.id}>
+                    <TableCell className="font-medium text-foreground">{phaseTitle(phase, index)}</TableCell>
+                    <TableCell colSpan={4} className="text-muted-foreground">{loading ? 'Loading…' : 'No materials'}</TableCell>
+                  </TableRow>
+                ) : (
+                  lines.map((line, li) => (
+                    <TableRow key={line.id}>
+                      <TableCell className="font-medium text-foreground">{li === 0 ? phaseTitle(phase, index) : ''}</TableCell>
+                      <TableCell>{line.description || '—'}</TableCell>
+                      <TableCell className="text-muted-foreground">{line.quantity ?? '-'} {line.uom || ''}</TableCell>
+                      <TableCell>{line.hasSerial ? <Badge variant="outline">serial</Badge> : ''}</TableCell>
+                      <TableCell>
+                        {line.inventorySku ? (
+                          <span className="text-foreground">
+                            {line.inventorySku.sku || line.inventorySku.id}
+                            {line.inventorySku.description ? ` · ${line.inventorySku.description}` : ''}
+                          </span>
+                        ) : (
+                          <span className="rounded-full border border-warning-500/40 bg-warning-50 px-2 py-0.5 text-xs text-warning-600 dark:bg-warning-500/10 dark:text-warning-500">
+                            Unlinked
+                          </span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ),
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WorkflowEditor({ workflowId, onBack }: { workflowId: string; onBack: () => void }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
@@ -744,6 +836,8 @@ function WorkflowEditor({ workflowId, onBack }: { workflowId: string; onBack: ()
           </Table>
         )}
       </div>
+
+      <MaterialsPanel phases={phases} />
 
       {phaseDialog && (
         <PhaseDialog

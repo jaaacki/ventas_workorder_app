@@ -172,6 +172,7 @@ const expectedOperations: ExpectedOperation[] = [
   { method: 'get', path: '/api/work-orders', operationId: 'listWorkOrders', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'post', path: '/api/work-orders', operationId: 'createWorkOrder', routeKind: 'lifecycle-action', auth: 'permission', requiredPermissions: ['workOrder.create'] },
   { method: 'get', path: '/api/work-orders/qa-queue', operationId: 'listQaWorkOrderQueue', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/work-orders/collection-queue', operationId: 'listCollectionQueue', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/work-orders/{id}', operationId: 'getWorkOrder', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/work-orders/{id}/audit-events', operationId: 'listWorkOrderAuditEvents', routeKind: 'read-model', auth: 'authenticated' },
   { method: 'get', path: '/api/work-orders/{id}/inventory-trace', operationId: 'getWorkOrderInventoryTrace', routeKind: 'read-model', auth: 'authenticated' },

@@ -273,6 +273,22 @@ export async function fetchQaWorkOrderQueue(): Promise<QaWorkOrderQueue> {
   return data;
 }
 
+export interface CollectionWorkOrderQueue {
+  counts: {
+    awaiting: number;
+    inTransit: number;
+    received: number;
+  };
+  awaiting: WorkOrderSummary[];
+  inTransit: WorkOrderSummary[];
+  received: WorkOrderSummary[];
+}
+
+export async function fetchCollectionQueue(): Promise<CollectionWorkOrderQueue> {
+  const { data } = await api.get<CollectionWorkOrderQueue>('/api/work-orders/collection-queue');
+  return data;
+}
+
 export async function fetchWorkOrderInventoryTrace(id: string): Promise<WorkOrderInventoryTrace> {
   const { data } = await api.get<WorkOrderInventoryTrace>(`/api/work-orders/${id}/inventory-trace`);
   return data;

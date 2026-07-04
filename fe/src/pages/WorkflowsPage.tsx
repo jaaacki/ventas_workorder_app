@@ -326,7 +326,7 @@ function PhaseDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl">
         <form onSubmit={submit}>
           <DialogHeader>
             <DialogTitle>{phase ? 'Edit phase' : 'Add a phase'}</DialogTitle>

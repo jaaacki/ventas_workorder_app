@@ -33,9 +33,10 @@ const ctx: {
   bomLineId: string;
   phaseEquipId: string;
   hetId: string;
+  hetNumber: string;
   hetLotId: string;
   workOrderIds: string[];
-} = { actorId: '', tenantId: DEFAULT_TENANT_ID, workflowId: '', phaseIds: [], bomId: '', bomLineId: '', phaseEquipId: '', hetId: '', hetLotId: '', workOrderIds: [] };
+} = { actorId: '', tenantId: DEFAULT_TENANT_ID, workflowId: '', phaseIds: [], bomId: '', bomLineId: '', phaseEquipId: '', hetId: '', hetNumber: '', hetLotId: '', workOrderIds: [] };
 
 beforeAll(async () => {
   // Actor (any staff row; create a throwaway one if none exist).
@@ -102,7 +103,8 @@ beforeAll(async () => {
   }
 
   ctx.hetId = `${code}:HET`;
-  await prisma.het.create({ data: { id: ctx.hetId, tenantId: ctx.tenantId, hetNumber: `${code}-H1`, clinicName: 'Integration Clinic', HCICode: 'HCI-INT', quantity: 1 } });
+  ctx.hetNumber = `${code}-H1`;
+  await prisma.het.create({ data: { id: ctx.hetId, tenantId: ctx.tenantId, hetNumber: ctx.hetNumber, clinicName: 'Integration Clinic', HCICode: 'HCI-INT', quantity: 1 } });
 
   // A raw HET inventory lot so the release step can write a CONVERSION
   // genealogy edge (raw HET lot -> finished-goods lot).
@@ -301,7 +303,7 @@ describe('AmGraft production run (integration)', () => {
     // 10d. getBatchRecord reconstructs the full chain with evidence and origin.
     const batchRecord = await getBatchRecord(finishedLot!.lotNumber!, ctx.tenantId);
     expect(batchRecord.lot.lotNumber).toBe(finishedLot?.lotNumber);
-    expect(batchRecord.hetOrigin).toMatchObject({ hetNumber: `${code}-H1`, clinicName: 'Integration Clinic' });
+    expect(batchRecord.hetOrigin).toMatchObject({ hetNumber: ctx.hetNumber, clinicName: 'Integration Clinic' });
     expect(batchRecord.phases.map((phase) => phase.phase?.phaseName)).toEqual(phaseNames);
     expect(batchRecord.genealogyParents.map((parent) => parent.id)).toContain(ctx.hetLotId);
     // Preparation phase kept its serial + equipment evidence in the record.

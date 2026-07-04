@@ -34,6 +34,9 @@ const phaseRefSchema = z.object({
   phaseName: z.string().nullable(),
   phaseShort: z.string().nullable(),
   sortOrder: z.number().nullable(),
+  // Exposed so the client can gate the combine affordance on the phase lever
+  // without a second fetch. Optional because nextPhase carries only the summary.
+  blocksCombine: z.boolean().optional(),
 });
 
 const workOrderPhaseTimelineSchema = z.object({
@@ -212,6 +215,52 @@ const hetCollectionBodySchema = z.object({
   signatureDataUrl: z.string().trim().min(1).max(7_000_000).optional(),
 });
 
+const combineBodySchema = z.object({
+  hetIds: z.array(z.string().min(1)).min(1),
+});
+
+const amendEvidenceBodySchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('serial'), bomRefId: z.string().min(1), serialNumber: z.string().trim().min(1) }),
+  z.object({ kind: z.literal('output-quantity'), outputQuantity: z.union([z.number().positive(), z.string().trim().min(1)]) }),
+  z.object({ kind: z.literal('photo'), imageDataUrl: z.string().trim().min(1).max(7_000_000) }),
+  z.object({ kind: z.literal('equipment'), phaseEquipId: z.string().min(1) }),
+]);
+
+const runChainSignatureSchema = z.object({ signer: z.string().nullable(), at: z.date().nullable() }).nullable();
+
+const workOrderRunChainSchema = z.object({
+  workOrderId: z.string(),
+  hetId: z.string().nullable(),
+  workOrders: z.array(
+    z.object({
+      workOrderId: z.string(),
+      woNumber: z.string().nullable(),
+      phase: z
+        .object({
+          id: z.string(),
+          phaseName: z.string().nullable(),
+          phaseShort: z.string().nullable(),
+          sortOrder: z.number(),
+          isGate: z.boolean(),
+        })
+        .nullable(),
+      phaseOrder: z.number().nullable(),
+      prodStart: z.date().nullable(),
+      prodEnd: z.date().nullable(),
+      prodDuration: decimalish.nullable(),
+      outputQuantity: decimalish.nullable(),
+      releaseStatus: z.string().nullable(),
+      releaseDecisionAt: z.date().nullable(),
+      hasPhoto: z.boolean(),
+      startSignature: runChainSignatureSchema,
+      endSignature: runChainSignatureSchema,
+      releaseSignature: runChainSignatureSchema,
+      counts: z.object({ serials: z.number(), equipment: z.number(), sterilisations: z.number() }),
+      isCurrent: z.boolean(),
+    }),
+  ),
+});
+
 export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
   app.get(
     '/',
@@ -323,6 +372,31 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         return reply.status(404).send({ error: 'Work order not found' });
       }
       return events;
+    },
+  );
+
+  app.get(
+    '/:id/chain',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        tags: ['Work Orders'],
+        summary: 'Get work order run chain',
+        description: 'Read the ordered per-phase run chain for a work order (every work order carrying the same HET), with phase, timestamps, and evidence/signature presence for the run-history walk. Example: GET /api/work-orders/WO-1001/chain.',
+        operationId: 'getWorkOrderChain',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
+        params: z.object({ id: z.string() }),
+        response: { 200: workOrderRunChainSchema, 401: errorResponse, 404: errorResponse },
+      },
+    },
+    async (req, reply) => {
+      const chain = await workOrderService.getWorkOrderRunChain(req.params.id, tenantIdOf(req));
+      if (!chain) {
+        return reply.status(404).send({ error: 'Work order not found' });
+      }
+      return chain;
     },
   );
 
@@ -786,6 +860,100 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
           // order (previousWoId unique). Report a retryable conflict, not a 500.
           if (err.code === 'P2002') {
             return reply.status(409).send({ error: 'work order already advanced' });
+          }
+        }
+        throw err;
+      }
+    },
+  );
+
+  app.post(
+    '/:id/combine',
+    {
+      onRequest: [app.requirePermission('workOrder', 'combine')],
+      schema: {
+        tags: ['Work Orders'],
+        summary: 'Combine HETs into a work order',
+        description: 'C12 combine action: attach one or more source HETs to a work order as a combined batch and write COMBINATION genealogy edges. Valid only while the phase is active and permits combining (Phase.blocksCombine false). Requires the workOrder.combine permission.',
+        operationId: 'combineHets',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
+        'x-auth': 'permission',
+        'x-required-permissions': ['workOrder.combine'],
+        params: z.object({ id: z.string() }),
+        body: combineBodySchema,
+        response: {
+          200: workOrderDetailSchema,
+          400: errorResponse,
+          401: errorResponse,
+          403: errorResponse,
+          404: errorResponse,
+          409: errorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      try {
+        return await workOrderService.combineHets(req.params.id, req.body.hetIds, actorIdOf(req), tenantIdOf(req));
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith('cannot combine:')) {
+          return reply.status(409).send({ error: err.message });
+        }
+        if (err instanceof Prisma.PrismaClientKnownRequestError) {
+          if (err.code === 'P2025') {
+            return reply.status(404).send({ error: 'Work order not found' });
+          }
+          if (err.code === 'P2002') {
+            return reply.status(409).send({ error: 'HET already combined into this work order' });
+          }
+          if (err.code === 'P2003') {
+            return reply.status(400).send({ error: 'Referenced HET does not exist' });
+          }
+        }
+        throw err;
+      }
+    },
+  );
+
+  app.post(
+    '/:id/amend-evidence',
+    {
+      onRequest: [app.requirePermission('workOrder', 'execute'), app.requireRole('admin', 'owner')],
+      schema: {
+        tags: ['Work Orders'],
+        summary: 'Amend locked work order evidence',
+        description: 'Admin/owner-gated correction of evidence on a superseded (locked) interior work order. Bypasses the immutability lock but always writes a work_order.evidence_amended audit event. Requires the workOrder.execute permission and an admin or owner role.',
+        operationId: 'amendWorkOrderEvidence',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
+        'x-auth': 'permission',
+        'x-required-permissions': ['workOrder.execute'],
+        'x-required-roles': ['admin', 'owner'],
+        params: z.object({ id: z.string() }),
+        body: amendEvidenceBodySchema,
+        response: {
+          200: workOrderDetailSchema,
+          400: errorResponse,
+          401: errorResponse,
+          403: errorResponse,
+          404: errorResponse,
+          409: errorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      try {
+        return await workOrderService.amendWorkOrderEvidence(req.params.id, req.body, actorIdOf(req), tenantIdOf(req));
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith('cannot record ')) {
+          return reply.status(409).send({ error: err.message });
+        }
+        if (err instanceof Prisma.PrismaClientKnownRequestError) {
+          if (err.code === 'P2025') {
+            return reply.status(404).send({ error: 'Work order not found' });
+          }
+          if (err.code === 'P2003') {
+            return reply.status(400).send({ error: 'Referenced record does not exist' });
           }
         }
         throw err;

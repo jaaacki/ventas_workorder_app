@@ -82,12 +82,33 @@ describe('hetService', () => {
 
     expect(mocks.workOrder.findFirst).toHaveBeenCalledWith({
       where: { id: 'wo1', tenantId: 'tenant-a', deleted: false },
-      select: { id: true },
+      select: {
+        id: true,
+        hetId: true,
+        phase: { select: { blocksCombine: true } },
+        batchHets: { select: { hetId: true } },
+      },
     });
     expect(mocks.het.findFirst).toHaveBeenCalledWith({
       where: { id: 'h1', tenantId: 'tenant-a', deleted: false },
       select: { id: true },
     });
+  });
+
+  it('useHet rejects attaching a second distinct HET on a phase that blocks combining', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo1',
+      hetId: 'h1',
+      phase: { blocksCombine: true },
+      batchHets: [{ hetId: 'h1' }],
+    });
+
+    await expect(
+      hetService.useHet('h2', { workOrderId: 'wo1', actorId: 'actor1' }),
+    ).rejects.toThrow('cannot use: the current phase does not allow combining HETs');
+
+    expect(mocks.het.updateMany).not.toHaveBeenCalled();
+    expect(mocks.workOrderHet.upsert).not.toHaveBeenCalled();
   });
 
   it('finishHet sets finishedById to the work order', async () => {

@@ -114,6 +114,7 @@ export const hetRoutes: FastifyPluginAsyncZod = async function (app) {
           401: errorResponse,
           403: errorResponse,
           404: errorResponse,
+          409: errorResponse,
         },
       },
     },
@@ -125,6 +126,9 @@ export const hetRoutes: FastifyPluginAsyncZod = async function (app) {
           tenantId: tenantIdOf(req),
         });
       } catch (err) {
+        if (err instanceof Error && err.message.startsWith('cannot use:')) {
+          return reply.status(409).send({ error: err.message });
+        }
         if (err instanceof Prisma.PrismaClientKnownRequestError) {
           if (err.code === 'P2025') {
             return reply.status(404).send({ error: 'HET or work order not found' });

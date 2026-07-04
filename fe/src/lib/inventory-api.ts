@@ -156,6 +156,29 @@ export interface InventoryGenealogy {
   children: InventoryGenealogyEdge[];
 }
 
+// Upstream collection origin of a traced lot/HET: clinic → unit → issuance/order →
+// receipt/line → minted HET. Lean projections mirroring the backend trace leg.
+export interface InventoryTraceCollection {
+  supplyEntities: Array<{ id: string; name: string | null; legalName: string | null; externalCode: string | null }>;
+  collectionPoints: Array<{ id: string; supplyEntityId: string | null; displayName: string | null; hciCode: string | null; address: string | null }>;
+  collectionUnits: Array<{ id: string; unitNumber: string | null; status: string; supplyEntityId: string | null; collectionPointId: string | null; parcelTrackingNumber: string | null }>;
+  issuanceOrders: Array<{ id: string; supplyEntityId: string | null; collectionPointId: string | null; issuedAt: string | null; issuedBy: string | null }>;
+  collectionOrders: Array<{ id: string; supplyEntityId: string | null; collectionPointId: string | null; requestedAt: string | null; status: string }>;
+  collectionReceipts: Array<{ id: string; collectionOrderId: string | null; issuanceOrderId: string | null; receivedAt: string | null; receivedBy: string | null; acceptanceState: string | null }>;
+  collectionReceiptLines: Array<{ id: string; collectionReceiptId: string; collectionUnitId: string | null; resultingHetId: string | null; quantity: string | number | null; acceptanceStatus: string | null }>;
+}
+
+export interface InventoryTrace {
+  subject: { type: string; id: string; label?: string | null };
+  lots: InventoryLot[];
+  collection: InventoryTraceCollection;
+}
+
+export async function fetchLotInventoryTrace(id: string): Promise<InventoryTrace> {
+  const { data } = await api.get<InventoryTrace>(`/api/lots/${encodeURIComponent(id)}/inventory-trace`);
+  return data;
+}
+
 export interface InventoryImportReport {
   id: string;
   tenantId?: string;

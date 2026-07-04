@@ -4,6 +4,8 @@ import { Prisma } from '@prisma/client';
 import PDFDocument from 'pdfkit';
 import { tenantIdOf } from './requestContext.js';
 import { getBatchRecord, listFinishedGoodsLots, renderBatchRecordPdf } from '../services/batchRecordService.js';
+import { getLotInventoryTrace } from '../services/inventoryTraceService.js';
+import { inventoryTraceSchema } from './inventoryTraceSchemas.js';
 
 const errorResponse = z.object({ error: z.string() });
 const decimalish = z.union([z.number(), z.string(), z.custom<Prisma.Decimal>()]);
@@ -153,6 +155,30 @@ export const lotRoutes: FastifyPluginAsyncZod = async function (app) {
     },
     async (req) => {
       return listFinishedGoodsLots(tenantIdOf(req));
+    },
+  );
+
+  app.get(
+    '/:id/inventory-trace',
+    {
+      onRequest: [app.authenticate],
+      schema: {
+        tags: ['Inventory'],
+        summary: 'Get finished-goods lot inventory trace',
+        description:
+          'Trace a lot back to its collection origin and forward through genealogy: inventory lots, movements, consumptions, genealogy, HET links, work orders, and the upstream clinic → unit → issuance → receipt collection leg. Read-only. Example: GET /api/lots/lot-1001/inventory-trace.',
+        operationId: 'getLotInventoryTrace',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'read-model',
+        'x-auth': 'authenticated',
+        params: z.object({ id: z.string() }),
+        response: { 200: inventoryTraceSchema, 401: errorResponse, 404: errorResponse },
+      },
+    },
+    async (req, reply) => {
+      const trace = await getLotInventoryTrace(req.params.id, tenantIdOf(req));
+      if (!trace) return reply.status(404).send({ error: 'Lot not found' });
+      return trace;
     },
   );
 

@@ -403,6 +403,7 @@ model WorkOrder {
   previousWoId           String?   @unique
   steralisationCurrentId String?   @unique
   collectionReceiptId    String?   @unique
+  issuanceOrderId        String?   @unique
   nextPhaseId            String?
   workflowId             String?
 
@@ -418,6 +419,7 @@ model WorkOrder {
   nextWorkOrder         WorkOrder?                      @relation("WorkOrderPrevious")
   steralisationCurrent  Sterilise?                      @relation("WorkOrderSterilisationCurrent", fields: [steralisationCurrentId], references: [id])
   collectionReceipt     CollectionReceipt?              @relation("WorkOrderCollectionReceipt", fields: [collectionReceiptId], references: [id])
+  issuanceOrder         IssuanceOrder?                  @relation("WorkOrderIssuanceOrder", fields: [issuanceOrderId], references: [id])
   nextPhase             Phase?                          @relation("WorkOrderNextPhase", fields: [nextPhaseId], references: [id])
   workflow              Workflow?                       @relation(fields: [workflowId], references: [id])
   woSerials             WoSerial[]
@@ -642,6 +644,9 @@ model IssuanceOrder {
   collectionPointId      String?
   issuedAt               DateTime?
   issuedBy               String?
+  // Custody signature captured when the empty container is issued to the clinic
+  // (deliver-empty leg, #189). issuedAt is the sign date, issuedBy the signer.
+  signaturePath          String?
   legacyDeliverCollectId String?
   legacyDirection        String?
   semanticConfidence     String?
@@ -655,6 +660,7 @@ model IssuanceOrder {
   legacyRaw              Json?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
+  currentWorkOrder       WorkOrder? @relation("WorkOrderIssuanceOrder")
 
   @@index([tenantId])
   @@index([deleted])
@@ -748,6 +754,9 @@ model CollectionReceipt {
   id                            String    @id
   tenantId                      String
   collectionOrderId             String?
+  // Soft pointer to the deliver-empty IssuanceOrder this filled-container receipt
+  // closes (#189 unit continuity). Scalar (no FK), mirroring collectionOrderId.
+  issuanceOrderId               String?
   receivedAt                    DateTime?
   receivedBy                    String?
   signaturePath                 String?
@@ -768,6 +777,7 @@ model CollectionReceipt {
   @@index([tenantId])
   @@index([deleted])
   @@index([collectionOrderId])
+  @@index([issuanceOrderId])
   @@index([legacyCollectDeliverCollectId])
   @@map("collectionReceipt")
 }

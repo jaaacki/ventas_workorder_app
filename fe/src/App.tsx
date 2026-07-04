@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 import DashboardHome from './pages/DashboardHome';
 import ManagerDashboardPage from './pages/ManagerDashboardPage';
+import CollectionReportPage from './pages/CollectionReportPage';
 import UsersRolesPage from './pages/UsersRolesPage';
 import WorkflowsPage from './pages/WorkflowsPage';
 import MasterDataPage from './pages/MasterDataPage';
@@ -14,6 +15,7 @@ import WorkOrdersPage from './pages/WorkOrdersPage';
 import WorkOrderDetailPage from './pages/WorkOrderDetailPage';
 import MyQueuePage from './pages/MyQueuePage';
 import QaQueuePage from './pages/QaQueuePage';
+import CollectionQueuePage from './pages/CollectionQueuePage';
 import QuarantinePage from './pages/QuarantinePage';
 import ProcurementPage from './pages/ProcurementPage';
 import CollectionUnitDetailPage from './pages/CollectionUnitDetailPage';
@@ -85,6 +87,16 @@ function App() {
             }
           />
           <Route
+            path="/dashboard/reports/collections"
+            element={
+              <ProtectedRoute roles={['owner', 'admin', 'production_manager', 'qa_manager']}>
+                <DashboardLayout>
+                  <CollectionReportPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/dashboard/work-orders/:id"
             element={
               <ProtectedRoute>
@@ -130,6 +142,16 @@ function App() {
               <ProtectedRoute>
                 <DashboardLayout>
                   <QuarantinePage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/collection-queue"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <CollectionQueuePage />
                 </DashboardLayout>
               </ProtectedRoute>
             }

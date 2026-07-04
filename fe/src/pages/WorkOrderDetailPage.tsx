@@ -34,6 +34,7 @@ import {
   fetchWorkOrderAuditEvents,
   fetchWorkOrderChain,
   fetchWorkOrderInventoryTrace,
+  deliverEmptyContainer,
   finishWorkOrderPhase,
   recordHetCollection,
   recordWorkOrderEquipment,
@@ -42,6 +43,7 @@ import {
   recordWorkOrderRelease,
   recordWorkOrderSerial,
   startWorkOrderPhase,
+  type DeliverEmptyPayload,
   type RecordHetCollectionPayload,
   type WorkOrderAuditEvent,
   type WorkOrderAllowedEquipment,
@@ -49,7 +51,7 @@ import {
   type WorkOrderRequiredSerial,
 } from '@/lib/work-orders-api';
 import { fetchHets } from '@/lib/hets-api';
-import { fetchCollectionPoints } from '@/lib/procurement-api';
+import { fetchCollectionPoints, fetchCollectionUnits } from '@/lib/procurement-api';
 import { workflowLabel } from '@/lib/work-order-ui';
 import { useAuthStore } from '@/store/authStore';
 import { SignaturePad, WorkOrderWorkspace } from './WorkOrdersPage';
@@ -235,7 +237,20 @@ function CollectionProcessPanel({
   const [parcelTrackingNumber, setParcelTrackingNumber] = useState('');
   const [signature, setSignature] = useState('');
 
+  // Next-container swap (#190): optionally issue the next empty container out to
+  // the clinic on collect and chain the collected unit → next unit.
+  const [issueNext, setIssueNext] = useState(false);
+  const [nextUnitId, setNextUnitId] = useState('');
+  const [nextParcel, setNextParcel] = useState('');
+
+  // Deliver-empty leg state (#189).
+  const [deliverPointId, setDeliverPointId] = useState('');
+  const [deliverUnitId, setDeliverUnitId] = useState('');
+  const [deliverParcel, setDeliverParcel] = useState('');
+  const [deliverSignature, setDeliverSignature] = useState('');
+
   const alreadyCollected = Boolean(workOrder.hetId);
+  const alreadyDelivered = Boolean(workOrder.issuanceOrderId);
 
   const pointsQuery = useQuery({
     queryKey: ['collection-points'],
@@ -243,6 +258,31 @@ function CollectionProcessPanel({
     enabled: !alreadyCollected,
   });
   const collectionPoints = pointsQuery.data ?? [];
+
+  // Containers available to issue on the deliver leg and as the next-container on
+  // the collect leg — the list shows each unit's live CollectionUnit.status.
+  const unitsQuery = useQuery({
+    queryKey: ['collection-units'],
+    queryFn: () => fetchCollectionUnits(),
+    enabled: !alreadyCollected,
+  });
+  const collectionUnits = unitsQuery.data ?? [];
+  const selectedUnit = collectionUnits.find((unit) => unit.id === deliverUnitId);
+
+  const deliverMutation = useMutation({
+    mutationFn: () => {
+      const payload: DeliverEmptyPayload = { collectionPointId: deliverPointId, collectionUnitId: deliverUnitId };
+      if (deliverParcel.trim()) payload.parcelTrackingNumber = deliverParcel.trim();
+      if (deliverSignature) payload.signatureDataUrl = deliverSignature;
+      return deliverEmptyContainer(workOrder.id, payload);
+    },
+    onSuccess: (updated) => {
+      onSaved(updated);
+      toast.success('Empty container issued');
+    },
+    onError: (e: AxiosError<{ error?: string }>) =>
+      toast.error(e.response?.data?.error || 'Failed to issue empty container'),
+  });
 
   const collectMutation = useMutation({
     mutationFn: () => {
@@ -252,6 +292,10 @@ function CollectionProcessPanel({
       if (lotNumber.trim()) payload.lotNumber = lotNumber.trim();
       if (parcelTrackingNumber.trim()) payload.parcelTrackingNumber = parcelTrackingNumber.trim();
       if (signature) payload.signatureDataUrl = signature;
+      if (issueNext && nextUnitId) {
+        payload.nextCollectionUnitId = nextUnitId;
+        if (nextParcel.trim()) payload.nextParcelTrackingNumber = nextParcel.trim();
+      }
       return recordHetCollection(workOrder.id, payload);
     },
     onSuccess: (updated) => {
@@ -262,20 +306,27 @@ function CollectionProcessPanel({
       toast.error(e.response?.data?.error || 'Failed to record HET collection'),
   });
 
+  const submitDeliver = (event: FormEvent) => {
+    event.preventDefault();
+    if (!deliverPointId || !deliverUnitId) return;
+    deliverMutation.mutate();
+  };
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!collectionPointId) return;
+    if (issueNext && !nextUnitId) return;
     collectMutation.mutate();
   };
 
   return (
-    <AdminPanel title="HET collection" description="Perform collection at this phase to mint the HET and start the run.">
+    <AdminPanel title="HET collection" description="Deliver an empty container to the clinic, then collect the filled container to mint the HET and start the run.">
       <div className="grid gap-4 xl:grid-cols-[280px_1fr] xl:items-start">
         <MetricCard
           icon={<Boxes className="h-5 w-5" />}
           label="Collected HET"
           value={workOrder.het?.hetNumber || (alreadyCollected ? workOrder.hetId : 'Not collected')}
-          detail={alreadyCollected ? workOrder.het?.clinicName || 'HET minted at collection' : 'Awaiting collection'}
+          detail={alreadyCollected ? workOrder.het?.clinicName || 'HET minted at collection' : alreadyDelivered ? 'Empty container issued — awaiting filled collection' : 'Awaiting collection'}
         />
         {alreadyCollected ? (
           <div className="rounded-lg border border-gray-200 p-4 text-sm dark:border-gray-800">
@@ -286,42 +337,138 @@ function CollectionProcessPanel({
             <div className="mt-3 text-gray-600 dark:text-gray-300">Advance the run to continue into production.</div>
           </div>
         ) : (
-          <form onSubmit={submit} className="grid gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="collection-point">Collection point</Label>
-              <select
-                id="collection-point"
-                value={collectionPointId}
-                onChange={(event) => setCollectionPointId(event.target.value)}
-                className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-              >
-                <option value="">Select collection point</option>
-                {collectionPoints.map((point) => (
-                  <option key={point.id} value={point.id}>
-                    {point.displayName || point.hciCode || point.id}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-4">
+            {/* Leg 1 — deliver empty container (optional; a run may collect directly). */}
+            {alreadyDelivered ? (
+              <div className="rounded-lg border border-gray-200 p-4 text-sm dark:border-gray-800">
+                <div className="font-medium text-gray-800 dark:text-white/90">Leg 1 · Empty container issued</div>
+                <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Issuance {workOrder.issuanceOrderId} · container in transit to clinic. Collect the filled container below.
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={submitDeliver} className="grid gap-3 rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+                <div className="text-sm font-medium text-gray-800 dark:text-white/90">Leg 1 · Deliver empty container <span className="text-xs font-normal text-gray-500">(optional)</span></div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="deliver-point">Collection point</Label>
+                  <select
+                    id="deliver-point"
+                    value={deliverPointId}
+                    onChange={(event) => setDeliverPointId(event.target.value)}
+                    className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                  >
+                    <option value="">Select collection point</option>
+                    {collectionPoints.map((point) => (
+                      <option key={point.id} value={point.id}>
+                        {point.displayName || point.hciCode || point.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="deliver-unit">Container</Label>
+                  <select
+                    id="deliver-unit"
+                    value={deliverUnitId}
+                    onChange={(event) => setDeliverUnitId(event.target.value)}
+                    className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                  >
+                    <option value="">Select container</option>
+                    {collectionUnits.map((unit) => (
+                      <option key={unit.id} value={unit.id}>
+                        {(unit.unitNumber || unit.id)} · {unit.status}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedUnit && (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Current status: {selectedUnit.status}</span>
+                  )}
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="deliver-parcel">Parcel tracking</Label>
+                  <Input id="deliver-parcel" value={deliverParcel} onChange={(event) => setDeliverParcel(event.target.value)} placeholder="Outbound courier tracking number" />
+                </div>
+                <SignaturePad label="Custody sign-off (optional)" value={deliverSignature} onChange={setDeliverSignature} />
+                <Button type="submit" disabled={disabled || !deliverPointId || !deliverUnitId || deliverMutation.isPending}>
+                  Issue empty container
+                </Button>
+              </form>
+            )}
+
+            {/* Leg 2 — collect filled container + mint HET (single-step collect stays available). */}
+            <form onSubmit={submit} className="grid gap-3 rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+              <div className="text-sm font-medium text-gray-800 dark:text-white/90">Leg 2 · Collect filled container</div>
               <div className="grid gap-1.5">
-                <Label htmlFor="collection-lot">Lot number</Label>
-                <Input id="collection-lot" value={lotNumber} onChange={(event) => setLotNumber(event.target.value)} placeholder="Clinic lot / HET number" />
+                <Label htmlFor="collection-point">Collection point</Label>
+                <select
+                  id="collection-point"
+                  value={collectionPointId}
+                  onChange={(event) => setCollectionPointId(event.target.value)}
+                  className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                >
+                  <option value="">Select collection point</option>
+                  {collectionPoints.map((point) => (
+                    <option key={point.id} value={point.id}>
+                      {point.displayName || point.hciCode || point.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="collection-lot">Lot number</Label>
+                  <Input id="collection-lot" value={lotNumber} onChange={(event) => setLotNumber(event.target.value)} placeholder="Clinic lot / HET number" />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="collection-qty">Quantity</Label>
+                  <Input id="collection-qty" type="number" min={1} value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="1" />
+                </div>
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="collection-qty">Quantity</Label>
-                <Input id="collection-qty" type="number" min={1} value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="1" />
+                <Label htmlFor="collection-parcel">Parcel tracking</Label>
+                <Input id="collection-parcel" value={parcelTrackingNumber} onChange={(event) => setParcelTrackingNumber(event.target.value)} placeholder="Return courier tracking number" />
               </div>
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="collection-parcel">Parcel tracking</Label>
-              <Input id="collection-parcel" value={parcelTrackingNumber} onChange={(event) => setParcelTrackingNumber(event.target.value)} placeholder="Courier tracking number" />
-            </div>
-            <SignaturePad label="Custody sign-off (optional)" value={signature} onChange={setSignature} />
-            <Button type="submit" disabled={disabled || !collectionPointId || collectMutation.isPending}>
-              Record collection &amp; mint HET
-            </Button>
-          </form>
+              {alreadyDelivered && (
+                <span className="text-xs text-gray-500 dark:text-gray-400">The delivered container is closed automatically on collection.</span>
+              )}
+              {/* Next-container swap (#190): issue the next empty container out to the clinic on collect. */}
+              <div className="grid gap-2 rounded-lg border border-dashed border-gray-200 p-3 dark:border-gray-700">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-800 dark:text-white/90">
+                  <input type="checkbox" checked={issueNext} onChange={(event) => setIssueNext(event.target.checked)} className="h-4 w-4" />
+                  Issue next empty container
+                </label>
+                {issueNext && (
+                  <>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="next-unit">Next container</Label>
+                      <select
+                        id="next-unit"
+                        value={nextUnitId}
+                        onChange={(event) => setNextUnitId(event.target.value)}
+                        className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                      >
+                        <option value="">Select container</option>
+                        {collectionUnits.map((unit) => (
+                          <option key={unit.id} value={unit.id}>
+                            {(unit.unitNumber || unit.id)} · {unit.status}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="next-parcel">Next parcel tracking</Label>
+                      <Input id="next-parcel" value={nextParcel} onChange={(event) => setNextParcel(event.target.value)} placeholder="Outbound courier tracking number" />
+                    </div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Chains the collected container to the next one for the swap loop.</span>
+                  </>
+                )}
+              </div>
+              <SignaturePad label="Custody sign-off (optional)" value={signature} onChange={setSignature} />
+              <Button type="submit" disabled={disabled || !collectionPointId || (issueNext && !nextUnitId) || collectMutation.isPending}>
+                Record collection &amp; mint HET
+              </Button>
+            </form>
+          </div>
         )}
       </div>
     </AdminPanel>
@@ -919,6 +1066,11 @@ export default function WorkOrderDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['work-order-chain', updated.id] });
     // A release mints a FINISHED_GOOD lot; keep the finished-goods list fresh.
     queryClient.invalidateQueries({ queryKey: ['finished-goods-lots'] });
+    // A deliver/collect moves containers between buckets and flips unit status;
+    // refresh the Collection Queue and the container picker so they don't show
+    // stale buckets/status for up to the 30s staleTime (F6).
+    queryClient.invalidateQueries({ queryKey: ['collection-queue'] });
+    queryClient.invalidateQueries({ queryKey: ['collection-units'] });
   };
 
   const startMutation = useMutation({

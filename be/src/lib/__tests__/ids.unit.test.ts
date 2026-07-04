@@ -5,7 +5,7 @@ describe('generatePrefixedId', () => {
   it('prefixes the id and follows the PREFIX-<base36>-<hex> shape', () => {
     const id = generatePrefixedId('STER');
     expect(id.startsWith('STER-')).toBe(true);
-    expect(id).toMatch(/^STER-[0-9A-Z]+-[0-9A-F]{6}$/);
+    expect(id).toMatch(/^STER-[0-9A-Z]+-[0-9A-F]{12}$/);
   });
 
   it('does not collide within the same millisecond (random suffix)', () => {

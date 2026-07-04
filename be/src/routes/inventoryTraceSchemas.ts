@@ -140,9 +140,91 @@ export const traceWorkOrderSchema = z.object({
   phaseOrder: z.number().nullable(),
 });
 
+// Upstream collection-origin leg: clinic → unit → issuance/collection order →
+// receipt/line → minted HET. Lean projections of the scalar-linked collection
+// records surfaced alongside the downstream lot/genealogy fan-out.
+export const traceSupplyEntitySchema = z.object({
+  id: z.string(),
+  name: z.string().nullable(),
+  legalName: z.string().nullable(),
+  externalCode: z.string().nullable(),
+  createdAt: dateish,
+});
+
+export const traceCollectionPointSchema = z.object({
+  id: z.string(),
+  supplyEntityId: z.string().nullable(),
+  displayName: z.string().nullable(),
+  hciCode: z.string().nullable(),
+  address: z.string().nullable(),
+  createdAt: dateish,
+});
+
+export const traceCollectionUnitSchema = z.object({
+  id: z.string(),
+  unitNumber: z.string().nullable(),
+  status: z.string(),
+  supplyEntityId: z.string().nullable(),
+  collectionPointId: z.string().nullable(),
+  parcelTrackingNumber: z.string().nullable(),
+  createdAt: dateish,
+});
+
+export const traceIssuanceOrderSchema = z.object({
+  id: z.string(),
+  supplyEntityId: z.string().nullable(),
+  collectionPointId: z.string().nullable(),
+  issuedAt: dateish.nullable(),
+  issuedBy: z.string().nullable(),
+  createdAt: dateish,
+});
+
+export const traceCollectionOrderSchema = z.object({
+  id: z.string(),
+  supplyEntityId: z.string().nullable(),
+  collectionPointId: z.string().nullable(),
+  requestedAt: dateish.nullable(),
+  status: z.string(),
+  createdAt: dateish,
+});
+
+export const traceCollectionReceiptSchema = z.object({
+  id: z.string(),
+  collectionOrderId: z.string().nullable(),
+  issuanceOrderId: z.string().nullable(),
+  receivedAt: dateish.nullable(),
+  receivedBy: z.string().nullable(),
+  signaturePath: z.string().nullable(),
+  acceptanceState: z.string().nullable(),
+  createdAt: dateish,
+});
+
+export const traceCollectionReceiptLineSchema = z.object({
+  id: z.string(),
+  collectionReceiptId: z.string(),
+  collectionUnitId: z.string().nullable(),
+  itemCode: z.string().nullable(),
+  quantity: decimalish.nullable(),
+  uom: z.string().nullable(),
+  conditionStatus: z.string().nullable(),
+  acceptanceStatus: z.string().nullable(),
+  resultingHetId: z.string().nullable(),
+  createdAt: dateish,
+});
+
+export const inventoryTraceCollectionSchema = z.object({
+  supplyEntities: z.array(traceSupplyEntitySchema),
+  collectionPoints: z.array(traceCollectionPointSchema),
+  collectionUnits: z.array(traceCollectionUnitSchema),
+  issuanceOrders: z.array(traceIssuanceOrderSchema),
+  collectionOrders: z.array(traceCollectionOrderSchema),
+  collectionReceipts: z.array(traceCollectionReceiptSchema),
+  collectionReceiptLines: z.array(traceCollectionReceiptLineSchema),
+});
+
 export const inventoryTraceSchema = z.object({
   subject: z.object({
-    type: z.enum(['workOrder', 'collectionUnit', 'het']),
+    type: z.enum(['workOrder', 'collectionUnit', 'het', 'lot']),
     id: z.string(),
     label: z.string().nullable().optional(),
   }),
@@ -152,4 +234,5 @@ export const inventoryTraceSchema = z.object({
   genealogy: z.array(inventoryTraceGenealogySchema),
   hets: z.array(traceHetSchema),
   workOrders: z.array(traceWorkOrderSchema),
+  collection: inventoryTraceCollectionSchema,
 });

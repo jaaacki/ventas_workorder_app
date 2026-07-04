@@ -71,6 +71,7 @@ vi.mock('../../db/prisma.js', () => ({
 import {
   createWorkOrder,
   listQaWorkOrderQueue,
+  listCollectionQueue,
   listWorkOrders,
   listWorkOrderAuditEvents,
   getWorkOrder,
@@ -230,6 +231,48 @@ describe('workOrderService', () => {
     expect(result.sterilisation.map((workOrder) => workOrder.id)).toEqual(['wo-ster']);
     expect(result.quarantine.map((workOrder) => workOrder.id)).toEqual(['wo-quarantine']);
     expect(result.release.map((workOrder) => workOrder.id)).toEqual(['wo-release']);
+  });
+
+  it('listCollectionQueue buckets collection-phase runs into awaiting, in-transit, and received', async () => {
+    // A collection-phase mock. isCollectionPhase is decorated from
+    // phase.processType === 'COLLECTION'; hetId/issuanceOrderId pass straight
+    // through to the buckets. A non-collection run is excluded entirely.
+    const collectionWorkOrder = (overrides: Record<string, unknown>, processType: string | null = 'COLLECTION') => ({
+      tenantId: 'tenant-a',
+      phaseId: 'phase-collection',
+      phaseOrder: 0,
+      prodStart: null,
+      prodEnd: null,
+      hetId: null,
+      issuanceOrderId: null,
+      workflow: {
+        phases: [{ id: 'phase-collection', phaseName: 'HET Collection', phaseShort: 'COLL', sortOrder: 0, isGate: false, blocksCombine: false }],
+      },
+      phase: { id: 'phase-collection', phaseName: 'HET Collection', phaseShort: 'COLL', sortOrder: 0, isGate: false, blocksCombine: false, processType, bom: { lines: [] }, phaseEquips: [] },
+      sterilises: [],
+      woSerials: [],
+      phaseEquips: [],
+      batchHets: [],
+      ...overrides,
+    });
+
+    mocks.workOrder.findMany.mockResolvedValue([
+      collectionWorkOrder({ id: 'wo-awaiting' }),
+      collectionWorkOrder({ id: 'wo-intransit', issuanceOrderId: 'iss-1' }),
+      collectionWorkOrder({ id: 'wo-received', hetId: 'het-1' }),
+      // Non-collection production run — must not appear in any bucket.
+      collectionWorkOrder({ id: 'wo-production', hetId: 'het-2' }, null),
+    ]);
+
+    const result = await listCollectionQueue('tenant-a');
+
+    expect(mocks.workOrder.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { deleted: false, tenantId: 'tenant-a' } }),
+    );
+    expect(result.counts).toEqual({ awaiting: 1, inTransit: 1, received: 1 });
+    expect(result.awaiting.map((workOrder) => workOrder.id)).toEqual(['wo-awaiting']);
+    expect(result.inTransit.map((workOrder) => workOrder.id)).toEqual(['wo-intransit']);
+    expect(result.received.map((workOrder) => workOrder.id)).toEqual(['wo-received']);
   });
 
   it('getWorkOrder scopes detail and peer-context reads to the caller tenant', async () => {

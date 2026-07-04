@@ -10,7 +10,9 @@ import {
   startWorkOrderPhase,
   finishWorkOrderPhase,
 } from '../../services/workOrderService.js';
-import { recordHetCollection } from '../../services/hetCollectionService.js';
+import { recordHetCollection, deliverEmptyContainer } from '../../services/hetCollectionService.js';
+import { getHetInventoryTrace, getLotInventoryTrace } from '../../services/inventoryTraceService.js';
+import { getCollectionReport } from '../../services/collectionReportService.js';
 import { DEFAULT_TENANT_ID } from '../../services/tenant.js';
 
 // A full HET-less collection-start run against the real DB. The workflow's first
@@ -28,13 +30,17 @@ const ctx: {
   phaseIds: string[];
   supplyEntityId: string;
   collectionPointId: string;
+  collectionUnitId: string;
+  nextCollectionUnitId: string;
   hetId: string;
   collectionReceiptId: string;
   collectionOrderId: string;
+  issuanceOrderId: string;
+  finishedLotId: string;
   workOrderIds: string[];
 } = {
   actorId: '', tenantId: DEFAULT_TENANT_ID, workflowId: '', phaseIds: [],
-  supplyEntityId: '', collectionPointId: '', hetId: '', collectionReceiptId: '', collectionOrderId: '', workOrderIds: [],
+  supplyEntityId: '', collectionPointId: '', collectionUnitId: '', nextCollectionUnitId: '', hetId: '', collectionReceiptId: '', collectionOrderId: '', issuanceOrderId: '', finishedLotId: '', workOrderIds: [],
 };
 
 beforeAll(async () => {
@@ -79,16 +85,36 @@ beforeAll(async () => {
   await prisma.collectionPoint.create({
     data: { id: ctx.collectionPointId, tenantId: ctx.tenantId, supplyEntityId: ctx.supplyEntityId, displayName: 'Integration Clinic', hciCode: 'HCI-TEST' },
   });
+
+  // An empty container to send out on the deliver leg; starts on a neutral status
+  // and must round-trip ISSUED -> RECEIVED through the two legs.
+  ctx.collectionUnitId = `${code}:UNIT`;
+  await prisma.collectionUnit.create({
+    data: { id: ctx.collectionUnitId, tenantId: ctx.tenantId, supplyEntityId: ctx.supplyEntityId, collectionPointId: ctx.collectionPointId, unitNumber: 'UNIT-INTEG-1', status: 'AVAILABLE' },
+  });
+
+  // The next empty container to swap out on collect (#190). It should end ISSUED,
+  // with the collected container chained to it.
+  ctx.nextCollectionUnitId = `${code}:UNIT-NEXT`;
+  await prisma.collectionUnit.create({
+    data: { id: ctx.nextCollectionUnitId, tenantId: ctx.tenantId, supplyEntityId: ctx.supplyEntityId, collectionPointId: ctx.collectionPointId, unitNumber: 'UNIT-INTEG-2', status: 'AVAILABLE' },
+  });
 });
 
 afterAll(async () => {
   const woIds = ctx.workOrderIds;
   // Break circular FKs before deleting (WorkOrder <-> Sterilise/CollectionReceipt,
   // Het <-> WorkOrder), mirroring the AmGraft integration teardown.
-  await prisma.workOrder.updateMany({ where: { id: { in: woIds } }, data: { steralisationCurrentId: null, collectionReceiptId: null } }).catch(() => undefined);
+  await prisma.workOrder.updateMany({ where: { id: { in: woIds } }, data: { steralisationCurrentId: null, collectionReceiptId: null, issuanceOrderId: null } }).catch(() => undefined);
   if (ctx.hetId) {
     await prisma.het.updateMany({ where: { id: ctx.hetId }, data: { usedById: null, finishedById: null } }).catch(() => undefined);
   }
+  // Inventory minted on release references the work orders (and the HET), so clear
+  // it before deleting the work orders.
+  await prisma.inventoryGenealogy.deleteMany({ where: { OR: [{ workOrderId: { in: woIds } }, { childInventoryLotId: ctx.finishedLotId }, { parentInventoryLotId: ctx.finishedLotId }] } }).catch(() => undefined);
+  await prisma.inventoryTransaction.deleteMany({ where: { OR: [{ workOrderId: { in: woIds } }, { inventoryLotId: ctx.finishedLotId }] } }).catch(() => undefined);
+  await prisma.workOrderInventoryConsumption.deleteMany({ where: { workOrderId: { in: woIds } } }).catch(() => undefined);
+  await prisma.inventoryLot.deleteMany({ where: { OR: [{ workOrderId: { in: woIds } }, { hetId: ctx.hetId }] } }).catch(() => undefined);
   if (woIds.length) {
     await prisma.workOrderAuditEvent.deleteMany({ where: { workOrderId: { in: woIds } } }).catch(() => undefined);
     await prisma.woSerial.deleteMany({ where: { workOrderId: { in: woIds } } }).catch(() => undefined);
@@ -100,6 +126,17 @@ afterAll(async () => {
   if (ctx.collectionReceiptId) await prisma.collectionReceiptLine.deleteMany({ where: { collectionReceiptId: ctx.collectionReceiptId } }).catch(() => undefined);
   if (ctx.collectionReceiptId) await prisma.collectionReceipt.deleteMany({ where: { id: ctx.collectionReceiptId } }).catch(() => undefined);
   if (ctx.collectionOrderId) await prisma.collectionOrder.deleteMany({ where: { id: ctx.collectionOrderId } }).catch(() => undefined);
+  if (ctx.issuanceOrderId) await prisma.issuanceOrderLine.deleteMany({ where: { issuanceOrderId: ctx.issuanceOrderId } }).catch(() => undefined);
+  if (ctx.issuanceOrderId) await prisma.issuanceOrder.deleteMany({ where: { id: ctx.issuanceOrderId } }).catch(() => undefined);
+  // Next-container swap (#190) leaves a standalone issuance for the next unit.
+  if (ctx.nextCollectionUnitId) {
+    const nextLines = await prisma.issuanceOrderLine.findMany({ where: { collectionUnitId: ctx.nextCollectionUnitId }, select: { issuanceOrderId: true } }).catch(() => [] as { issuanceOrderId: string }[]);
+    const nextIssuanceIds = [...new Set(nextLines.map((line) => line.issuanceOrderId))];
+    await prisma.issuanceOrderLine.deleteMany({ where: { collectionUnitId: ctx.nextCollectionUnitId } }).catch(() => undefined);
+    if (nextIssuanceIds.length) await prisma.issuanceOrder.deleteMany({ where: { id: { in: nextIssuanceIds } } }).catch(() => undefined);
+  }
+  if (ctx.collectionUnitId) await prisma.collectionUnit.deleteMany({ where: { id: ctx.collectionUnitId } }).catch(() => undefined);
+  if (ctx.nextCollectionUnitId) await prisma.collectionUnit.deleteMany({ where: { id: ctx.nextCollectionUnitId } }).catch(() => undefined);
   await prisma.phase.deleteMany({ where: { id: { in: ctx.phaseIds } } }).catch(() => undefined);
   await prisma.workflow.deleteMany({ where: { id: ctx.workflowId } }).catch(() => undefined);
   await prisma.collectionPoint.deleteMany({ where: { id: ctx.collectionPointId } }).catch(() => undefined);
@@ -120,10 +157,41 @@ describe('HET collection run (integration)', () => {
     // A HET-less collection work order cannot start yet.
     await expect(startWorkOrderPhase(created.id, ctx.actorId)).rejects.toThrow('cannot start: HET not assigned');
 
-    // 2. Perform HET collection: mints a real Het and attaches it + a receipt.
+    // 1b. Deliver-empty leg: issue an empty container out to the clinic. This is
+    // the outbound half of the courier round-trip — no HET yet.
+    const delivered = await deliverEmptyContainer(
+      created.id,
+      { collectionPointId: ctx.collectionPointId, collectionUnitId: ctx.collectionUnitId, parcelTrackingNumber: 'TRACK-OUT-1', signatureDataUrl: 'data:image/png;base64,BBBB' },
+      ctx.actorId,
+    );
+    expect(delivered.issuanceOrderId).not.toBeNull();
+    ctx.issuanceOrderId = delivered.issuanceOrderId!;
+    expect(delivered.hetId).toBeNull();
+
+    // The container is now ISSUED, with parcel + custody signature on the issuance.
+    const unitIssued = await prisma.collectionUnit.findUniqueOrThrow({ where: { id: ctx.collectionUnitId } });
+    expect(unitIssued.status).toBe('ISSUED');
+    const issuance = await prisma.issuanceOrder.findUniqueOrThrow({ where: { id: ctx.issuanceOrderId } });
+    expect(issuance.signaturePath).toBe('data:image/png;base64,BBBB');
+    expect(issuance.issuedBy).toBe(ctx.actorId);
+    const issuanceLine = await prisma.issuanceOrderLine.findFirstOrThrow({ where: { issuanceOrderId: ctx.issuanceOrderId } });
+    expect(issuanceLine.collectionUnitId).toBe(ctx.collectionUnitId);
+    expect(issuanceLine.parcelTrackingNumber).toBe('TRACK-OUT-1');
+
+    // A container cannot be issued twice for the same run.
+    await expect(
+      deliverEmptyContainer(created.id, { collectionPointId: ctx.collectionPointId, collectionUnitId: ctx.collectionUnitId }, ctx.actorId),
+    ).rejects.toThrow('cannot deliver:');
+
+    // 2. Collect-filled leg: mints a real Het, attaches it + a receipt, and closes
+    // the prior issuance (unit continuity).
     const collected = await recordHetCollection(
       created.id,
-      { collectionPointId: ctx.collectionPointId, quantity: 1, lotNumber: 'LOT-INTEG-01', parcelTrackingNumber: 'TRACK-INTEG-1', signatureDataUrl: 'data:image/png;base64,AAAA' },
+      {
+        collectionPointId: ctx.collectionPointId, quantity: 1, lotNumber: 'LOT-INTEG-01', parcelTrackingNumber: 'TRACK-INTEG-1', signatureDataUrl: 'data:image/png;base64,AAAA',
+        // Swap loop (#190): issue the next empty container as part of this collect.
+        nextCollectionUnitId: ctx.nextCollectionUnitId, nextParcelTrackingNumber: 'TRACK-NEXT-1',
+      },
       ctx.actorId,
     );
     expect(collected.hetId).not.toBeNull();
@@ -139,14 +207,36 @@ describe('HET collection run (integration)', () => {
     expect(het.quantity).toBe(1);
     expect(het.usedById).toBe(created.id);
     expect(het.collectionReceiptLineId).not.toBeNull();
+    // The HET carries the SAME physical container that was delivered empty.
+    expect(het.collectionUnitId).toBe(ctx.collectionUnitId);
 
     const receipt = await prisma.collectionReceipt.findUniqueOrThrow({ where: { id: ctx.collectionReceiptId } });
     expect(receipt.signaturePath).toBe('data:image/png;base64,AAAA');
+    // The receipt closes the prior deliver issuance (round-trip continuity).
+    expect(receipt.issuanceOrderId).toBe(ctx.issuanceOrderId);
     ctx.collectionOrderId = receipt.collectionOrderId!;
 
     const line = await prisma.collectionReceiptLine.findFirstOrThrow({ where: { collectionReceiptId: ctx.collectionReceiptId } });
     expect(line.resultingHetId).toBe(ctx.hetId);
+    expect(line.collectionUnitId).toBe(ctx.collectionUnitId);
     expect(het.collectionReceiptLineId).toBe(line.id);
+
+    // The container has completed the round-trip: RECEIVED at the facility.
+    const unitReceived = await prisma.collectionUnit.findUniqueOrThrow({ where: { id: ctx.collectionUnitId } });
+    expect(unitReceived.status).toBe('RECEIVED');
+
+    // Next-container swap (#190): the collected unit is chained to the next unit,
+    // which is now ISSUED and heading out to the clinic on its own issuance.
+    expect(unitReceived.legacyNextHetId).toBe(ctx.nextCollectionUnitId);
+    const nextUnit = await prisma.collectionUnit.findUniqueOrThrow({ where: { id: ctx.nextCollectionUnitId } });
+    expect(nextUnit.status).toBe('ISSUED');
+    const nextLine = await prisma.issuanceOrderLine.findFirstOrThrow({ where: { collectionUnitId: ctx.nextCollectionUnitId } });
+    expect(nextLine.parcelTrackingNumber).toBe('TRACK-NEXT-1');
+    // The next issuance is standalone — NOT this run's deliver issuance.
+    expect(nextLine.issuanceOrderId).not.toBe(ctx.issuanceOrderId);
+    // The unit-to-unit chain is queryable by following legacyNextHetId.
+    const chained = await prisma.collectionUnit.findFirstOrThrow({ where: { id: unitReceived.legacyNextHetId! } });
+    expect(chained.id).toBe(ctx.nextCollectionUnitId);
 
     // The collection work order now reads as a normal (unblocked-for-collection) run.
     expect(collected.readinessBlockers).not.toContain('Collection required');
@@ -188,5 +278,50 @@ describe('HET collection run (integration)', () => {
     expect(collectionEvent?.hetId).toBe(ctx.hetId);
     const events = await prisma.workOrderAuditEvent.findMany({ where: { workOrderId: created.id, action: 'work_order.het_collected' } });
     expect(events).toHaveLength(1);
+
+    // 7. Release minted a FINISHED_GOOD lot linked to both the release WO and the HET.
+    const finishedLot = await prisma.inventoryLot.findFirstOrThrow({
+      where: { tenantId: ctx.tenantId, workOrderId: release.id, inventoryType: 'FINISHED_GOOD' },
+    });
+    ctx.finishedLotId = finishedLot.id;
+    expect(finishedLot.hetId).toBe(ctx.hetId);
+
+    // 8. End-to-end trace: the HET traces the full chain clinic → unit → issuance →
+    // receipt → minted HET → run → finished LOT, in one call.
+    const hetTrace = await getHetInventoryTrace(ctx.hetId, ctx.tenantId);
+    expect(hetTrace).not.toBeNull();
+    expect(hetTrace!.lots.map((lot) => lot.id)).toContain(finishedLot.id); // → LOT (downstream)
+    expect(hetTrace!.collection.supplyEntities.map((entity) => entity.id)).toContain(ctx.supplyEntityId); // clinic group
+    expect(hetTrace!.collection.collectionPoints.map((point) => point.id)).toContain(ctx.collectionPointId); // clinic
+    expect(hetTrace!.collection.collectionUnits.map((unit) => unit.id)).toContain(ctx.collectionUnitId); // container
+    expect(hetTrace!.collection.issuanceOrders.map((order) => order.id)).toContain(ctx.issuanceOrderId); // deliver leg
+    expect(hetTrace!.collection.collectionReceipts.map((receipt) => receipt.id)).toContain(ctx.collectionReceiptId); // collect leg
+    expect(hetTrace!.collection.collectionReceiptLines.some((line) => line.resultingHetId === ctx.hetId)).toBe(true);
+
+    // 8b. The lot-keyed trace surfaces the same upstream clinic origin from the LOT.
+    const lotTrace = await getLotInventoryTrace(finishedLot.id, ctx.tenantId);
+    expect(lotTrace).not.toBeNull();
+    expect(lotTrace!.subject).toMatchObject({ type: 'lot', id: finishedLot.id });
+    expect(lotTrace!.collection.collectionPoints.map((point) => point.id)).toContain(ctx.collectionPointId);
+
+    // 9. Collection report counts this clinic's single collected HET for the window.
+    const report = await getCollectionReport({ tenantId: ctx.tenantId, clinicId: ctx.collectionPointId });
+    expect(report.total).toBe(1);
+    expect(report.byClinic).toEqual([
+      { clinicId: ctx.collectionPointId, clinicName: 'Integration Clinic', hciCode: 'HCI-TEST', count: 1 },
+    ]);
+    expect(report.byPeriod.reduce((sum, point) => sum + point.count, 0)).toBe(1);
+
+    // 9b. The date window is inclusive of the whole end day (F4): using the HET's
+    // own collection day as both from/to still counts it — a strict `< midnight`
+    // on `to` would silently drop every same-day collection.
+    const collectedDay = new Date(het.createdAt.toISOString().slice(0, 10));
+    const windowedReport = await getCollectionReport({
+      tenantId: ctx.tenantId,
+      clinicId: ctx.collectionPointId,
+      from: collectedDay,
+      to: collectedDay,
+    });
+    expect(windowedReport.total).toBe(1);
   });
 });

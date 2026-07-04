@@ -132,6 +132,7 @@ const mocks = vi.hoisted(() => ({
     getWorkOrderInventoryTrace: vi.fn(),
     getCollectionUnitInventoryTrace: vi.fn(),
     getHetInventoryTrace: vi.fn(),
+    getLotInventoryTrace: vi.fn(),
   },
   prisma: {
     rolePermission: {
@@ -521,6 +522,7 @@ function resetServiceMocks() {
   mocks.inventoryTraceService.getWorkOrderInventoryTrace.mockResolvedValue(null);
   mocks.inventoryTraceService.getCollectionUnitInventoryTrace.mockResolvedValue(null);
   mocks.inventoryTraceService.getHetInventoryTrace.mockResolvedValue(null);
+  mocks.inventoryTraceService.getLotInventoryTrace.mockResolvedValue(null);
 }
 
 describe('route tenant propagation', () => {
@@ -609,6 +611,9 @@ describe('route tenant propagation', () => {
 
       await get('/api/hets/het-1/inventory-trace');
       expect(mocks.inventoryTraceService.getHetInventoryTrace).toHaveBeenCalledWith('het-1', tenantId);
+
+      await get('/api/lots/lot-1/inventory-trace');
+      expect(mocks.inventoryTraceService.getLotInventoryTrace).toHaveBeenCalledWith('lot-1', tenantId);
 
       await get('/api/procurement/overview');
       expect(mocks.procurementService.getProcurementOverview).toHaveBeenCalledWith(tenantId);

@@ -11,11 +11,14 @@ const mocks = vi.hoisted(() => ({
   },
   collectionUnit: {
     findFirst: vi.fn(),
+    update: vi.fn(),
   },
   collectionOrder: { create: vi.fn() },
   collectionReceipt: { create: vi.fn() },
   collectionReceiptLine: { create: vi.fn() },
   het: { create: vi.fn() },
+  issuanceOrder: { create: vi.fn(), findFirst: vi.fn() },
+  issuanceOrderLine: { create: vi.fn(), findFirst: vi.fn() },
 }));
 
 vi.mock('../../db/prisma.js', () => ({
@@ -23,11 +26,16 @@ vi.mock('../../db/prisma.js', () => ({
     workOrder: mocks.workOrder,
     collectionPoint: mocks.collectionPoint,
     collectionUnit: mocks.collectionUnit,
+    issuanceOrder: mocks.issuanceOrder,
+    issuanceOrderLine: mocks.issuanceOrderLine,
     $transaction: vi.fn((callback) => callback({
       collectionOrder: mocks.collectionOrder,
       collectionReceipt: mocks.collectionReceipt,
       collectionReceiptLine: mocks.collectionReceiptLine,
       het: mocks.het,
+      collectionUnit: mocks.collectionUnit,
+      issuanceOrder: mocks.issuanceOrder,
+      issuanceOrderLine: mocks.issuanceOrderLine,
       workOrder: mocks.workOrder,
     })),
   },
@@ -44,7 +52,8 @@ vi.mock('../workOrderService.js', () => workOrderServiceMocks);
 const auditLogMocks = vi.hoisted(() => ({ writeAuditLog: vi.fn() }));
 vi.mock('../auditLogService.js', () => auditLogMocks);
 
-import { recordHetCollection } from '../hetCollectionService.js';
+import { collectionUnitStatusSchema } from '@workorder/shared';
+import { recordHetCollection, deliverEmptyContainer } from '../hetCollectionService.js';
 
 const collectionPoint = { id: 'point-1', supplyEntityId: 'supply-1', displayName: 'Clinic A', hciCode: 'HCI-001' };
 
@@ -55,6 +64,7 @@ function primeHappyPath() {
     phaseId: 'p1',
     hetId: null,
     collectionReceiptId: null,
+    issuanceOrderId: null,
     releaseStatus: null,
     phase: { processType: 'COLLECTION' },
   });
@@ -63,9 +73,31 @@ function primeHappyPath() {
   mocks.collectionReceipt.create.mockImplementation(({ data }) => Promise.resolve({ id: data.id }));
   mocks.collectionReceiptLine.create.mockResolvedValue({ id: 'line-1' });
   mocks.het.create.mockImplementation(({ data }) => Promise.resolve({ id: data.id }));
+  mocks.collectionUnit.update.mockResolvedValue({ id: 'unit-received' });
   mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
   mocks.workOrder.findFirstOrThrow.mockResolvedValue({ id: 'wo-collect' });
   workOrderServiceMocks.getDecoratedWorkOrderOrThrow.mockResolvedValue({ id: 'wo-collect', hetId: 'minted' });
+}
+
+function primeDeliverHappyPath() {
+  mocks.workOrder.findFirst.mockResolvedValue({
+    id: 'wo-collect',
+    tenantId: 'ventas',
+    phaseId: 'p1',
+    hetId: null,
+    collectionReceiptId: null,
+    issuanceOrderId: null,
+    releaseStatus: null,
+    phase: { processType: 'COLLECTION' },
+  });
+  mocks.collectionPoint.findFirst.mockResolvedValue(collectionPoint);
+  mocks.collectionUnit.findFirst.mockResolvedValue({ id: 'unit-1', status: 'AVAILABLE' });
+  mocks.issuanceOrder.create.mockImplementation(({ data }) => Promise.resolve({ id: data.id }));
+  mocks.issuanceOrderLine.create.mockResolvedValue({ id: 'iline-1' });
+  mocks.collectionUnit.update.mockResolvedValue({ id: 'unit-1' });
+  mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
+  mocks.workOrder.findFirstOrThrow.mockResolvedValue({ id: 'wo-collect' });
+  workOrderServiceMocks.getDecoratedWorkOrderOrThrow.mockResolvedValue({ id: 'wo-collect', issuanceOrderId: 'issued' });
 }
 
 beforeEach(() => {
@@ -195,5 +227,277 @@ describe('hetCollectionService.recordHetCollection', () => {
     await expect(recordHetCollection('wo-collect', { collectionPointId: 'point-1' }, 'actor1')).rejects.toThrow(
       'cannot collect: work order already has a collected HET',
     );
+  });
+
+  it('closes the prior deliver issuance and receives the same container (continuity)', async () => {
+    primeHappyPath();
+    // The run already delivered an empty container; the collect leg must close it.
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-collect', tenantId: 'ventas', phaseId: 'p1', hetId: null,
+      collectionReceiptId: null, issuanceOrderId: 'iss-1', releaseStatus: null,
+      phase: { processType: 'COLLECTION' },
+    });
+    mocks.issuanceOrderLine.findFirst.mockResolvedValue({ collectionUnitId: 'unit-delivered' });
+
+    await recordHetCollection('wo-collect', { collectionPointId: 'point-1', quantity: 1 }, 'actor1');
+
+    const receiptData = mocks.collectionReceipt.create.mock.calls[0][0].data;
+    const lineData = mocks.collectionReceiptLine.create.mock.calls[0][0].data;
+    const hetData = mocks.het.create.mock.calls[0][0].data;
+
+    // Receipt links back to the deliver issuance; the delivered container round-trips.
+    expect(receiptData.issuanceOrderId).toBe('iss-1');
+    expect(lineData.collectionUnitId).toBe('unit-delivered');
+    expect(hetData.collectionUnitId).toBe('unit-delivered');
+
+    // The container is now RECEIVED.
+    expect(mocks.collectionUnit.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'unit-delivered' }, data: expect.objectContaining({ status: 'RECEIVED' }) }),
+    );
+  });
+
+  it('rejects a collect whose clinic does not match the delivered container (F7)', async () => {
+    primeHappyPath();
+    // The run delivered a container to point-1, but this collect names a different
+    // clinic — the delivered issuance is authoritative, so it must be rejected.
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-collect', tenantId: 'ventas', phaseId: 'p1', hetId: null,
+      collectionReceiptId: null, issuanceOrderId: 'iss-1', releaseStatus: null,
+      phase: { processType: 'COLLECTION' },
+    });
+    mocks.issuanceOrder.findFirst.mockResolvedValue({ collectionPointId: 'point-OTHER' });
+    await expect(
+      recordHetCollection('wo-collect', { collectionPointId: 'point-1' }, 'actor1'),
+    ).rejects.toThrow('cannot collect: clinic does not match the delivered container');
+    expect(mocks.het.create).not.toHaveBeenCalled();
+  });
+
+  it('accepts a collect whose clinic matches the delivered container (F7)', async () => {
+    primeHappyPath();
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-collect', tenantId: 'ventas', phaseId: 'p1', hetId: null,
+      collectionReceiptId: null, issuanceOrderId: 'iss-1', releaseStatus: null,
+      phase: { processType: 'COLLECTION' },
+    });
+    mocks.issuanceOrder.findFirst.mockResolvedValue({ collectionPointId: 'point-1' });
+    mocks.issuanceOrderLine.findFirst.mockResolvedValue({ collectionUnitId: 'unit-delivered' });
+    await recordHetCollection('wo-collect', { collectionPointId: 'point-1' }, 'actor1');
+    // The soft-deleted-line filter + deterministic order is applied to the lookup (F2).
+    expect(mocks.issuanceOrderLine.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ issuanceOrderId: 'iss-1', deleted: false }),
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+    expect(mocks.het.create.mock.calls[0][0].data.collectionUnitId).toBe('unit-delivered');
+  });
+
+  it('does not touch CollectionUnit.status on a direct collect with no prior deliver (phase-1)', async () => {
+    primeHappyPath();
+    await recordHetCollection('wo-collect', { collectionPointId: 'point-1', collectionUnitId: 'unit-1' }, 'actor1');
+    const receiptData = mocks.collectionReceipt.create.mock.calls[0][0].data;
+    expect(receiptData.issuanceOrderId).toBeNull();
+    expect(mocks.collectionUnit.update).not.toHaveBeenCalled();
+  });
+
+  it('issues the next empty container and chains the collected unit -> next unit (swap loop, #190)', async () => {
+    primeHappyPath();
+    // Run already delivered a container: the collected unit is unit-delivered.
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-collect', tenantId: 'ventas', phaseId: 'p1', hetId: null,
+      collectionReceiptId: null, issuanceOrderId: 'iss-1', releaseStatus: null,
+      phase: { processType: 'COLLECTION' },
+    });
+    mocks.issuanceOrderLine.findFirst.mockResolvedValue({ collectionUnitId: 'unit-delivered' });
+    // Next-container validation lookup resolves.
+    mocks.collectionUnit.findFirst.mockResolvedValue({ id: 'unit-next' });
+    mocks.issuanceOrder.create.mockImplementation(({ data }) => Promise.resolve({ id: data.id }));
+    mocks.issuanceOrderLine.create.mockResolvedValue({ id: 'iline-next' });
+
+    await recordHetCollection(
+      'wo-collect',
+      { collectionPointId: 'point-1', quantity: 1, nextCollectionUnitId: 'unit-next', nextParcelTrackingNumber: 'TRACK-NEXT' },
+      'actor1',
+    );
+
+    // A fresh next-container issuance (COLL-…-ISS) with a line for the next unit.
+    const issuanceData = mocks.issuanceOrder.create.mock.calls[0][0].data;
+    expect(issuanceData.id).toMatch(/^COLL-.*-ISS$/);
+    expect(issuanceData.issuedBy).toBe('actor1');
+    const nextLineData = mocks.issuanceOrderLine.create.mock.calls[0][0].data;
+    expect(nextLineData.collectionUnitId).toBe('unit-next');
+    expect(nextLineData.parcelTrackingNumber).toBe('TRACK-NEXT');
+
+    // Next container ISSUED; collected container chained to it (queryable loop).
+    expect(mocks.collectionUnit.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'unit-next' }, data: expect.objectContaining({ status: 'ISSUED' }) }),
+    );
+    expect(mocks.collectionUnit.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'unit-delivered' }, data: expect.objectContaining({ legacyNextHetId: 'unit-next' }) }),
+    );
+
+    // The next issuance gets its own audit trail.
+    expect(auditLogMocks.writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ entityType: 'IssuanceOrder', action: 'create', entityId: issuanceData.id }),
+    );
+  });
+
+  it('rejects a next collection unit that does not belong to the caller tenant', async () => {
+    primeHappyPath();
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-collect', tenantId: 'ventas', phaseId: 'p1', hetId: null,
+      collectionReceiptId: null, issuanceOrderId: 'iss-1', releaseStatus: null,
+      phase: { processType: 'COLLECTION' },
+    });
+    mocks.issuanceOrderLine.findFirst.mockResolvedValue({ collectionUnitId: 'unit-delivered' });
+    mocks.collectionUnit.findFirst.mockResolvedValue(null);
+    await expect(
+      recordHetCollection('wo-collect', { collectionPointId: 'point-1', nextCollectionUnitId: 'unit-other-tenant' }, 'actor1'),
+    ).rejects.toThrow('cannot collect: next collection unit not found');
+    expect(mocks.het.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a next container that is already in transit for another run (F8)', async () => {
+    primeHappyPath();
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-collect', tenantId: 'ventas', phaseId: 'p1', hetId: null,
+      collectionReceiptId: null, issuanceOrderId: 'iss-1', releaseStatus: null,
+      phase: { processType: 'COLLECTION' },
+    });
+    mocks.issuanceOrderLine.findFirst.mockResolvedValue({ collectionUnitId: 'unit-delivered' });
+    mocks.collectionUnit.findFirst.mockResolvedValue({ id: 'unit-next', status: 'ISSUED' });
+    await expect(
+      recordHetCollection('wo-collect', { collectionPointId: 'point-1', nextCollectionUnitId: 'unit-next' }, 'actor1'),
+    ).rejects.toThrow('cannot collect: next container already in transit');
+    expect(mocks.het.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a next container that equals the collected container', async () => {
+    primeHappyPath();
+    mocks.collectionUnit.findFirst.mockResolvedValue({ id: 'unit-1' });
+    await expect(
+      recordHetCollection('wo-collect', { collectionPointId: 'point-1', collectionUnitId: 'unit-1', nextCollectionUnitId: 'unit-1' }, 'actor1'),
+    ).rejects.toThrow('cannot collect: next container must differ from the collected container');
+    expect(mocks.het.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects issuing a next container when there is no collected container to chain from', async () => {
+    primeHappyPath();
+    await expect(
+      recordHetCollection('wo-collect', { collectionPointId: 'point-1', nextCollectionUnitId: 'unit-next' }, 'actor1'),
+    ).rejects.toThrow('cannot collect: a collected container is required to issue the next container');
+    expect(mocks.het.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('hetCollectionService.deliverEmptyContainer', () => {
+  it('issues an empty container: COLL-ISS issuance + line with parcel, unit ISSUED, WO linked', async () => {
+    primeDeliverHappyPath();
+
+    await deliverEmptyContainer(
+      'wo-collect',
+      { collectionPointId: 'point-1', collectionUnitId: 'unit-1', parcelTrackingNumber: 'TRACK-OUT', signatureDataUrl: 'data:image/png;base64,AAAA' },
+      'actor1',
+    );
+
+    const issuanceData = mocks.issuanceOrder.create.mock.calls[0][0].data;
+    const lineData = mocks.issuanceOrderLine.create.mock.calls[0][0].data;
+    const unitUpdate = mocks.collectionUnit.update.mock.calls[0][0];
+    const woUpdate = mocks.workOrder.updateMany.mock.calls[0][0];
+
+    expect(issuanceData.id).toMatch(/^COLL-.*-ISS$/);
+    expect(issuanceData.signaturePath).toBe('data:image/png;base64,AAAA');
+    expect(issuanceData.issuedBy).toBe('actor1');
+    expect(lineData.issuanceOrderId).toBe(issuanceData.id);
+    expect(lineData.collectionUnitId).toBe('unit-1');
+    expect(lineData.parcelTrackingNumber).toBe('TRACK-OUT');
+
+    // Container moves into the ISSUED lifecycle state.
+    expect(unitUpdate).toMatchObject({ where: { id: 'unit-1' }, data: expect.objectContaining({ status: 'ISSUED' }) });
+
+    // WO links the issuance, guarded on issuanceOrderId AND the collect columns
+    // being null so a concurrent collect aborts the deliver (F1).
+    expect(woUpdate.where).toMatchObject({ id: 'wo-collect', issuanceOrderId: null, hetId: null, collectionReceiptId: null });
+    expect(woUpdate.data.issuanceOrderId).toBe(issuanceData.id);
+
+    expect(workOrderServiceMocks.recordWorkOrderAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'work_order.empty_delivered', workOrderId: 'wo-collect' }),
+    );
+    expect(auditLogMocks.writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ entityType: 'IssuanceOrder', action: 'create' }),
+    );
+  });
+
+  it('throws P2025 when the work order does not exist', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue(null);
+    await expect(
+      deliverEmptyContainer('missing', { collectionPointId: 'point-1', collectionUnitId: 'unit-1' }, 'actor1'),
+    ).rejects.toMatchObject({ code: 'P2025' });
+    expect(mocks.issuanceOrder.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a work order that is not at a collection phase', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo-1', phaseId: 'p1', hetId: null, collectionReceiptId: null, issuanceOrderId: null, releaseStatus: null, phase: { processType: null } });
+    await expect(
+      deliverEmptyContainer('wo-1', { collectionPointId: 'point-1', collectionUnitId: 'unit-1' }, 'actor1'),
+    ).rejects.toThrow('cannot deliver: work order is not at a collection phase');
+  });
+
+  it('rejects a released work order', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo-1', phaseId: 'p1', hetId: null, collectionReceiptId: null, issuanceOrderId: null, releaseStatus: 'released', phase: { processType: 'COLLECTION' } });
+    await expect(
+      deliverEmptyContainer('wo-1', { collectionPointId: 'point-1', collectionUnitId: 'unit-1' }, 'actor1'),
+    ).rejects.toThrow('cannot deliver: work order already has a release disposition');
+  });
+
+  it('rejects a work order that already issued a container', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo-1', phaseId: 'p1', hetId: null, collectionReceiptId: null, issuanceOrderId: 'iss-existing', releaseStatus: null, phase: { processType: 'COLLECTION' } });
+    await expect(
+      deliverEmptyContainer('wo-1', { collectionPointId: 'point-1', collectionUnitId: 'unit-1' }, 'actor1'),
+    ).rejects.toThrow('cannot deliver: work order already has an issued container');
+  });
+
+  it('rejects an unknown collection point', async () => {
+    primeDeliverHappyPath();
+    mocks.collectionPoint.findFirst.mockResolvedValue(null);
+    await expect(
+      deliverEmptyContainer('wo-collect', { collectionPointId: 'nope', collectionUnitId: 'unit-1' }, 'actor1'),
+    ).rejects.toThrow('cannot deliver: collection point not found');
+    expect(mocks.issuanceOrder.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a collection unit that does not belong to the caller tenant', async () => {
+    primeDeliverHappyPath();
+    mocks.collectionUnit.findFirst.mockResolvedValue(null);
+    await expect(
+      deliverEmptyContainer('wo-collect', { collectionPointId: 'point-1', collectionUnitId: 'unit-other-tenant' }, 'actor1'),
+    ).rejects.toThrow('cannot deliver: collection unit not found');
+    expect(mocks.issuanceOrder.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects issuing a container that is already in transit for another run (F8)', async () => {
+    primeDeliverHappyPath();
+    mocks.collectionUnit.findFirst.mockResolvedValue({ id: 'unit-1', status: 'ISSUED' });
+    await expect(
+      deliverEmptyContainer('wo-collect', { collectionPointId: 'point-1', collectionUnitId: 'unit-1' }, 'actor1'),
+    ).rejects.toThrow('cannot deliver: container already in transit');
+    expect(mocks.issuanceOrder.create).not.toHaveBeenCalled();
+  });
+
+  it('aborts when a concurrent deliver already issued a container (updateMany count 0)', async () => {
+    primeDeliverHappyPath();
+    mocks.workOrder.updateMany.mockResolvedValue({ count: 0 });
+    await expect(
+      deliverEmptyContainer('wo-collect', { collectionPointId: 'point-1', collectionUnitId: 'unit-1' }, 'actor1'),
+    ).rejects.toThrow('cannot deliver: work order already has an issued container');
+  });
+});
+
+describe('collectionUnitStatusSchema', () => {
+  it('accepts the live lifecycle values and rejects anything else', () => {
+    expect(collectionUnitStatusSchema.parse('ISSUED')).toBe('ISSUED');
+    expect(collectionUnitStatusSchema.parse('RECEIVED')).toBe('RECEIVED');
+    expect(() => collectionUnitStatusSchema.parse('RECEIVED_AS_HET')).toThrow();
+    expect(() => collectionUnitStatusSchema.parse('bogus')).toThrow();
   });
 });

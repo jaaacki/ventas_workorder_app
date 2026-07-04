@@ -1,7 +1,108 @@
 import { prisma } from '../db/prisma.js';
 import { tenantIdOrDefault } from './tenant.js';
 
-type TraceSubjectType = 'workOrder' | 'collectionUnit' | 'het';
+type TraceSubjectType = 'workOrder' | 'collectionUnit' | 'het' | 'lot';
+
+// Upstream collection origin of a HET: clinic (SupplyEntity/CollectionPoint) →
+// CollectionUnit → IssuanceOrder → CollectionOrder/Receipt/ReceiptLine → minted
+// Het. These are scalar-linked (no Prisma relations between them), so the leg is
+// walked with explicit tenant-scoped findMany hops, empty-safe at each step.
+async function buildCollectionLeg(
+  tenantId: string,
+  seed: { hetReceiptLineIds: string[]; collectionUnitIds: string[] },
+) {
+  const unitIds = new Set(seed.collectionUnitIds);
+  const lineOr = [
+    ...(seed.hetReceiptLineIds.length ? [{ id: { in: seed.hetReceiptLineIds } }] : []),
+    ...(unitIds.size ? [{ collectionUnitId: { in: [...unitIds] } }] : []),
+  ];
+
+  const collectionReceiptLines = lineOr.length
+    ? await prisma.collectionReceiptLine.findMany({
+        where: { tenantId, deleted: false, OR: lineOr },
+        select: {
+          id: true,
+          collectionReceiptId: true,
+          collectionUnitId: true,
+          itemCode: true,
+          quantity: true,
+          uom: true,
+          conditionStatus: true,
+          acceptanceStatus: true,
+          resultingHetId: true,
+          createdAt: true,
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      })
+    : [];
+  for (const line of collectionReceiptLines) if (line.collectionUnitId) unitIds.add(line.collectionUnitId);
+
+  const receiptIds = [...new Set(collectionReceiptLines.map((line) => line.collectionReceiptId).filter(Boolean))];
+  const collectionReceipts = receiptIds.length
+    ? await prisma.collectionReceipt.findMany({
+        where: { tenantId, deleted: false, id: { in: receiptIds } },
+        select: {
+          id: true,
+          collectionOrderId: true,
+          issuanceOrderId: true,
+          receivedAt: true,
+          receivedBy: true,
+          signaturePath: true,
+          acceptanceState: true,
+          createdAt: true,
+        },
+        orderBy: [{ receivedAt: 'desc' }, { id: 'asc' }],
+      })
+    : [];
+
+  const orderIds = [...new Set(collectionReceipts.map((receipt) => receipt.collectionOrderId).filter(Boolean) as string[])];
+  const issuanceIds = [...new Set(collectionReceipts.map((receipt) => receipt.issuanceOrderId).filter(Boolean) as string[])];
+
+  const [collectionOrders, issuanceOrders, collectionUnits] = await Promise.all([
+    orderIds.length
+      ? prisma.collectionOrder.findMany({
+          where: { tenantId, deleted: false, id: { in: orderIds } },
+          select: { id: true, supplyEntityId: true, collectionPointId: true, requestedAt: true, status: true, createdAt: true },
+        })
+      : Promise.resolve([]),
+    issuanceIds.length
+      ? prisma.issuanceOrder.findMany({
+          where: { tenantId, deleted: false, id: { in: issuanceIds } },
+          select: { id: true, supplyEntityId: true, collectionPointId: true, issuedAt: true, issuedBy: true, createdAt: true },
+        })
+      : Promise.resolve([]),
+    unitIds.size
+      ? prisma.collectionUnit.findMany({
+          where: { tenantId, deleted: false, id: { in: [...unitIds] } },
+          select: { id: true, unitNumber: true, status: true, supplyEntityId: true, collectionPointId: true, parcelTrackingNumber: true, createdAt: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const pointIds = new Set<string>();
+  const supplyIds = new Set<string>();
+  for (const row of [...collectionOrders, ...issuanceOrders, ...collectionUnits]) {
+    if (row.collectionPointId) pointIds.add(row.collectionPointId);
+    if (row.supplyEntityId) supplyIds.add(row.supplyEntityId);
+  }
+
+  const collectionPoints = pointIds.size
+    ? await prisma.collectionPoint.findMany({
+        where: { tenantId, deleted: false, id: { in: [...pointIds] } },
+        select: { id: true, supplyEntityId: true, displayName: true, hciCode: true, address: true, createdAt: true },
+      })
+    : [];
+  for (const point of collectionPoints) if (point.supplyEntityId) supplyIds.add(point.supplyEntityId);
+
+  const supplyEntities = supplyIds.size
+    ? await prisma.supplyEntity.findMany({
+        where: { tenantId, deleted: false, id: { in: [...supplyIds] } },
+        select: { id: true, name: true, legalName: true, externalCode: true, createdAt: true },
+      })
+    : [];
+
+  return { supplyEntities, collectionPoints, collectionUnits, issuanceOrders, collectionOrders, collectionReceipts, collectionReceiptLines };
+}
 
 interface TraceSubject {
   type: TraceSubjectType;
@@ -22,6 +123,9 @@ async function buildTrace(
   const lots = await prisma.inventoryLot.findMany({
     where: {
       tenantId,
+      // Archived/voided lots must not leak into the trace (and expand the
+      // downstream fan-out); every other query in this file filters them (F3).
+      deleted: false,
       ...lotWhere,
     },
     include: { inventorySku: true, currentLocation: true },
@@ -77,7 +181,7 @@ async function buildTrace(
     hetWhere.length
       ? prisma.het.findMany({
           where: { tenantId, deleted: false, OR: hetWhere },
-          select: { id: true, hetNumber: true, collectionUnitId: true, usedById: true, finishedById: true },
+          select: { id: true, hetNumber: true, collectionUnitId: true, collectionReceiptLineId: true, usedById: true, finishedById: true },
           orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
         })
       : Promise.resolve([]),
@@ -92,7 +196,19 @@ async function buildTrace(
     }),
   ]);
 
-  return { subject, lots, transactions, consumptions, genealogy, hets, workOrders };
+  const collection = await buildCollectionLeg(tenantId, {
+    hetReceiptLineIds: hets.map((het) => het.collectionReceiptLineId).filter(Boolean) as string[],
+    collectionUnitIds: Array.from(
+      new Set(
+        [
+          ...(options.collectionUnitId ? [options.collectionUnitId] : []),
+          ...hets.map((het) => het.collectionUnitId),
+        ].filter(Boolean) as string[],
+      ),
+    ),
+  });
+
+  return { subject, lots, transactions, consumptions, genealogy, hets, workOrders, collection };
 }
 
 export async function getWorkOrderInventoryTrace(id: string, tenantId?: string | null) {
@@ -187,5 +303,31 @@ export async function getHetInventoryTrace(id: string, tenantId?: string | null)
       ],
     },
     { collectionUnitId: het.collectionUnitId ?? undefined, hetIds: [het.id], workOrderIds },
+  );
+}
+
+// Finished-goods (or any) LOT entry point: traces a lot back to its collection
+// origin. The lot carries workOrderId + hetId, so the fan-out reaches the run
+// chain, sibling lots, and — via the HET — the upstream clinic collection leg,
+// giving the full clinic → LOT chain from a single lot id.
+export async function getLotInventoryTrace(id: string, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const lot = await prisma.inventoryLot.findFirst({
+    where: { id, tenantId: scopedTenantId, deleted: false },
+    select: { id: true, lotNumber: true, workOrderId: true, hetId: true },
+  });
+  if (!lot) return null;
+
+  return buildTrace(
+    scopedTenantId,
+    { type: 'lot', id: lot.id, label: lot.lotNumber },
+    {
+      OR: [
+        { id: lot.id },
+        ...(lot.workOrderId ? [{ workOrderId: lot.workOrderId }] : []),
+        ...(lot.hetId ? [{ hetId: lot.hetId }, { legacyHetId: lot.hetId }] : []),
+      ],
+    },
+    { workOrderIds: lot.workOrderId ? [lot.workOrderId] : [], hetIds: lot.hetId ? [lot.hetId] : [] },
   );
 }

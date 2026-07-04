@@ -497,6 +497,13 @@ export async function importProcurementLegacy(options: {
           },
         }),
       );
+      // Next-container swap (#190): a legacy COLLECT event issues the next empty
+      // container at pickup, recorded as newHetId/newParcelNo. Capture it as the
+      // collected unit's legacyNextHetId → the next unit's stable id, so imported
+      // history carries the same unit-to-unit chain the live recordHetCollection
+      // swap sets. newParcelNo stays in legacyRaw and lands structurally when the
+      // next container's own DELIVER row imports its issuance line.
+      const nextHetId = text(row, ['newHetId', 'nextHetId', 'newHETId']);
       if (hetId) {
         await writeOrCount(dryRun, () =>
           prisma.het.updateMany({
@@ -504,6 +511,23 @@ export async function importProcurementLegacy(options: {
             data: { collectionReceiptLineId: receiptLineId, legacyCollectId: eventId },
           }),
         );
+        // Gated on hetId: the collected unit is unit:<hetId> (the id the DELIVER
+        // leg + this receipt line resolve to). With no hetId the target would be a
+        // unit:<eventId> placeholder that nothing in this importer creates, so the
+        // write would silently match 0 rows and drop the chain (F5).
+        if (nextHetId) {
+          await writeOrCount(dryRun, () =>
+            prisma.collectionUnit.updateMany({
+              where: { id: unitId, tenantId },
+              data: { legacyNextHetId: stableId('unit', nextHetId) },
+            }),
+          );
+        }
+      } else if (nextHetId) {
+        report.warnings.push({
+          row: eventId,
+          reason: 'COLLECT next-container swap dropped: newHetId present but row has no hetId to anchor the collected unit',
+        });
       }
       report.totals.collectionReceipts++;
     } else {

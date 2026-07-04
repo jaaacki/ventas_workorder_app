@@ -99,6 +99,8 @@ export interface WorkOrderRequiredSerial {
   quantity: string | number | null;
   uom: string | null;
   serialNumber: string | null;
+  // The inventory SKU this BOM line resolves to (epic #181). Null = not yet linked.
+  inventorySku: { id: string; sku: string | null; description: string | null } | null;
 }
 
 export interface WorkOrderAllowedEquipment {

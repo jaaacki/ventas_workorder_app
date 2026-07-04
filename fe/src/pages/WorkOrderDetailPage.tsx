@@ -527,7 +527,15 @@ function SerialEvidencePanel({
                 <TableRow key={serial.bomRefId}>
                   <TableCell>
                     <div className="font-medium text-gray-800 dark:text-white/90">{serialLabel(serial)}</div>
-                    <div className="break-all text-xs text-gray-500">{serial.bomRefId}</div>
+                    {serial.inventorySku ? (
+                      <div className="text-xs text-gray-500">
+                        SKU {serial.inventorySku.sku || serial.inventorySku.id}
+                        {serial.inventorySku.description ? ` — ${serial.inventorySku.description}` : ''}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-warning-600 dark:text-warning-500">Not linked to inventory</div>
+                    )}
+                    <div className="break-all text-xs text-gray-400">{serial.bomRefId}</div>
                   </TableCell>
                   <TableCell>{serial.quantity ?? '-'} {serial.uom || ''}</TableCell>
                   <TableCell>{serial.serialNumber || '-'}</TableCell>

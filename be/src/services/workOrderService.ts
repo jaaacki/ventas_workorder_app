@@ -44,12 +44,16 @@ export async function writeConversionEdges(
 ) {
   const relationshipType = params.relationshipType ?? 'CONVERSION';
   const uniqueHetIds = Array.from(new Set(params.sourceHetIds.filter(Boolean)));
-  for (const hetId of uniqueHetIds) {
-    const parentLot = await tx.inventoryLot.findFirst({
-      where: { tenantId: params.tenantId, hetId, deleted: false },
-      select: { id: true },
-    });
-    if (!parentLot || parentLot.id === params.childLotId) continue;
+  if (uniqueHetIds.length === 0) return;
+  // One query for every source HET's lot (InventoryLot.hetId is @unique, so ≤1
+  // per HET), then the idempotent upsert loop over the fetched set — no findFirst
+  // round-trip per source HET inside the release transaction.
+  const parentLots = await tx.inventoryLot.findMany({
+    where: { tenantId: params.tenantId, hetId: { in: uniqueHetIds }, deleted: false },
+    select: { id: true },
+  });
+  for (const parentLot of parentLots) {
+    if (parentLot.id === params.childLotId) continue;
     await tx.inventoryGenealogy.upsert({
       where: {
         parentInventoryLotId_childInventoryLotId_relationshipType: {
@@ -514,7 +518,7 @@ function getLifecycleState(workOrder: OperationalWorkOrder, atFinalPhase: boolea
   return 'ReadyToAdvance';
 }
 
-function legacyHetKeys(workOrder: Pick<OperationalWorkOrder, 'hetId' | 'batchHets'>) {
+export function legacyHetKeys(workOrder: { hetId: string | null; batchHets?: { hetId: string }[] }) {
   return Array.from(
     new Set([
       ...(workOrder.hetId ? [workOrder.hetId] : []),
@@ -910,7 +914,16 @@ export async function recordWorkOrderOutputQuantity(
   options: { amend?: boolean } = {},
 ) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
-  const outputQuantity = new Prisma.Decimal(input.outputQuantity);
+  // The amend route body accepts any non-empty string for outputQuantity, so a
+  // non-numeric value (e.g. "n/a") would make the Decimal constructor throw a raw
+  // DecimalError that escapes as a 500. Convert it to a domain error both the
+  // /output-quantity and amend routes map to 4xx via the 'cannot record ' prefix.
+  let outputQuantity: Prisma.Decimal;
+  try {
+    outputQuantity = new Prisma.Decimal(input.outputQuantity);
+  } catch {
+    throw new Error('cannot record output quantity: invalid number');
+  }
   if (!outputQuantity.isFinite() || outputQuantity.lte(0)) {
     throw new Error('cannot record output quantity: quantity must be greater than zero');
   }
@@ -1066,6 +1079,22 @@ export async function recordWorkOrderRelease(
   const mintsLot = input.releaseStatus === 'released' || input.releaseStatus === 'quarantined';
 
   const { updated, newLot } = await prisma.$transaction(async (tx) => {
+    // Serialize the release on the work-order row + status BEFORE minting any lot.
+    // The pre-tx ReleasePending check runs on a snapshot outside the tx; under the
+    // default READ COMMITTED isolation two concurrent releases could both pass it
+    // and each mint a FINISHED_GOOD lot (findFirst-then-create is not atomic and
+    // lotNumber has no unique constraint). This status-scoped guarded update takes
+    // the row lock: the first release proceeds, the second re-evaluates the
+    // `releaseStatus: null` predicate against the now-committed row, matches 0
+    // rows, and aborts before minting a duplicate lot.
+    const claimed = await tx.workOrder.updateMany({
+      where: { id, tenantId: scopedTenantId, releaseStatus: null },
+      data: { updatedById: actorId },
+    });
+    if (claimed.count === 0) {
+      throw new Error('cannot release: work order already has a release disposition');
+    }
+
     let mintedLot: { id: string; lotNumber: string | null } | null = null;
     let newLot: { id: string; lotNumber: string | null } | null = null;
 
@@ -1226,16 +1255,22 @@ export async function recordWorkOrderEquipment(
   }
 
   const existing = workOrder.phaseEquips.some((equipment) => equipment.phaseEquipId === input.phaseEquipId);
-  if (existing) {
+  // Non-amend recording is idempotent: an already-recorded equipment is a no-op.
+  // An amend must always leave an audit trail (the evidence + evidence_amended
+  // events below), so it falls through even when the row already exists — but
+  // never re-inserts the join row (which would violate its composite PK).
+  if (existing && !options.amend) {
     return getDecoratedWorkOrderOrThrow(id, scopedTenantId);
   }
 
-  await prisma.workOrderPhaseEquip.create({
-    data: {
-      workOrderId: id,
-      phaseEquipId: input.phaseEquipId,
-    },
-  });
+  if (!existing) {
+    await prisma.workOrderPhaseEquip.create({
+      data: {
+        workOrderId: id,
+        phaseEquipId: input.phaseEquipId,
+      },
+    });
+  }
 
   await recordWorkOrderAuditEvent({
     tenantId: scopedTenantId,
@@ -1244,7 +1279,7 @@ export async function recordWorkOrderEquipment(
     actorId,
     source: 'workOrderService.recordWorkOrderEquipment',
     previousState: auditState(workOrder),
-    newState: { ...auditState(workOrder), equipmentCount: workOrder.phaseEquips.length + 1 },
+    newState: { ...auditState(workOrder), equipmentCount: workOrder.phaseEquips.length + (existing ? 0 : 1) },
   });
   if (options.amend) await recordEvidenceAmendment(scopedTenantId, id, actorId, 'equipment', auditState(workOrder));
 
@@ -1572,7 +1607,41 @@ export async function combineHets(workOrderId: string, hetIds: string[], actorId
     throw new Error('cannot combine: one or more HETs do not exist');
   }
 
+  // Reject any source HET that is the primary HET of another still-active run
+  // (its own work order, not this one, not advanced, not released). Folding such
+  // a HET in as a batch HET would group its work order into this higher-phase
+  // chain and let buildLegacyWorkOrderContext silently mark it superseded —
+  // permanently locking a run that never advanced, with no audit. A HET with no
+  // active primary run (collection-only, or already advanced/released) stays
+  // combinable.
+  const activePrimaryRuns = await prisma.workOrder.findMany({
+    where: {
+      tenantId: scopedTenantId,
+      deleted: false,
+      hetId: { in: uniqueHetIds },
+      id: { not: workOrderId },
+      releaseStatus: null,
+      nextPhaseId: null,
+    },
+    select: { hetId: true },
+  });
+  if (activePrimaryRuns.length > 0) {
+    const lockedHetId = activePrimaryRuns.find((run) => run.hetId)?.hetId;
+    throw new Error(`cannot combine: HET ${lockedHetId} has its own active run`);
+  }
+
   await prisma.$transaction(async (tx) => {
+    // Serialize against a concurrent release committing in the window between the
+    // pre-tx release/superseded checks and this write: a status-scoped guarded
+    // update that matches 0 rows once the work order has a release disposition,
+    // aborting the combine rather than attaching HETs to a released run.
+    const claimed = await tx.workOrder.updateMany({
+      where: { id: workOrderId, tenantId: scopedTenantId, releaseStatus: null },
+      data: { updatedById: actorId },
+    });
+    if (claimed.count === 0) {
+      throw new Error('cannot combine: work order already released');
+    }
     await tx.workOrderHet.createMany({
       data: uniqueHetIds.map((hetId) => ({ workOrderId, hetId })),
       skipDuplicates: true,
@@ -1661,7 +1730,7 @@ const runChainWoSelect = {
   _count: { select: { woSerials: true, phaseEquips: true, sterilises: true } },
 } satisfies Prisma.WorkOrderSelect;
 
-function runChainSigner(staff: { id: string; name: string | null; email: string } | null) {
+export function runChainSigner(staff: { id: string; name: string | null; email: string } | null) {
   return staff?.name || staff?.email || staff?.id || null;
 }
 

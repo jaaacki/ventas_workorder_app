@@ -118,6 +118,45 @@ async function seedOwner(ownerRoleId: string) {
   console.log('Seeded owner user');
 }
 
+// Canonical AmGraft phase → BOM name, from the legacy production sheet. Phases
+// not listed (E17, E18, G24, G25/26, H27, H28) legitimately carry no BOM.
+const AMG_PHASE_BOM: Record<string, string> = {
+  A1: 'BOM A1',
+  A2: 'BOM A2',
+  'A3, A4, A5': 'BOM A3',
+  'B6, B7, B8': 'BOM B1',
+  'B9, B10, B11': 'BOM B2',
+  C12: 'BOM C1',
+  'D13, D14, D15, D16': 'BOM D1',
+  F19: 'BOM F1',
+  'F20, F21, F22': 'BOM F2',
+  G23: 'BOM G1',
+};
+
+// Fill any NULL phase.bomId by matching phaseShort → BOM name against the
+// imported BOM catalog. Idempotent (touches only NULLs), so it wires legacy BOMs
+// onto the seed-created phases on a later deploy without disturbing existing
+// bindings; a no-op on a fresh DB that has no BOMs imported yet.
+async function bindPhaseBoms(workflowId: string): Promise<number> {
+  const phases = await prisma.phase.findMany({
+    where: { workflowId, bomId: null },
+    select: { id: true, phaseShort: true },
+  });
+  let bound = 0;
+  for (const phase of phases) {
+    const bomName = phase.phaseShort ? AMG_PHASE_BOM[phase.phaseShort] : undefined;
+    if (!bomName) continue;
+    const bom = await prisma.bom.findFirst({
+      where: { tenantId: DEFAULT_TENANT_ID, bomName },
+      select: { id: true },
+    });
+    if (!bom) continue;
+    await prisma.phase.update({ where: { id: phase.id }, data: { bomId: bom.id } });
+    bound += 1;
+  }
+  return bound;
+}
+
 async function seedAmGraftWorkflow() {
   // Real AmGraft A–H production recipe. Each phase (letter group) owns an
   // ordered set of steps. isGate marks the sterilisation/BET gate; blocksCombine
@@ -227,6 +266,8 @@ async function seedAmGraftWorkflow() {
   const existingPhases = await prisma.phase.count({ where: { workflowId: workflow.id } });
   if (existingPhases > 0) {
     console.log(`AmGraft workflow (${workflow.code}) already has ${existingPhases} phases; leaving them intact`);
+    const bound = await bindPhaseBoms(workflow.id);
+    if (bound > 0) console.log(`Bound ${bound} phase BOM(s) to existing AmGraft phases`);
     return workflow;
   }
 
@@ -266,7 +307,8 @@ async function seedAmGraftWorkflow() {
     }
   });
 
-  console.log(`Seeded AmGraft workflow (${workflow.code}) with ${recipe.length} phases and ${stepCount} steps`);
+  const bound = await bindPhaseBoms(workflow.id);
+  console.log(`Seeded AmGraft workflow (${workflow.code}) with ${recipe.length} phases, ${stepCount} steps, ${bound} BOM binding(s)`);
   return workflow;
 }
 

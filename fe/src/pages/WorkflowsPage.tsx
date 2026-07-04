@@ -19,11 +19,13 @@ import {
   reorderSteps,
   fetchBoms,
   fetchBomLines,
+  updateBomLine,
   type WorkflowSummary,
   type PhaseItem,
   type StepItem,
   type PhaseMutationPayload,
 } from '@/lib/workflows-api';
+import { fetchInventorySkus } from '@/lib/inventory-api';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -550,7 +552,11 @@ function StepsDrawer({
 // Read-only "Materials & inventory links" — every phase's BOM lines and the
 // InventorySku each resolves to (epic #181). Purely to evaluate link coverage;
 // editing links is Phase 2. Fetches each BOM's lines in parallel via useQueries.
+// "Materials & inventory links" editor — for each phase's BOM lines, pick the
+// InventorySku each material links to (owner/admin, in the configurator). Fetches
+// the SKU catalog once and each BOM's lines in parallel; a change PATCHes the line.
 function MaterialsPanel({ phases }: { phases: PhaseItem[] }) {
+  const queryClient = useQueryClient();
   const bomPhases = phases.map((phase, index) => ({ phase, index })).filter((p) => p.phase.bomId);
   const results = useQueries({
     queries: bomPhases.map(({ phase }) => ({
@@ -558,6 +564,25 @@ function MaterialsPanel({ phases }: { phases: PhaseItem[] }) {
       queryFn: () => fetchBomLines(phase.bomId as string),
     })),
   });
+  const skusQuery = useQuery({ queryKey: ['inventory-skus'], queryFn: () => fetchInventorySkus('') });
+  const skus = skusQuery.data ?? [];
+  const skuGroups = useMemo(() => {
+    const byCat = new Map<string, typeof skus>();
+    for (const s of [...skus].sort((a, b) => (a.description || a.sku || '').localeCompare(b.description || b.sku || ''))) {
+      const cat = s.category || 'Other';
+      if (!byCat.has(cat)) byCat.set(cat, []);
+      byCat.get(cat)!.push(s);
+    }
+    return [...byCat.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [skus]);
+
+  const linkMutation = useMutation({
+    mutationFn: ({ id, inventorySkuId }: { id: string; inventorySkuId: string | null }) =>
+      updateBomLine(id, { inventorySkuId }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bom-lines'] }),
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(apiError(e, 'Failed to update inventory link')),
+  });
+
   const groups = bomPhases.map((bp, i) => ({
     ...bp,
     lines: results[i]?.data ?? [],
@@ -573,9 +598,7 @@ function MaterialsPanel({ phases }: { phases: PhaseItem[] }) {
       <div className="flex flex-wrap items-center justify-between gap-2 p-4">
         <div>
           <div className="text-lg font-semibold text-foreground">Materials &amp; inventory links</div>
-          <div className="text-sm text-muted-foreground">
-            Each BOM material and the inventory SKU it resolves to. Read-only.
-          </div>
+          <div className="text-sm text-muted-foreground">Pick the inventory SKU each BOM material links to.</div>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline">{linked}/{total} linked</Badge>
@@ -615,16 +638,25 @@ function MaterialsPanel({ phases }: { phases: PhaseItem[] }) {
                       <TableCell className="text-muted-foreground">{line.quantity ?? '-'} {line.uom || ''}</TableCell>
                       <TableCell>{line.hasSerial ? <Badge variant="outline">serial</Badge> : ''}</TableCell>
                       <TableCell>
-                        {line.inventorySku ? (
-                          <span className="text-foreground">
-                            {line.inventorySku.sku || line.inventorySku.id}
-                            {line.inventorySku.description ? ` · ${line.inventorySku.description}` : ''}
-                          </span>
-                        ) : (
-                          <span className="rounded-full border border-warning-500/40 bg-warning-50 px-2 py-0.5 text-xs text-warning-600 dark:bg-warning-500/10 dark:text-warning-500">
-                            Unlinked
-                          </span>
-                        )}
+                        <select
+                          aria-label={`Inventory SKU for ${line.description ?? 'material'}`}
+                          className={`w-full min-w-[16rem] rounded-md border bg-transparent px-2 py-1 text-sm dark:bg-gray-900 ${line.inventorySkuId ? 'border-border text-foreground' : 'border-warning-500/40 text-warning-600'}`}
+                          value={line.inventorySkuId ?? ''}
+                          disabled={linkMutation.isPending || skusQuery.isLoading}
+                          onChange={(e) => linkMutation.mutate({ id: line.id, inventorySkuId: e.target.value || null })}
+                        >
+                          <option value="">— Unlinked —</option>
+                          {skuGroups.map(([cat, items]) => (
+                            <optgroup key={cat} label={cat}>
+                              {items.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {(s.sku || s.id)}
+                                  {s.description ? ` · ${s.description}` : ''}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
                       </TableCell>
                     </TableRow>
                   ))

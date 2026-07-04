@@ -311,5 +311,17 @@ describe('HET collection run (integration)', () => {
       { clinicId: ctx.collectionPointId, clinicName: 'Integration Clinic', hciCode: 'HCI-TEST', count: 1 },
     ]);
     expect(report.byPeriod.reduce((sum, point) => sum + point.count, 0)).toBe(1);
+
+    // 9b. The date window is inclusive of the whole end day (F4): using the HET's
+    // own collection day as both from/to still counts it — a strict `< midnight`
+    // on `to` would silently drop every same-day collection.
+    const collectedDay = new Date(het.createdAt.toISOString().slice(0, 10));
+    const windowedReport = await getCollectionReport({
+      tenantId: ctx.tenantId,
+      clinicId: ctx.collectionPointId,
+      from: collectedDay,
+      to: collectedDay,
+    });
+    expect(windowedReport.total).toBe(1);
   });
 });

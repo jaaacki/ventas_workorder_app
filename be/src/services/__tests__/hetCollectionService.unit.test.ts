@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   collectionReceipt: { create: vi.fn() },
   collectionReceiptLine: { create: vi.fn() },
   het: { create: vi.fn() },
-  issuanceOrder: { create: vi.fn() },
+  issuanceOrder: { create: vi.fn(), findFirst: vi.fn() },
   issuanceOrderLine: { create: vi.fn(), findFirst: vi.fn() },
 }));
 
@@ -26,6 +26,7 @@ vi.mock('../../db/prisma.js', () => ({
     workOrder: mocks.workOrder,
     collectionPoint: mocks.collectionPoint,
     collectionUnit: mocks.collectionUnit,
+    issuanceOrder: mocks.issuanceOrder,
     issuanceOrderLine: mocks.issuanceOrderLine,
     $transaction: vi.fn((callback) => callback({
       collectionOrder: mocks.collectionOrder,
@@ -90,7 +91,7 @@ function primeDeliverHappyPath() {
     phase: { processType: 'COLLECTION' },
   });
   mocks.collectionPoint.findFirst.mockResolvedValue(collectionPoint);
-  mocks.collectionUnit.findFirst.mockResolvedValue({ id: 'unit-1' });
+  mocks.collectionUnit.findFirst.mockResolvedValue({ id: 'unit-1', status: 'AVAILABLE' });
   mocks.issuanceOrder.create.mockImplementation(({ data }) => Promise.resolve({ id: data.id }));
   mocks.issuanceOrderLine.create.mockResolvedValue({ id: 'iline-1' });
   mocks.collectionUnit.update.mockResolvedValue({ id: 'unit-1' });
@@ -255,6 +256,42 @@ describe('hetCollectionService.recordHetCollection', () => {
     );
   });
 
+  it('rejects a collect whose clinic does not match the delivered container (F7)', async () => {
+    primeHappyPath();
+    // The run delivered a container to point-1, but this collect names a different
+    // clinic — the delivered issuance is authoritative, so it must be rejected.
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-collect', tenantId: 'ventas', phaseId: 'p1', hetId: null,
+      collectionReceiptId: null, issuanceOrderId: 'iss-1', releaseStatus: null,
+      phase: { processType: 'COLLECTION' },
+    });
+    mocks.issuanceOrder.findFirst.mockResolvedValue({ collectionPointId: 'point-OTHER' });
+    await expect(
+      recordHetCollection('wo-collect', { collectionPointId: 'point-1' }, 'actor1'),
+    ).rejects.toThrow('cannot collect: clinic does not match the delivered container');
+    expect(mocks.het.create).not.toHaveBeenCalled();
+  });
+
+  it('accepts a collect whose clinic matches the delivered container (F7)', async () => {
+    primeHappyPath();
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-collect', tenantId: 'ventas', phaseId: 'p1', hetId: null,
+      collectionReceiptId: null, issuanceOrderId: 'iss-1', releaseStatus: null,
+      phase: { processType: 'COLLECTION' },
+    });
+    mocks.issuanceOrder.findFirst.mockResolvedValue({ collectionPointId: 'point-1' });
+    mocks.issuanceOrderLine.findFirst.mockResolvedValue({ collectionUnitId: 'unit-delivered' });
+    await recordHetCollection('wo-collect', { collectionPointId: 'point-1' }, 'actor1');
+    // The soft-deleted-line filter + deterministic order is applied to the lookup (F2).
+    expect(mocks.issuanceOrderLine.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ issuanceOrderId: 'iss-1', deleted: false }),
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+    expect(mocks.het.create.mock.calls[0][0].data.collectionUnitId).toBe('unit-delivered');
+  });
+
   it('does not touch CollectionUnit.status on a direct collect with no prior deliver (phase-1)', async () => {
     primeHappyPath();
     await recordHetCollection('wo-collect', { collectionPointId: 'point-1', collectionUnitId: 'unit-1' }, 'actor1');
@@ -320,6 +357,21 @@ describe('hetCollectionService.recordHetCollection', () => {
     expect(mocks.het.create).not.toHaveBeenCalled();
   });
 
+  it('rejects a next container that is already in transit for another run (F8)', async () => {
+    primeHappyPath();
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-collect', tenantId: 'ventas', phaseId: 'p1', hetId: null,
+      collectionReceiptId: null, issuanceOrderId: 'iss-1', releaseStatus: null,
+      phase: { processType: 'COLLECTION' },
+    });
+    mocks.issuanceOrderLine.findFirst.mockResolvedValue({ collectionUnitId: 'unit-delivered' });
+    mocks.collectionUnit.findFirst.mockResolvedValue({ id: 'unit-next', status: 'ISSUED' });
+    await expect(
+      recordHetCollection('wo-collect', { collectionPointId: 'point-1', nextCollectionUnitId: 'unit-next' }, 'actor1'),
+    ).rejects.toThrow('cannot collect: next container already in transit');
+    expect(mocks.het.create).not.toHaveBeenCalled();
+  });
+
   it('rejects a next container that equals the collected container', async () => {
     primeHappyPath();
     mocks.collectionUnit.findFirst.mockResolvedValue({ id: 'unit-1' });
@@ -363,8 +415,9 @@ describe('hetCollectionService.deliverEmptyContainer', () => {
     // Container moves into the ISSUED lifecycle state.
     expect(unitUpdate).toMatchObject({ where: { id: 'unit-1' }, data: expect.objectContaining({ status: 'ISSUED' }) });
 
-    // WO links the issuance, guarded on issuanceOrderId being null.
-    expect(woUpdate.where).toMatchObject({ id: 'wo-collect', issuanceOrderId: null });
+    // WO links the issuance, guarded on issuanceOrderId AND the collect columns
+    // being null so a concurrent collect aborts the deliver (F1).
+    expect(woUpdate.where).toMatchObject({ id: 'wo-collect', issuanceOrderId: null, hetId: null, collectionReceiptId: null });
     expect(woUpdate.data.issuanceOrderId).toBe(issuanceData.id);
 
     expect(workOrderServiceMocks.recordWorkOrderAuditEvent).toHaveBeenCalledWith(
@@ -419,6 +472,15 @@ describe('hetCollectionService.deliverEmptyContainer', () => {
     await expect(
       deliverEmptyContainer('wo-collect', { collectionPointId: 'point-1', collectionUnitId: 'unit-other-tenant' }, 'actor1'),
     ).rejects.toThrow('cannot deliver: collection unit not found');
+    expect(mocks.issuanceOrder.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects issuing a container that is already in transit for another run (F8)', async () => {
+    primeDeliverHappyPath();
+    mocks.collectionUnit.findFirst.mockResolvedValue({ id: 'unit-1', status: 'ISSUED' });
+    await expect(
+      deliverEmptyContainer('wo-collect', { collectionPointId: 'point-1', collectionUnitId: 'unit-1' }, 'actor1'),
+    ).rejects.toThrow('cannot deliver: container already in transit');
     expect(mocks.issuanceOrder.create).not.toHaveBeenCalled();
   });
 

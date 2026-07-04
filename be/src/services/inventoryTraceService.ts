@@ -123,6 +123,9 @@ async function buildTrace(
   const lots = await prisma.inventoryLot.findMany({
     where: {
       tenantId,
+      // Archived/voided lots must not leak into the trace (and expand the
+      // downstream fan-out); every other query in this file filters them (F3).
+      deleted: false,
       ...lotWhere,
     },
     include: { inventorySku: true, currentLocation: true },

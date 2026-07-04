@@ -54,7 +54,13 @@ export async function getCollectionReport(options: {
     Prisma.sql`h."deleted" = false`,
   ];
   if (from) conditions.push(Prisma.sql`h."createdAt" >= ${from}`);
-  if (to) conditions.push(Prisma.sql`h."createdAt" < ${to}`);
+  if (to) {
+    // `to` is a calendar day (date-only, coerced to UTC midnight): compare against
+    // the start of the next day so the whole picked end day is included, matching
+    // the inclusive `from` bound (F4). UTC has no DST, so +24h is a clean next day.
+    const toExclusive = new Date(to.getTime() + 24 * 60 * 60 * 1000);
+    conditions.push(Prisma.sql`h."createdAt" < ${toExclusive}`);
+  }
   if (clinicId) conditions.push(Prisma.sql`h."clinicId" = ${clinicId}`);
   const where = Prisma.join(conditions, ' AND ');
 

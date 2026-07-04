@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   collectionPoint: {
     findFirst: vi.fn(),
   },
+  collectionUnit: {
+    findFirst: vi.fn(),
+  },
   collectionOrder: { create: vi.fn() },
   collectionReceipt: { create: vi.fn() },
   collectionReceiptLine: { create: vi.fn() },
@@ -19,6 +22,7 @@ vi.mock('../../db/prisma.js', () => ({
   prisma: {
     workOrder: mocks.workOrder,
     collectionPoint: mocks.collectionPoint,
+    collectionUnit: mocks.collectionUnit,
     $transaction: vi.fn((callback) => callback({
       collectionOrder: mocks.collectionOrder,
       collectionReceipt: mocks.collectionReceipt,
@@ -104,6 +108,29 @@ describe('hetCollectionService.recordHetCollection', () => {
       'cannot collect: collection point not found',
     );
     expect(mocks.het.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a collection unit that does not belong to the caller tenant', async () => {
+    // Het.collectionUnitId is a global FK; a cross-tenant unit fails the
+    // tenant-scoped lookup (findFirst returns null) and must be rejected before
+    // any HET is minted with it.
+    mocks.workOrder.findFirst.mockResolvedValue({ id: 'wo-1', phaseId: 'p1', hetId: null, collectionReceiptId: null, releaseStatus: null, phase: { processType: 'COLLECTION' } });
+    mocks.collectionPoint.findFirst.mockResolvedValue(collectionPoint);
+    mocks.collectionUnit.findFirst.mockResolvedValue(null);
+    await expect(
+      recordHetCollection('wo-1', { collectionPointId: 'point-1', collectionUnitId: 'unit-other-tenant' }, 'actor1'),
+    ).rejects.toThrow('cannot collect: collection unit not found');
+    expect(mocks.het.create).not.toHaveBeenCalled();
+  });
+
+  it('accepts a same-tenant collection unit and mints the HET', async () => {
+    primeHappyPath();
+    mocks.collectionUnit.findFirst.mockResolvedValue({ id: 'unit-1' });
+    await recordHetCollection('wo-collect', { collectionPointId: 'point-1', collectionUnitId: 'unit-1' }, 'actor1');
+    expect(mocks.collectionUnit.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: 'unit-1', tenantId: 'ventas' }) }),
+    );
+    expect(mocks.het.create.mock.calls[0][0].data.collectionUnitId).toBe('unit-1');
   });
 
   it('mints a HET with COLL-/HET- ids and wires every custody link', async () => {

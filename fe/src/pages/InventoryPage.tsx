@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import type { AxiosError } from 'axios';
+import { inventoryTypeValues } from '@workorder/shared';
 import { toast } from 'sonner';
 import {
   archiveInventoryBalance,
@@ -1003,7 +1004,7 @@ export default function InventoryPage() {
     return orderedKeys.map((key) => (
       relationshipField(key) ??
       (key === 'inventoryType'
-        ? enumField(key, ['HET', 'RAW_MATERIAL', 'WIP', 'FINISHED_GOOD', 'CONSUMABLE'])
+        ? enumField(key, [...inventoryTypeValues])
         : key === 'status'
           ? enumField(key, ['available', 'reserved', 'consumed', 'quarantined', 'released', 'scrapped'])
           : key === 'transactionType'

@@ -18,6 +18,24 @@ export const sterilisationDirectionValues = ['OUT', 'IN'] as const;
 export const sterilisationDirectionSchema = z.enum(sterilisationDirectionValues);
 export type SterilisationDirection = (typeof sterilisationDirectionValues)[number];
 
-export const inventoryTypeValues = ['HET', 'FINISHED_GOOD'] as const;
+// Open, known vocabulary for InventoryLot.inventoryType. Unlike the closed status
+// sets above, inventoryType is an application-owned classification: the API write
+// path validates against this list, but it must cover every value the app can
+// legitimately produce — the FE lot dropdown plus every category the legacy
+// importer maps (importInventoryLegacy.inventoryTypeForCategory). Keep this list
+// as the single source of truth so FE, BE, and import never drift. New physical
+// categories are added here, not silently rejected at the write boundary.
+export const inventoryTypeValues = [
+  'HET',
+  'RAW_MATERIAL',
+  'WIP',
+  'FINISHED_GOOD',
+  'CONSUMABLE',
+  'PROCESSING_REAGENT',
+  'PACKAGING',
+  'PPE',
+  'WASTE',
+  'STORAGE_CONTAINER',
+] as const;
 export const inventoryTypeSchema = z.enum(inventoryTypeValues);
 export type InventoryType = (typeof inventoryTypeValues)[number];

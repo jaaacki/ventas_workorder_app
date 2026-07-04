@@ -128,6 +128,65 @@ describe('batchRecordService.getBatchRecord', () => {
     expect(releasePhase.sterilisations[0]).toMatchObject({ direction: 'IN', result: true, signer: 'Cara' });
   });
 
+  it('includes a combined-HET leg reachable only via the batchHets-aware peer lookup', async () => {
+    mocks.inventoryLot.findFirst.mockResolvedValue({
+      id: 'lot-fg',
+      lotNumber: 'MANU-2',
+      inventoryType: 'FINISHED_GOOD',
+      status: 'available',
+      quantityInitial: { toString: () => '1.0000' },
+      quantityCurrent: { toString: () => '1.0000' },
+      uom: 'ea',
+      createdAt: new Date('2026-07-02T00:00:00Z'),
+      workOrderId: 'wo-release',
+      hetId: null,
+    });
+
+    const release = makeWorkOrder({
+      id: 'wo-release',
+      woNumber: 'WO-REL',
+      previousWoId: null,
+      phaseOrder: 2,
+      hetId: 'het-primary',
+      // A HET combined into this run; its own leg lives on a separate work order.
+      batchHets: [{ hetId: 'het-combined' }],
+      phase: { id: 'p2', phaseName: 'Release', phaseShort: 'REL', sortOrder: 2, isGate: false },
+      releaseStatus: 'released',
+      releaseDecisionAt: new Date('2026-07-02T00:00:00Z'),
+      releaseDecisionBy: { id: 's1', name: 'Bob', email: 'bob@test' },
+    });
+    // The combined HET's own collection work order — NOT in the previousWoId chain,
+    // reachable only by the HET-key peer lookup (its hetId is the combined HET).
+    const combinedLeg = makeWorkOrder({
+      id: 'wo-combined-collect',
+      woNumber: 'WO-COMB',
+      previousWoId: null,
+      phaseOrder: 0,
+      hetId: 'het-combined',
+      phase: { id: 'p0', phaseName: 'Combined Collection', phaseShort: 'COLL', sortOrder: 0, isGate: false },
+    });
+
+    mocks.workOrder.findFirst.mockImplementation(({ where }: { where: { id: string } }) =>
+      Promise.resolve(where.id === 'wo-release' ? release : null),
+    );
+    mocks.workOrder.findMany.mockImplementation(({ where }: { where: { id?: { in: string[] } } }) => {
+      if (where.id?.in) {
+        // Heavy fetch over the collected id set.
+        return Promise.resolve([release, combinedLeg].filter((wo) => where.id!.in.includes(wo.id)));
+      }
+      // Peer-by-HET lookup: matches the run's primary + combined HET keys.
+      return Promise.resolve([{ id: 'wo-release' }, { id: 'wo-combined-collect' }]);
+    });
+    mocks.het.findFirst.mockResolvedValue({ id: 'het-primary', hetNumber: 'HET-P', clinicName: 'Clinic', HCICode: 'HCI', clinicId: 'c1' });
+    mocks.inventoryGenealogy.findMany.mockResolvedValue([]);
+
+    const record = await getBatchRecord('MANU-2', 'tenant-a');
+
+    // The combined leg's phase is assembled into the record, ordered ahead of release.
+    expect(record.phases.map((p) => p.phase?.phaseName)).toEqual(['Combined Collection', 'Release']);
+    expect(record.phases.map((p) => p.workOrderId)).toContain('wo-combined-collect');
+  });
+
   it('throws a P2025-shaped error when the finished-goods lot is missing', async () => {
     mocks.inventoryLot.findFirst.mockResolvedValue(null);
     await expect(getBatchRecord('NOPE', 'tenant-a')).rejects.toMatchObject({ code: 'P2025' });

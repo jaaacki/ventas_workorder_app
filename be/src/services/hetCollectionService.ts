@@ -64,6 +64,20 @@ export async function recordHetCollection(
     throw new Error('cannot collect: collection point not found');
   }
 
+  // Het.collectionUnitId is a global FK (no tenant column on the relation), so a
+  // client-supplied collection unit must be tenant-checked here — mirroring the
+  // collectionPoint guard above — or a caller could attach a collection unit from
+  // another tenant to the minted HET and its receipt line.
+  if (input.collectionUnitId) {
+    const collectionUnit = await prisma.collectionUnit.findFirst({
+      where: { id: input.collectionUnitId, tenantId: scopedTenantId, deleted: false },
+      select: { id: true },
+    });
+    if (!collectionUnit) {
+      throw new Error('cannot collect: collection unit not found');
+    }
+  }
+
   const now = new Date();
   const collectionBase = generatePrefixedId('COLL');
   const orderId = `${collectionBase}-ORD`;

@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import type { Prisma as PrismaTypes } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { tenantIdOrDefault } from './tenant.js';
+import { legacyHetKeys, runChainSigner } from './workOrderService.js';
 
 /**
  * Read-only batch-record assembly for a finished-goods LOT. Everything here is
@@ -53,11 +54,6 @@ const batchRecordWoInclude = {
 } satisfies PrismaTypes.WorkOrderInclude;
 
 type BatchRecordWorkOrder = Prisma.WorkOrderGetPayload<{ include: typeof batchRecordWoInclude }>;
-type StaffRef = { id: string; name: string | null; email: string } | null;
-
-function signerName(staff: StaffRef): string | null {
-  return staff?.name || staff?.email || staff?.id || null;
-}
 
 function notFound(message: string) {
   return new Prisma.PrismaClientKnownRequestError(message, { code: 'P2025', clientVersion: 'unknown' });
@@ -81,34 +77,55 @@ export async function getBatchRecord(lotNumber: string, tenantId?: string | null
     throw new Error('cannot assemble batch record: lot is not linked to a work order');
   }
 
-  // Walk the run chain backward via previousWoId (loop, not recursion). `seen`
-  // guards against a malformed cycle.
-  const workOrders = new Map<string, BatchRecordWorkOrder>();
+  // Collect the run's work-order ids cheaply first (no base64 payloads), then do
+  // ONE heavy fetch over the whole set — so no row's photo/signature blobs are
+  // transferred twice. Two passes gather the ids:
+  //   (1) walk the previousWoId chain backward from the releasing WO (loop, not
+  //       recursion; `seen` guards a malformed cycle), capturing each WO's HET
+  //       keys (primary hetId + combined batch HETs);
+  //   (2) add any peer WO sharing that HET key set — including combined-HET legs
+  //       (their own collection/processing WOs), which the previousWoId chain
+  //       alone would miss.
+  const woIds = new Set<string>();
+  const hetKeys = new Set<string>(lot.hetId ? [lot.hetId] : []);
   const seen = new Set<string>();
   let cursor: string | null = lot.workOrderId;
   while (cursor && !seen.has(cursor)) {
     seen.add(cursor);
-    const workOrder: BatchRecordWorkOrder | null = await prisma.workOrder.findFirst({
-      where: { id: cursor, tenantId: scopedTenantId },
-      include: batchRecordWoInclude,
-    });
-    if (!workOrder) break;
-    workOrders.set(workOrder.id, workOrder);
-    cursor = workOrder.previousWoId;
+    const ref: { id: string; previousWoId: string | null; hetId: string | null; batchHets: { hetId: string }[] } | null =
+      await prisma.workOrder.findFirst({
+        where: { id: cursor, tenantId: scopedTenantId },
+        select: { id: true, previousWoId: true, hetId: true, batchHets: { select: { hetId: true } } },
+      });
+    if (!ref) break;
+    woIds.add(ref.id);
+    for (const key of legacyHetKeys(ref)) hetKeys.add(key);
+    cursor = ref.previousWoId;
   }
+
+  if (hetKeys.size) {
+    const peerRefs = await prisma.workOrder.findMany({
+      where: {
+        tenantId: scopedTenantId,
+        deleted: false,
+        OR: [
+          { hetId: { in: [...hetKeys] } },
+          { batchHets: { some: { hetId: { in: [...hetKeys] } } } },
+        ],
+      },
+      select: { id: true },
+    });
+    for (const peer of peerRefs) woIds.add(peer.id);
+  }
+
+  const rows = await prisma.workOrder.findMany({
+    where: { id: { in: [...woIds] }, tenantId: scopedTenantId },
+    include: batchRecordWoInclude,
+  });
+  const workOrders = new Map<string, BatchRecordWorkOrder>(rows.map((row) => [row.id, row]));
 
   const releasingWo = workOrders.get(lot.workOrderId) ?? null;
   const runHetId = lot.hetId ?? releasingWo?.hetId ?? null;
-
-  // Supplement with any peer work orders on the same HET not already in the
-  // previousWoId chain (e.g. legacy runs not fully linked).
-  if (runHetId) {
-    const peers = await prisma.workOrder.findMany({
-      where: { tenantId: scopedTenantId, hetId: runHetId, deleted: false },
-      include: batchRecordWoInclude,
-    });
-    for (const peer of peers) if (!workOrders.has(peer.id)) workOrders.set(peer.id, peer);
-  }
 
   const orderedWos = [...workOrders.values()].sort(
     (a, b) => (a.phaseOrder ?? 0) - (b.phaseOrder ?? 0) || a.createdAt.getTime() - b.createdAt.getTime(),
@@ -144,7 +161,7 @@ export async function getBatchRecord(lotNumber: string, tenantId?: string | null
       ? {
           status: releasingWo.releaseStatus,
           decisionAt: releasingWo.releaseDecisionAt,
-          decidedBy: signerName(releasingWo.releaseDecisionBy),
+          decidedBy: runChainSigner(releasingWo.releaseDecisionBy),
           remarks: releasingWo.releaseRemarks,
         }
       : null,
@@ -176,10 +193,10 @@ export async function getBatchRecord(lotNumber: string, tenantId?: string | null
       outputQuantity: workOrder.outputQuantity,
       photoDataUrl: workOrder.imagePath,
       startSignature: workOrder.startSignPath
-        ? { dataUrl: workOrder.startSignPath, signer: signerName(workOrder.startSignBy), at: workOrder.prodStart }
+        ? { dataUrl: workOrder.startSignPath, signer: runChainSigner(workOrder.startSignBy), at: workOrder.prodStart }
         : null,
       endSignature: workOrder.endSignPath
-        ? { dataUrl: workOrder.endSignPath, signer: signerName(workOrder.endSignBy), at: workOrder.prodEnd }
+        ? { dataUrl: workOrder.endSignPath, signer: runChainSigner(workOrder.endSignBy), at: workOrder.prodEnd }
         : null,
       serials: workOrder.woSerials.map((serial) => ({
         id: serial.id,
@@ -205,7 +222,7 @@ export async function getBatchRecord(lotNumber: string, tenantId?: string | null
         result: sterilise.result,
         betReading: sterilise.betReading,
         signOn: sterilise.signOn,
-        signer: signerName(sterilise.signBy),
+        signer: runChainSigner(sterilise.signBy),
         signatureDataUrl: sterilise.signaturePath,
       })),
     })),
@@ -294,7 +311,7 @@ export function renderBatchRecordPdf(doc: PDFKit.PDFDocument, record: BatchRecor
   doc.font('Helvetica-Bold').fontSize(13).fillColor('#e5330e').text(record.lot.lotNumber ?? record.lot.id);
   doc.fillColor('#000').moveDown(0.5);
 
-  label('Product', record.manufacturer?.manuName ?? record.release?.status ?? '—');
+  label('Product', record.manufacturer?.manuName ?? '—');
   label('Manufacturing number', record.manufacturer?.manuNumber ?? '—');
   label('Disposition', record.release?.status ?? '—');
   label('Released', fmtDate(record.release?.decisionAt ?? null));

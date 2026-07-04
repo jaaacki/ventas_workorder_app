@@ -237,6 +237,12 @@ function CollectionProcessPanel({
   const [parcelTrackingNumber, setParcelTrackingNumber] = useState('');
   const [signature, setSignature] = useState('');
 
+  // Next-container swap (#190): optionally issue the next empty container out to
+  // the clinic on collect and chain the collected unit → next unit.
+  const [issueNext, setIssueNext] = useState(false);
+  const [nextUnitId, setNextUnitId] = useState('');
+  const [nextParcel, setNextParcel] = useState('');
+
   // Deliver-empty leg state (#189).
   const [deliverPointId, setDeliverPointId] = useState('');
   const [deliverUnitId, setDeliverUnitId] = useState('');
@@ -253,12 +259,12 @@ function CollectionProcessPanel({
   });
   const collectionPoints = pointsQuery.data ?? [];
 
-  // Containers available to issue on the deliver leg — the list shows each unit's
-  // live CollectionUnit.status (ISSUED / RECEIVED / …).
+  // Containers available to issue on the deliver leg and as the next-container on
+  // the collect leg — the list shows each unit's live CollectionUnit.status.
   const unitsQuery = useQuery({
     queryKey: ['collection-units'],
     queryFn: () => fetchCollectionUnits(),
-    enabled: !alreadyCollected && !alreadyDelivered,
+    enabled: !alreadyCollected,
   });
   const collectionUnits = unitsQuery.data ?? [];
   const selectedUnit = collectionUnits.find((unit) => unit.id === deliverUnitId);
@@ -286,6 +292,10 @@ function CollectionProcessPanel({
       if (lotNumber.trim()) payload.lotNumber = lotNumber.trim();
       if (parcelTrackingNumber.trim()) payload.parcelTrackingNumber = parcelTrackingNumber.trim();
       if (signature) payload.signatureDataUrl = signature;
+      if (issueNext && nextUnitId) {
+        payload.nextCollectionUnitId = nextUnitId;
+        if (nextParcel.trim()) payload.nextParcelTrackingNumber = nextParcel.trim();
+      }
       return recordHetCollection(workOrder.id, payload);
     },
     onSuccess: (updated) => {
@@ -305,6 +315,7 @@ function CollectionProcessPanel({
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!collectionPointId) return;
+    if (issueNext && !nextUnitId) return;
     collectMutation.mutate();
   };
 
@@ -420,8 +431,40 @@ function CollectionProcessPanel({
               {alreadyDelivered && (
                 <span className="text-xs text-gray-500 dark:text-gray-400">The delivered container is closed automatically on collection.</span>
               )}
+              {/* Next-container swap (#190): issue the next empty container out to the clinic on collect. */}
+              <div className="grid gap-2 rounded-lg border border-dashed border-gray-200 p-3 dark:border-gray-700">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-800 dark:text-white/90">
+                  <input type="checkbox" checked={issueNext} onChange={(event) => setIssueNext(event.target.checked)} className="h-4 w-4" />
+                  Issue next empty container
+                </label>
+                {issueNext && (
+                  <>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="next-unit">Next container</Label>
+                      <select
+                        id="next-unit"
+                        value={nextUnitId}
+                        onChange={(event) => setNextUnitId(event.target.value)}
+                        className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                      >
+                        <option value="">Select container</option>
+                        {collectionUnits.map((unit) => (
+                          <option key={unit.id} value={unit.id}>
+                            {(unit.unitNumber || unit.id)} · {unit.status}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="next-parcel">Next parcel tracking</Label>
+                      <Input id="next-parcel" value={nextParcel} onChange={(event) => setNextParcel(event.target.value)} placeholder="Outbound courier tracking number" />
+                    </div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Chains the collected container to the next one for the swap loop.</span>
+                  </>
+                )}
+              </div>
               <SignaturePad label="Custody sign-off (optional)" value={signature} onChange={setSignature} />
-              <Button type="submit" disabled={disabled || !collectionPointId || collectMutation.isPending}>
+              <Button type="submit" disabled={disabled || !collectionPointId || (issueNext && !nextUnitId) || collectMutation.isPending}>
                 Record collection &amp; mint HET
               </Button>
             </form>

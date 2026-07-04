@@ -314,6 +314,9 @@ export interface RecordHetCollectionPayload {
   parcelTrackingNumber?: string;
   collectionUnitId?: string;
   signatureDataUrl?: string;
+  // Next-container swap (#190): issue the next empty container as part of the collect.
+  nextCollectionUnitId?: string;
+  nextParcelTrackingNumber?: string;
 }
 
 export async function recordHetCollection(

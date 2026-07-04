@@ -505,6 +505,23 @@ export async function importProcurementLegacy(options: {
           }),
         );
       }
+      // Next-container swap (#190): a legacy COLLECT event issues the next empty
+      // container at pickup, recorded as newHetId/newParcelNo. This was dropped —
+      // legacyNextHetId used to read a non-existent nextHetId column on the HET
+      // rows and stayed null. Capture it as the collected unit's legacyNextHetId →
+      // the next unit's stable id, so imported history carries the same
+      // unit-to-unit chain the live recordHetCollection swap sets. newParcelNo
+      // stays in legacyRaw and lands structurally when the next container's own
+      // DELIVER row imports its issuance line.
+      const nextHetId = text(row, ['newHetId', 'nextHetId', 'newHETId']);
+      if (nextHetId) {
+        await writeOrCount(dryRun, () =>
+          prisma.collectionUnit.updateMany({
+            where: { id: unitId, tenantId },
+            data: { legacyNextHetId: stableId('unit', nextHetId) },
+          }),
+        );
+      }
       report.totals.collectionReceipts++;
     } else {
       report.warnings.push({ row: eventId, reason: `unknown direction ${direction}` });

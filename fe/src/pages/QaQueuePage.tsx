@@ -55,6 +55,8 @@ function ReleaseDialog({ workOrder }: { workOrder: WorkOrderSummary }) {
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['qa-queue'] });
       queryClient.invalidateQueries({ queryKey: ['work-orders'] });
+      // Release mints a FINISHED_GOOD lot; keep the finished-goods list fresh.
+      queryClient.invalidateQueries({ queryKey: ['finished-goods-lots'] });
       toast.success(`Released ${updated.woNumber || updated.id}`);
       setOpen(false);
     },

@@ -917,6 +917,8 @@ export default function WorkOrderDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['work-order-inventory-trace', updated.id] });
     queryClient.invalidateQueries({ queryKey: ['work-order-audit-events', updated.id] });
     queryClient.invalidateQueries({ queryKey: ['work-order-chain', updated.id] });
+    // A release mints a FINISHED_GOOD lot; keep the finished-goods list fresh.
+    queryClient.invalidateQueries({ queryKey: ['finished-goods-lots'] });
   };
 
   const startMutation = useMutation({
@@ -966,6 +968,9 @@ export default function WorkOrderDetailPage() {
       // Advancing completes this work order and initialises the next phase as a
       // new one — follow the chain to the spawned work order.
       queryClient.invalidateQueries({ queryKey: ['work-order', id] });
+      // updateCachedWorkOrder refreshes the spawned WO's chain; the source WO's
+      // run-chain also gained the new leg, so invalidate it too.
+      queryClient.invalidateQueries({ queryKey: ['work-order-chain', id] });
       toast.success(`Advanced to ${workOrderTitle(updated)}`);
       if (updated.id !== id) {
         navigate(`/dashboard/work-orders/${updated.id}`);

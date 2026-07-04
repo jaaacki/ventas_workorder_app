@@ -213,7 +213,11 @@ function BomLinesPanel({ bom, onError }: { bom: BomCatalogItem; onError: (e: Axi
   const { data: lines = [] } = useQuery({ queryKey: ['bom-lines', bom.id], queryFn: () => fetchBomLines(bom.id) });
   const { data: skus = [] } = useQuery({ queryKey: ['inventory-skus'], queryFn: () => fetchInventorySkus('') });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['bom-lines'] });
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['bom-lines'] });
+    // The BOM list badge reads bom._count.lines from ['boms']; refresh it too.
+    queryClient.invalidateQueries({ queryKey: ['boms'] });
+  };
   const saveLine = useMutation({
     mutationFn: (values: BomLineForm) => {
       const payload = {

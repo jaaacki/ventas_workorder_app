@@ -187,7 +187,7 @@ function App() {
           <Route
             path="/dashboard/lots/:lotNumber"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute roles={['owner', 'admin', 'qa_manager', 'production_manager']}>
                 <DashboardLayout>
                   <LotBatchRecordPage />
                 </DashboardLayout>
@@ -197,7 +197,7 @@ function App() {
           <Route
             path="/dashboard/lots"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute roles={['owner', 'admin', 'qa_manager', 'production_manager']}>
                 <DashboardLayout>
                   <LotsPage />
                 </DashboardLayout>

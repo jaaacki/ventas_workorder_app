@@ -109,6 +109,9 @@ const workOrderSchema = z.object({
     quantity: decimalish.nullable(),
     uom: z.string().nullable(),
     serialNumber: z.string().nullable(),
+    inventorySku: z
+      .object({ id: z.string(), sku: z.string().nullable(), description: z.string().nullable() })
+      .nullable(),
   })),
   allowedEquipment: z.array(z.object({
     phaseEquipId: z.string(),

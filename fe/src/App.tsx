@@ -6,6 +6,7 @@ import DashboardLayout from './components/layout/DashboardLayout';
 import LoginPage from './pages/LoginPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 import DashboardHome from './pages/DashboardHome';
+import ManagerDashboardPage from './pages/ManagerDashboardPage';
 import UsersRolesPage from './pages/UsersRolesPage';
 import WorkflowsPage from './pages/WorkflowsPage';
 import MasterDataPage from './pages/MasterDataPage';
@@ -69,6 +70,16 @@ function App() {
               <ProtectedRoute roles={['owner', 'admin']}>
                 <DashboardLayout>
                   <MasterDataPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/metrics"
+            element={
+              <ProtectedRoute roles={['owner', 'admin', 'production_manager', 'qa_manager']}>
+                <DashboardLayout>
+                  <ManagerDashboardPage />
                 </DashboardLayout>
               </ProtectedRoute>
             }

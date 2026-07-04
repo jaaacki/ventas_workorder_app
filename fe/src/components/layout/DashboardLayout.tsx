@@ -18,6 +18,7 @@ import { fetchQaWorkOrderQueue } from '@/lib/work-orders-api';
 import { logoutApi } from '@/lib/auth-api';
 import {
   LayoutDashboard,
+  BarChart3,
   Users,
   Menu,
   LogOut,
@@ -78,6 +79,7 @@ const navGroups: NavGroup[] = [
     items: [
       { label: 'Board', href: '/dashboard/work-orders', icon: Columns3, roles: ALL_ROLES, keywords: ['work orders', 'wo', 'phases', 'kanban', 'batches'] },
       { label: 'My queue', href: '/dashboard/my-queue', icon: ListChecks, roles: ALL_ROLES, keywords: ['tasks', 'operator', 'my work', 'assigned', 'next action'] },
+      { label: 'Insights', href: '/dashboard/metrics', icon: BarChart3, roles: ['owner', 'admin', 'production_manager', 'qa_manager'], keywords: ['metrics', 'dashboard', 'cycle time', 'throughput', 'wip', 'stalled', 'analytics'] },
     ],
   },
   {

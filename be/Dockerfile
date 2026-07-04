@@ -33,4 +33,8 @@ COPY --from=build /app/be/dist ./dist
 COPY --from=build /app/be/node_modules ./node_modules
 COPY --from=build /app/be/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
+# node_modules/@workorder/shared is a workspace symlink to ../../shared, so the
+# built shared package must be present for be's runtime `@workorder/shared`
+# imports (release/sterilisation/inventory enums) to resolve.
+COPY --from=build /app/shared ./shared
 CMD ["node", "dist/server.js"]

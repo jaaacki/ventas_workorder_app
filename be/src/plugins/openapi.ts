@@ -548,6 +548,22 @@ const errorExamples: Record<string, { summary: string; value: { error: string } 
 };
 
 const methodPolicies: Record<string, MethodPolicy> = {
+  listFinishedGoodsLots: {
+    resource: 'Finished-goods lot',
+    completeness: 'read-model',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'POST/PATCH/DELETE', reason: 'Finished-goods lots are minted by the controlled release action, not created or deleted directly.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Read model listing released finished-goods lots for the LOT/finished-goods page.',
+  },
+  getLotBatchRecord: {
+    resource: 'Batch record',
+    completeness: 'read-model',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'POST/PATCH/DELETE', reason: 'Batch records are reconstructed read-only from immutable production tables and are never directly mutated or deleted.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Reconstructs the immutable phase-by-phase batch record from production tables; a PDF export of the same record is served separately as a binary stream.',
+  },
   getHealth: {
     resource: 'Health',
     completeness: 'complete',

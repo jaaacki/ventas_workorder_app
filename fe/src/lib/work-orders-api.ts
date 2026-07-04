@@ -123,6 +123,11 @@ export interface WorkOrderSummary {
   prodDuration: string | number | null;
   outputQuantity: string | number | null;
   imagePath: string | null;
+  startSignPath: string | null;
+  endSignPath: string | null;
+  startSignById: string | null;
+  endSignById: string | null;
+  reportPdfPath: string | null;
   releaseStatus: 'released' | 'quarantined' | 'rejected' | null;
   releaseDecisionAt: string | null;
   releaseDecisionById: string | null;

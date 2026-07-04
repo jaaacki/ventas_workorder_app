@@ -33,6 +33,13 @@ const mocks = vi.hoisted(() => ({
   workOrderHet: {
     createMany: vi.fn(),
   },
+  inventoryLot: {
+    findFirst: vi.fn(),
+    create: vi.fn(),
+  },
+  inventoryGenealogy: {
+    upsert: vi.fn(),
+  },
 }));
 
 vi.mock('../../db/prisma.js', () => ({
@@ -45,12 +52,16 @@ vi.mock('../../db/prisma.js', () => ({
     sterilise: mocks.sterilise,
     het: mocks.het,
     workOrderHet: mocks.workOrderHet,
+    inventoryLot: mocks.inventoryLot,
+    inventoryGenealogy: mocks.inventoryGenealogy,
     $transaction: vi.fn((callback) => callback({
       workOrder: mocks.workOrder,
       workOrderPhaseEquip: mocks.workOrderPhaseEquip,
       woSerial: mocks.woSerial,
       het: mocks.het,
       workOrderHet: mocks.workOrderHet,
+      inventoryLot: mocks.inventoryLot,
+      inventoryGenealogy: mocks.inventoryGenealogy,
     })),
   },
 }));
@@ -514,6 +525,9 @@ describe('workOrderService', () => {
     mocks.workOrder.findMany.mockResolvedValue([]);
     mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
     mocks.workOrder.findFirstOrThrow.mockResolvedValue(updated);
+    mocks.inventoryLot.findFirst.mockResolvedValue(null);
+    mocks.inventoryLot.create.mockResolvedValue({ id: 'lot-new', lotNumber: 'LOT-TEST' });
+    mocks.inventoryGenealogy.upsert.mockResolvedValue({});
 
     const result = await recordWorkOrderRelease(
       'wo-1',
@@ -548,6 +562,20 @@ describe('workOrderService', () => {
           newState: expect.objectContaining({ releaseStatus: 'released' }),
         }),
       }),
+    );
+    // A released run mints an available FINISHED_GOOD lot inside the same tx and
+    // emits a lot_minted audit event.
+    expect(mocks.inventoryLot.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          inventoryType: 'FINISHED_GOOD',
+          status: 'available',
+          workOrderId: 'wo-1',
+        }),
+      }),
+    );
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'work_order.lot_minted' }) }),
     );
     expect(result).toMatchObject({ id: 'wo-1', releaseStatus: 'released', lifecycleState: 'Released' });
   });

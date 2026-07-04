@@ -210,6 +210,8 @@ const expectedOperations: ExpectedOperation[] = [
   { method: 'get', path: '/api/inventory/locations', operationId: 'listInventoryLocations', routeKind: 'resource-crud', auth: 'permission', requiredPermissions: ['inventory.location.read'] },
   { method: 'get', path: '/api/inventory/lots/{lotId}/genealogy', operationId: 'getInventoryLotGenealogy', routeKind: 'read-model', auth: 'permission', requiredPermissions: ['inventory.genealogy.read'] },
   { method: 'get', path: '/api/inventory/import-reports', operationId: 'listInventoryImportReports', routeKind: 'resource-crud', auth: 'permission', requiredPermissions: ['inventory.importReport.read'] },
+  { method: 'get', path: '/api/lots', operationId: 'listFinishedGoodsLots', routeKind: 'read-model', auth: 'authenticated' },
+  { method: 'get', path: '/api/lots/{lotNumber}/batch-record', operationId: 'getLotBatchRecord', routeKind: 'read-model', auth: 'role', requiredRoles: ['admin', 'owner', 'qa_manager', 'production_manager'] },
   ...crudExpectedOperations(procurementCrudExpectedResources),
   ...crudExpectedOperations(inventoryCrudExpectedResources),
 ];

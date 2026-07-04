@@ -53,6 +53,7 @@ const bomLineMutationSchema = z.object({
   uom: z.string().trim().nullable().optional(),
   hasSerial: z.boolean().optional(),
   keyText: z.string().trim().nullable().optional(),
+  inventorySkuId: z.string().trim().nullable().optional(),
 });
 
 const createBomLineSchema = bomLineMutationSchema.extend({

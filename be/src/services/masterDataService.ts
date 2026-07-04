@@ -17,6 +17,7 @@ export interface BomLineInput {
   uom?: string | null;
   hasSerial?: boolean;
   keyText?: string | null;
+  inventorySkuId?: string | null;
 }
 
 export interface PhaseEquipInput {
@@ -76,6 +77,12 @@ async function assertTenantBom(bomId: string, tenantId: string) {
   const bom = await prisma.bom.findFirst({ where: { id: bomId, tenantId }, select: { id: true, bomName: true } });
   if (!bom) throw notFound('BOM not found');
   return bom;
+}
+
+async function assertTenantSku(inventorySkuId: string, tenantId: string) {
+  const sku = await prisma.inventorySku.findFirst({ where: { id: inventorySkuId, tenantId, deleted: false }, select: { id: true } });
+  if (!sku) throw notFound('Inventory SKU not found');
+  return sku;
 }
 
 function decimalOrNull(value: string | number | Prisma.Decimal | null | undefined) {
@@ -167,6 +174,7 @@ export async function getBomLine(id: string, tenantId?: string | null) {
 export async function createBomLine(input: BomLineInput & { bomId: string }, actorId: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
   const bom = await assertTenantBom(input.bomId, scopedTenantId);
+  if (input.inventorySkuId) await assertTenantSku(input.inventorySkuId, scopedTenantId);
 
   const created = await prisma.bomLine.create({
     data: {
@@ -180,6 +188,7 @@ export async function createBomLine(input: BomLineInput & { bomId: string }, act
       hasSerial: input.hasSerial ?? false,
       deleted: false,
       keyText: input.keyText ?? null,
+      inventorySkuId: input.inventorySkuId ?? null,
       createdById: actorId,
       updatedById: actorId,
     },
@@ -192,6 +201,7 @@ export async function createBomLine(input: BomLineInput & { bomId: string }, act
 export async function updateBomLine(id: string, input: BomLineInput, actorId: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
   if (input.bomId) await assertTenantBom(input.bomId, scopedTenantId);
+  if (input.inventorySkuId) await assertTenantSku(input.inventorySkuId, scopedTenantId);
   const quantity = decimalOrNull(input.quantity);
 
   const before = await prisma.bomLine.findFirst({ where: { id, tenantId: scopedTenantId, deleted: false }, select: bomLineSelect });
@@ -205,6 +215,7 @@ export async function updateBomLine(id: string, input: BomLineInput, actorId: st
       ...(input.uom !== undefined && { uom: input.uom }),
       ...(input.hasSerial !== undefined && { hasSerial: input.hasSerial }),
       ...(input.keyText !== undefined && { keyText: input.keyText }),
+      ...(input.inventorySkuId !== undefined && { inventorySkuId: input.inventorySkuId }),
       updatedById: actorId,
     },
   });

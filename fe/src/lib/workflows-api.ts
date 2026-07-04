@@ -213,6 +213,7 @@ export type BomLineMutationPayload = {
   uom?: string | null;
   hasSerial?: boolean;
   keyText?: string | null;
+  inventorySkuId?: string | null;
 };
 
 export type PhaseEquipmentMutationPayload = {

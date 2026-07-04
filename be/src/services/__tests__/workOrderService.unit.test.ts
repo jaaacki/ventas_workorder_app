@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => ({
   },
   inventoryLot: {
     findFirst: vi.fn(),
+    findMany: vi.fn(),
     create: vi.fn(),
   },
   inventoryGenealogy: {
@@ -555,6 +556,7 @@ describe('workOrderService', () => {
     mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
     mocks.workOrder.findFirstOrThrow.mockResolvedValue(updated);
     mocks.inventoryLot.findFirst.mockResolvedValue(null);
+    mocks.inventoryLot.findMany.mockResolvedValue([]);
     mocks.inventoryLot.create.mockResolvedValue({ id: 'lot-new', lotNumber: 'LOT-TEST' });
     mocks.inventoryGenealogy.upsert.mockResolvedValue({});
 
@@ -1937,6 +1939,8 @@ describe('workOrderService', () => {
     mocks.inventoryLot.findFirst.mockImplementation(async ({ where }: { where: { hetId?: string } }) =>
       where.hetId === 'het-1' ? { id: 'lot-het-1' } : { id: `lot-${where.hetId}` },
     );
+    // writeConversionEdges now batches the source-lot lookup into one findMany.
+    mocks.inventoryLot.findMany.mockResolvedValue([{ id: 'lot-het-2' }, { id: 'lot-het-3' }]);
     mocks.inventoryGenealogy.upsert.mockResolvedValue({});
     mocks.workOrderHet.createMany.mockResolvedValue({ count: 2 });
     // No other work order carries these HETs as its primary run, and the in-tx

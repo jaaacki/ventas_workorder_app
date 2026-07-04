@@ -44,12 +44,16 @@ export async function writeConversionEdges(
 ) {
   const relationshipType = params.relationshipType ?? 'CONVERSION';
   const uniqueHetIds = Array.from(new Set(params.sourceHetIds.filter(Boolean)));
-  for (const hetId of uniqueHetIds) {
-    const parentLot = await tx.inventoryLot.findFirst({
-      where: { tenantId: params.tenantId, hetId, deleted: false },
-      select: { id: true },
-    });
-    if (!parentLot || parentLot.id === params.childLotId) continue;
+  if (uniqueHetIds.length === 0) return;
+  // One query for every source HET's lot (InventoryLot.hetId is @unique, so ≤1
+  // per HET), then the idempotent upsert loop over the fetched set — no findFirst
+  // round-trip per source HET inside the release transaction.
+  const parentLots = await tx.inventoryLot.findMany({
+    where: { tenantId: params.tenantId, hetId: { in: uniqueHetIds }, deleted: false },
+    select: { id: true },
+  });
+  for (const parentLot of parentLots) {
+    if (parentLot.id === params.childLotId) continue;
     await tx.inventoryGenealogy.upsert({
       where: {
         parentInventoryLotId_childInventoryLotId_relationshipType: {

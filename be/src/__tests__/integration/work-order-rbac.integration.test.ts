@@ -98,6 +98,33 @@ describe('work-order lifecycle RBAC (integration)', () => {
     expect(response.statusCode).toBe(403);
   });
 
+  it('refuses every work-order write for a role holding no workOrder.* permission (contract sweep)', async () => {
+    // #208 moved these routes from role-gating to permission-gating (a DB-backed
+    // check), so they can only be verified against a real DB. Sweep the generated
+    // contract by path+method — not by auth tag — so downgrading any WO write to
+    // bare authenticate (which the `user` token would then pass) fails here.
+    const doc = JSON.parse((await app.inject({ method: 'GET', url: '/api/openapi.json' })).body) as {
+      paths: Record<string, Record<string, unknown>>;
+    };
+    const writes = Object.entries(doc.paths).flatMap(([path, methods]) =>
+      path.startsWith('/api/work-orders')
+        ? Object.keys(methods)
+            .filter((method) => ['post', 'patch', 'put', 'delete'].includes(method))
+            .map((method) => ({ method, path }))
+        : [],
+    );
+    expect(writes.length).toBeGreaterThan(0);
+
+    for (const { method, path } of writes) {
+      const response = await app.inject({
+        method: method.toUpperCase(),
+        url: path.replace('{id}', workOrderId),
+        headers: { authorization: `Bearer ${tokenFor('user')}` },
+      });
+      expect(response.statusCode, `${method.toUpperCase()} ${path}`).toBe(403);
+    }
+  });
+
   it('allows a role with workOrder.execute to perform the lifecycle write', async () => {
     const response = await app.inject({
       method: 'POST',

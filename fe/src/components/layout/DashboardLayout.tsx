@@ -94,7 +94,7 @@ const navGroups: NavGroup[] = [
     items: [
       { label: 'Collections', href: '/dashboard/procurement', icon: Boxes, roles: ALL_ROLES, keywords: ['collection units', 'clinic', 'het', 'intake', 'procurement'] },
       { label: 'Inventory', href: '/dashboard/inventory', icon: Warehouse, roles: ALL_ROLES, keywords: ['lots', 'sku', 'stock', 'reagents', 'locations'] },
-      { label: 'Finished goods', href: '/dashboard/lots', icon: PackageCheck, roles: ALL_ROLES, keywords: ['lots', 'batch record', 'finished goods', 'released', 'genealogy', 'certificate'] },
+      { label: 'Finished goods', href: '/dashboard/lots', icon: PackageCheck, roles: ['owner', 'admin', 'qa_manager', 'production_manager'], keywords: ['lots', 'batch record', 'finished goods', 'released', 'genealogy', 'certificate'] },
       { label: 'Traceability', href: '/dashboard/traceability', icon: Waypoints, roles: ALL_ROLES, keywords: ['genealogy', 'chain of custody', 'trace', 'parent', 'child'] },
     ],
   },

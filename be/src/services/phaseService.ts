@@ -9,6 +9,7 @@ export interface UpdatePhaseInput {
   description?: string | null;
   isGate?: boolean;
   blocksCombine?: boolean;
+  processType?: 'COLLECTION' | null;
   bomId?: string | null;
 }
 
@@ -22,6 +23,7 @@ const phaseSelect = {
   sortOrder: true,
   isGate: true,
   blocksCombine: true,
+  processType: true,
   bomId: true,
   createdAt: true,
   updatedAt: true,
@@ -76,6 +78,7 @@ export async function updatePhase(id: string, input: UpdatePhaseInput, actorId: 
       ...(input.description !== undefined && { description: input.description }),
       ...(input.isGate !== undefined && { isGate: input.isGate }),
       ...(input.blocksCombine !== undefined && { blocksCombine: input.blocksCombine }),
+      ...(input.processType !== undefined && { processType: input.processType }),
       ...(input.bomId !== undefined && { bomId: input.bomId }),
       updatedById: actorId,
     },

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { tenantIdOf, actorIdOf } from './requestContext.js';
 import * as workOrderService from '../services/workOrderService.js';
+import * as hetCollectionService from '../services/hetCollectionService.js';
 import * as inventoryTraceService from '../services/inventoryTraceService.js';
 import { inventoryTraceSchema } from './inventoryTraceSchemas.js';
 
@@ -75,6 +76,7 @@ const workOrderSchema = z.object({
   keyText: z.string().nullable(),
   previousWoId: z.string().nullable(),
   steralisationCurrentId: z.string().nullable(),
+  collectionReceiptId: z.string().nullable(),
   nextPhaseId: z.string().nullable(),
   workflowId: z.string().nullable(),
   workflow: workflowRefSchema.nullable(),
@@ -88,6 +90,7 @@ const workOrderSchema = z.object({
   phaseEquips: z.array(z.object({ phaseEquip: z.object({ id: z.string(), equipId: z.string().nullable(), name: z.string().nullable() }) })),
   batchHets: z.array(z.object({ hetId: z.string() })),
   lifecycleState: z.string(),
+  isCollectionPhase: z.boolean(),
   operationalStatus: z.string(),
   readinessBlockers: z.array(z.string()),
   currentPhaseLabel: z.string(),
@@ -197,6 +200,15 @@ const photoEvidenceBodySchema = z.object({
 const releaseBodySchema = z.object({
   releaseStatus: z.enum(['released', 'quarantined', 'rejected']),
   remarks: z.string().trim().max(2000).optional(),
+});
+
+const hetCollectionBodySchema = z.object({
+  collectionPointId: z.string().min(1),
+  quantity: z.number().int().positive().optional(),
+  lotNumber: z.string().trim().min(1).max(200).optional(),
+  parcelTrackingNumber: z.string().trim().min(1).max(200).optional(),
+  collectionUnitId: z.string().trim().min(1).optional(),
+  signatureDataUrl: z.string().trim().min(1).max(7_000_000).optional(),
 });
 
 export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
@@ -488,6 +500,58 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         }
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
           return reply.status(404).send({ error: 'Work order not found' });
+        }
+        throw err;
+      }
+    },
+  );
+
+  app.post(
+    '/:id/het-collection',
+    {
+      onRequest: [app.requireRole('admin', 'owner')],
+      schema: {
+        tags: ['Work Orders'],
+        summary: 'Record HET collection',
+        description: 'Perform HET collection at a collection phase: create the custody records, mint a real HET, and attach it to the work order. Admin or owner role required.',
+        operationId: 'recordHetCollection',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
+        'x-auth': 'role',
+        'x-required-roles': ['admin', 'owner'],
+        params: z.object({ id: z.string() }),
+        body: hetCollectionBodySchema,
+        response: {
+          200: workOrderDetailSchema,
+          400: errorResponse,
+          401: errorResponse,
+          404: errorResponse,
+          409: errorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      try {
+        return await hetCollectionService.recordHetCollection(
+          req.params.id,
+          req.body,
+          actorIdOf(req),
+          tenantIdOf(req),
+        );
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith('cannot collect:')) {
+          return reply.status(409).send({ error: err.message });
+        }
+        if (err instanceof Prisma.PrismaClientKnownRequestError) {
+          if (err.code === 'P2025') {
+            return reply.status(404).send({ error: 'Work order not found' });
+          }
+          if (err.code === 'P2002') {
+            return reply.status(409).send({ error: 'work order already has a collected HET' });
+          }
+          if (err.code === 'P2003') {
+            return reply.status(400).send({ error: 'Referenced collection point does not exist' });
+          }
         }
         throw err;
       }

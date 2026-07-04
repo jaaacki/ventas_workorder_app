@@ -29,19 +29,22 @@ import {
   fetchWorkOrderAuditEvents,
   fetchWorkOrderInventoryTrace,
   finishWorkOrderPhase,
+  recordHetCollection,
   recordWorkOrderEquipment,
   recordWorkOrderOutputQuantity,
   recordWorkOrderPhotoEvidence,
   recordWorkOrderRelease,
   recordWorkOrderSerial,
   startWorkOrderPhase,
+  type RecordHetCollectionPayload,
   type WorkOrderAuditEvent,
   type WorkOrderAllowedEquipment,
   type WorkOrderDetail,
   type WorkOrderRequiredSerial,
 } from '@/lib/work-orders-api';
+import { fetchCollectionPoints } from '@/lib/procurement-api';
 import { workflowLabel } from '@/lib/work-order-ui';
-import { WorkOrderWorkspace } from './WorkOrdersPage';
+import { SignaturePad, WorkOrderWorkspace } from './WorkOrdersPage';
 
 const MAX_PHOTO_EVIDENCE_BYTES = 5 * 1024 * 1024;
 
@@ -199,6 +202,112 @@ function ReleaseDispositionPanel({
             </div>
             <Button type="submit" disabled={!canRecord || releaseMutation.isPending}>
               Record disposition
+            </Button>
+          </form>
+        )}
+      </div>
+    </AdminPanel>
+  );
+}
+
+function CollectionProcessPanel({
+  workOrder,
+  onSaved,
+}: {
+  workOrder: WorkOrderDetail;
+  onSaved: (updated: WorkOrderDetail) => void;
+}) {
+  const [collectionPointId, setCollectionPointId] = useState('');
+  const [lotNumber, setLotNumber] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [parcelTrackingNumber, setParcelTrackingNumber] = useState('');
+  const [signature, setSignature] = useState('');
+
+  const alreadyCollected = Boolean(workOrder.hetId);
+
+  const pointsQuery = useQuery({
+    queryKey: ['collection-points'],
+    queryFn: () => fetchCollectionPoints(),
+    enabled: !alreadyCollected,
+  });
+  const collectionPoints = pointsQuery.data ?? [];
+
+  const collectMutation = useMutation({
+    mutationFn: () => {
+      const payload: RecordHetCollectionPayload = { collectionPointId };
+      const qty = Number(quantity);
+      if (quantity.trim() && Number.isFinite(qty) && qty > 0) payload.quantity = Math.trunc(qty);
+      if (lotNumber.trim()) payload.lotNumber = lotNumber.trim();
+      if (parcelTrackingNumber.trim()) payload.parcelTrackingNumber = parcelTrackingNumber.trim();
+      if (signature) payload.signatureDataUrl = signature;
+      return recordHetCollection(workOrder.id, payload);
+    },
+    onSuccess: (updated) => {
+      onSaved(updated);
+      toast.success('HET collected');
+    },
+    onError: (e: AxiosError<{ error?: string }>) =>
+      toast.error(e.response?.data?.error || 'Failed to record HET collection'),
+  });
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!collectionPointId) return;
+    collectMutation.mutate();
+  };
+
+  return (
+    <AdminPanel title="HET collection" description="Perform collection at this phase to mint the HET and start the run.">
+      <div className="grid gap-4 xl:grid-cols-[280px_1fr] xl:items-start">
+        <MetricCard
+          icon={<Boxes className="h-5 w-5" />}
+          label="Collected HET"
+          value={workOrder.het?.hetNumber || (alreadyCollected ? workOrder.hetId : 'Not collected')}
+          detail={alreadyCollected ? workOrder.het?.clinicName || 'HET minted at collection' : 'Awaiting collection'}
+        />
+        {alreadyCollected ? (
+          <div className="rounded-lg border border-gray-200 p-4 text-sm dark:border-gray-800">
+            <div className="font-medium text-gray-800 dark:text-white/90">HET minted at collection</div>
+            <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {workOrder.het?.hetNumber || workOrder.hetId} · {workOrder.het?.clinicName || 'Clinic on receipt'}
+            </div>
+            <div className="mt-3 text-gray-600 dark:text-gray-300">Advance the run to continue into production.</div>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="collection-point">Collection point</Label>
+              <select
+                id="collection-point"
+                value={collectionPointId}
+                onChange={(event) => setCollectionPointId(event.target.value)}
+                className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              >
+                <option value="">Select collection point</option>
+                {collectionPoints.map((point) => (
+                  <option key={point.id} value={point.id}>
+                    {point.displayName || point.hciCode || point.id}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="collection-lot">Lot number</Label>
+                <Input id="collection-lot" value={lotNumber} onChange={(event) => setLotNumber(event.target.value)} placeholder="Clinic lot / HET number" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="collection-qty">Quantity</Label>
+                <Input id="collection-qty" type="number" min={1} value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="1" />
+              </div>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="collection-parcel">Parcel tracking</Label>
+              <Input id="collection-parcel" value={parcelTrackingNumber} onChange={(event) => setParcelTrackingNumber(event.target.value)} placeholder="Courier tracking number" />
+            </div>
+            <SignaturePad label="Custody sign-off (optional)" value={signature} onChange={setSignature} />
+            <Button type="submit" disabled={!collectionPointId || collectMutation.isPending}>
+              Record collection &amp; mint HET
             </Button>
           </form>
         )}
@@ -717,6 +826,10 @@ export default function WorkOrderDetailPage() {
           finishing={finishMutation.isPending}
         />
       </AdminPanel>
+
+      {workOrder.isCollectionPhase && (
+        <CollectionProcessPanel workOrder={workOrder} onSaved={updateCachedWorkOrder} />
+      )}
 
       <GenealogyCard genealogy={trace?.genealogy ?? []} lots={trace?.lots ?? []} />
 

@@ -132,6 +132,10 @@ export interface WorkOrderSummary {
   releaseDecisionAt: string | null;
   releaseDecisionById: string | null;
   releaseRemarks: string | null;
+  collectionReceiptId: string | null;
+  // True when the current phase is a HET-collection phase (Phase.processType).
+  // A collection phase starts HET-less and the collection process mints the HET.
+  isCollectionPhase: boolean;
   workflow: WorkOrderWorkflowRef | null;
   phase: WorkOrderPhaseRef | null;
   het: WorkOrderHetRef | null;
@@ -275,6 +279,23 @@ export async function createWorkOrder(payload: {
   hetId?: string;
 }): Promise<WorkOrderDetail> {
   const { data } = await api.post<WorkOrderDetail>('/api/work-orders', payload);
+  return data;
+}
+
+export interface RecordHetCollectionPayload {
+  collectionPointId: string;
+  quantity?: number;
+  lotNumber?: string;
+  parcelTrackingNumber?: string;
+  collectionUnitId?: string;
+  signatureDataUrl?: string;
+}
+
+export async function recordHetCollection(
+  id: string,
+  payload: RecordHetCollectionPayload,
+): Promise<WorkOrderDetail> {
+  const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/het-collection`, payload);
   return data;
 }
 

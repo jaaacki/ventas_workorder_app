@@ -318,6 +318,10 @@ model Phase {
   bomId         String?
   isGate        Boolean  @default(false)
   blocksCombine Boolean  @default(false)
+  // Process lever for the phase, mirroring isGate/blocksCombine: null = a normal
+  // production phase, 'COLLECTION' = a HET-collection/logistics phase where the
+  // run starts with no HET and the collection process mints one (epic #186).
+  processType   String?
   keyText       String?
 
   workflow          Workflow          @relation(fields: [workflowId], references: [id], onDelete: Cascade)
@@ -398,6 +402,7 @@ model WorkOrder {
   keyText                String?
   previousWoId           String?   @unique
   steralisationCurrentId String?   @unique
+  collectionReceiptId    String?   @unique
   nextPhaseId            String?
   workflowId             String?
 
@@ -412,6 +417,7 @@ model WorkOrder {
   previousWo            WorkOrder?                      @relation("WorkOrderPrevious", fields: [previousWoId], references: [id])
   nextWorkOrder         WorkOrder?                      @relation("WorkOrderPrevious")
   steralisationCurrent  Sterilise?                      @relation("WorkOrderSterilisationCurrent", fields: [steralisationCurrentId], references: [id])
+  collectionReceipt     CollectionReceipt?              @relation("WorkOrderCollectionReceipt", fields: [collectionReceiptId], references: [id])
   nextPhase             Phase?                          @relation("WorkOrderNextPhase", fields: [nextPhaseId], references: [id])
   workflow              Workflow?                       @relation(fields: [workflowId], references: [id])
   woSerials             WoSerial[]
@@ -595,6 +601,11 @@ model CollectionUnit {
   legacyHetId             String?
   unitNumber              String?
   parcelTrackingNumber    String?
+  // Container lifecycle state. Imported values (importProcurementLegacy.ts):
+  // RECEIVED_AS_HET, CONSUMED_IN_WORK_ORDER, ISSUED_TO_SUPPLIER_LEGACY,
+  // RECEIVED_LEGACY, WORKORDER_REFERENCED_NO_PROCUREMENT_SOURCE. Kept as a free
+  // String; existing values are not migrated. The bidirectional deliver/collect
+  // lifecycle that drives this forward lands in epic #186 phase 2 (#189).
   status                  String
   legacyDeliverId         String?
   legacyCollectId         String?
@@ -752,6 +763,7 @@ model CollectionReceipt {
   legacyRaw                     Json?
   createdAt                     DateTime  @default(now())
   updatedAt                     DateTime  @updatedAt
+  currentWorkOrder              WorkOrder? @relation("WorkOrderCollectionReceipt")
 
   @@index([tenantId])
   @@index([deleted])

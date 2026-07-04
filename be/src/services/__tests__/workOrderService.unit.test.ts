@@ -1401,6 +1401,50 @@ describe('workOrderService', () => {
     expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
   });
 
+  it('advanceWorkOrder blocks a collection phase until collection is recorded', async () => {
+    mocks.workOrder.findFirst.mockResolvedValueOnce({
+      id: 'wo-1',
+      phaseId: 'p1',
+      hetId: null,
+      collectionReceiptId: null,
+      prodStart: new Date('2026-06-30T08:00:00Z'),
+      prodEnd: new Date('2026-06-30T09:00:00Z'),
+      workflow: {
+        phases: [
+          { id: 'p1', phaseName: 'Collection', phaseShort: 'COL', sortOrder: 0, isGate: false, processType: 'COLLECTION' },
+          { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', sortOrder: 1, isGate: false, processType: null },
+        ],
+      },
+    });
+
+    await expect(advanceWorkOrder('wo-1', 'actor1')).rejects.toThrow(
+      'cannot advance: collection not recorded',
+    );
+    expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('a HET-less collection phase reads as "Collection required", not "HET not assigned"', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-collect',
+      phaseId: 'p1',
+      hetId: null,
+      prodStart: null,
+      prodEnd: null,
+      workflow: {
+        phases: [{ id: 'p1', phaseName: 'Collection', phaseShort: 'COL', sortOrder: 0, isGate: false, blocksCombine: false, processType: 'COLLECTION' }],
+      },
+      phase: { id: 'p1', phaseName: 'Collection', phaseShort: 'COL', sortOrder: 0, isGate: false, blocksCombine: false, processType: 'COLLECTION' },
+      sterilises: [],
+      woSerials: [],
+      phaseEquips: [],
+    });
+
+    const result = await getWorkOrder('wo-collect');
+    expect(result).toMatchObject({ isCollectionPhase: true });
+    expect(result?.readinessBlockers).toContain('Collection required');
+    expect(result?.readinessBlockers).not.toContain('HET not assigned');
+  });
+
   it('advanceWorkOrder blocks unfinished phases before changing phase', async () => {
     mocks.workOrder.findFirst.mockResolvedValueOnce({
       id: 'wo-1',

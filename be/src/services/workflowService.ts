@@ -22,6 +22,7 @@ export interface AddPhaseInput {
   description?: string | null;
   isGate?: boolean;
   blocksCombine?: boolean;
+  processType?: 'COLLECTION' | null;
   bomId?: string | null;
 }
 
@@ -46,6 +47,7 @@ const phaseSummarySelect = {
   sortOrder: true,
   isGate: true,
   blocksCombine: true,
+  processType: true,
   bomId: true,
 } as const;
 
@@ -192,6 +194,7 @@ export async function addPhase(workflowId: string, input: AddPhaseInput, actorId
       description: input.description ?? null,
       isGate: input.isGate ?? false,
       blocksCombine: input.blocksCombine ?? false,
+      processType: input.processType ?? null,
       bomId: input.bomId ?? null,
       createdById: actorId,
       updatedById: actorId,

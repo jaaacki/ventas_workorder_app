@@ -471,6 +471,19 @@ const successExamples: Record<string, unknown> = {
   getHetInventoryTrace: { ...inventoryTraceExample, subject: { type: 'het', id: 'het-1001', label: 'HET-1001' } },
   useHet: { id: 'het-1001', usedById: 'WO-1001', finishedById: null, deleted: false, createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T09:00:00.000Z', createdById: null, updatedById: null },
   finishHet: { id: 'het-1001', usedById: 'WO-1001', finishedById: 'WO-1001', deleted: false, createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T11:00:00.000Z', createdById: null, updatedById: null },
+  getMetricsOverview: {
+    windowDays: 90,
+    stalledDays: 7,
+    generatedAt: '2026-07-04T00:00:00.000Z',
+    cycleTimeByPhase: [{ phaseShort: 'A', count: 12, avgMinutes: 42.5, p50Minutes: 40, p90Minutes: 61 }],
+    wipByPhase: [{ phaseShort: 'A', count: 3 }, { phaseShort: 'B', count: 1 }],
+    throughput: {
+      weekly: [{ period: '2026-06-29', released: 4, lotsMinted: 4 }],
+      monthly: [{ period: '2026-06', released: 15, lotsMinted: 15 }],
+    },
+    stalledRuns: [{ id: 'WO-1001', woNumber: 'WO-1001', phaseShort: 'C', ageDays: 9, updatedAt: '2026-06-25T09:00:00.000Z' }],
+    collectionPipeline: [{ status: 'RECEIVED_AS_HET', count: 118 }, { status: 'CONSUMED_IN_WORK_ORDER', count: 22 }],
+  },
   getProcurementOverview: { supplyEntities: 3, collectionPoints: 12, unitsTotal: 140, unitsOperational: 132, unitsPlaceholder: 8, issuanceOrders: 25, collectionOrders: 18, collectionReceipts: 16, linkedHets: 118 },
   listSupplyEntities: [{ id: 'supply-1', name: 'Clinic Group A', legalName: 'Clinic Group A Pte Ltd', externalCode: 'CGA', sourceSystem: 'legacy', legacyClinicId: 'clinic-1', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z' }],
   listCollectionPoints: [{ id: 'point-1', supplyEntityId: 'supply-1', hciCode: 'HCI-001', displayName: 'Clinic A', licenseName: 'Clinic A License', address: '1 Example Road', postalCode: '000001', telephone: '+65 0000 0000', personInCharge: 'Ops Lead', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z' }],
@@ -573,6 +586,14 @@ const methodPolicies: Record<string, MethodPolicy> = {
     omittedMethods: [{ method: 'POST/PATCH/DELETE', reason: 'Batch records are reconstructed read-only from immutable production tables and are never directly mutated or deleted.' }],
     destructiveDeletes: 'not-exposed',
     notes: 'Reconstructs the immutable phase-by-phase batch record from production tables; a PDF export of the same record is served separately as a binary stream.',
+  },
+  getMetricsOverview: {
+    resource: 'Manager metrics overview',
+    completeness: 'read-model',
+    allowedMethods: ['GET'],
+    omittedMethods: [{ method: 'POST/PATCH/DELETE', reason: 'Metrics are derived read-only aggregates over production, release, and collection tables; nothing is created or deleted here.' }],
+    destructiveDeletes: 'not-exposed',
+    notes: 'Role-gated read model aggregating cycle time, WIP, throughput, stalled runs, and collection pipeline counts for the manager dashboard.',
   },
   getHealth: {
     resource: 'Health',
@@ -1187,6 +1208,7 @@ export async function registerOpenApi(app: FastifyInstance) {
         { name: 'HETs', description: 'HET register reads and lifecycle linkage actions.' },
         { name: 'Procurement', description: 'Read models and permission-gated soft-delete CRUD for procurement traceability and import audit records.' },
         { name: 'Inventory', description: 'Read models and permission-gated soft-delete CRUD for inventory lots, transactions, locations, genealogy, and import audit records.' },
+        { name: 'Metrics', description: 'Role-gated manager metrics read models (cycle time, WIP, throughput, stalled runs, collection pipeline).' },
       ],
       components: {
         securitySchemes: {

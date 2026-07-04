@@ -165,6 +165,11 @@ export interface RecordHetCollectionInput {
   parcelTrackingNumber?: string;
   collectionUnitId?: string;
   signatureDataUrl?: string;
+  // Next-container swap (#190): issue the next empty container out to the clinic
+  // as part of this collect and chain the collected unit → next unit — the legacy
+  // swap loop the importer dropped. Requires a collected container to chain from.
+  nextCollectionUnitId?: string;
+  nextParcelTrackingNumber?: string;
 }
 
 /**
@@ -244,13 +249,36 @@ export async function recordHetCollection(
   }
   const effectiveUnitId = continuityUnitId ?? input.collectionUnitId ?? null;
 
+  // Next-container swap (#190): optionally issue the next empty container to the
+  // clinic as part of this collect and point the collected unit at it. Requires a
+  // collected container to hang the chain on; the next container must be a
+  // different, same-tenant unit (global FK, so tenant-checked here).
+  let nextUnitId: string | null = null;
+  if (input.nextCollectionUnitId) {
+    if (!effectiveUnitId) {
+      throw new Error('cannot collect: a collected container is required to issue the next container');
+    }
+    if (input.nextCollectionUnitId === effectiveUnitId) {
+      throw new Error('cannot collect: next container must differ from the collected container');
+    }
+    const nextUnit = await prisma.collectionUnit.findFirst({
+      where: { id: input.nextCollectionUnitId, tenantId: scopedTenantId, deleted: false },
+      select: { id: true },
+    });
+    if (!nextUnit) {
+      throw new Error('cannot collect: next collection unit not found');
+    }
+    nextUnitId = nextUnit.id;
+  }
+
   const now = new Date();
   const collectionBase = generatePrefixedId('COLL');
   const orderId = `${collectionBase}-ORD`;
   const receiptId = `${collectionBase}-RCP`;
   const hetId = generatePrefixedId('HET');
+  const nextIssuanceId = nextUnitId ? `${generatePrefixedId('COLL')}-ISS` : null;
 
-  const { receipt } = await prisma.$transaction(async (tx) => {
+  const { receipt, nextIssuance } = await prisma.$transaction(async (tx) => {
     const order = await tx.collectionOrder.create({
       data: {
         id: orderId,
@@ -334,6 +362,45 @@ export async function recordHetCollection(
       });
     }
 
+    // Next-container swap (#190): issue the next empty container to the clinic and
+    // chain the collected unit → next unit. The new issuance is standalone — a
+    // future run picks it up on its own deliver leg — so it is NOT linked to this
+    // work order. legacyNextHetId holds the next CollectionUnit id, making the
+    // unit-to-unit chain queryable (mirrors the imported swap loop).
+    let nextIssuance: { id: string } | null = null;
+    if (nextUnitId && nextIssuanceId && effectiveUnitId) {
+      nextIssuance = await tx.issuanceOrder.create({
+        data: {
+          id: nextIssuanceId,
+          tenantId: scopedTenantId,
+          supplyEntityId: collectionPoint.supplyEntityId,
+          collectionPointId: collectionPoint.id,
+          issuedAt: now,
+          issuedBy: actorId,
+          createdById: actorId,
+          updatedById: actorId,
+        },
+      });
+      await tx.issuanceOrderLine.create({
+        data: {
+          tenantId: scopedTenantId,
+          issuanceOrderId: nextIssuance.id,
+          collectionUnitId: nextUnitId,
+          parcelTrackingNumber: input.nextParcelTrackingNumber ?? null,
+          createdById: actorId,
+          updatedById: actorId,
+        },
+      });
+      await tx.collectionUnit.update({
+        where: { id: nextUnitId },
+        data: { status: UNIT_STATUS_ISSUED, updatedById: actorId },
+      });
+      await tx.collectionUnit.update({
+        where: { id: effectiveUnitId },
+        data: { legacyNextHetId: nextUnitId, updatedById: actorId },
+      });
+    }
+
     const updated = await tx.workOrder.updateMany({
       where: { id: workOrderId, tenantId: scopedTenantId, hetId: null, collectionReceiptId: null },
       data: { hetId, collectionReceiptId: receipt.id, updatedById: actorId },
@@ -344,7 +411,7 @@ export async function recordHetCollection(
       throw new Error('cannot collect: work order already has a collected HET');
     }
 
-    return { receipt };
+    return { receipt, nextIssuance };
   });
 
   const after = await prisma.workOrder.findFirstOrThrow({
@@ -357,7 +424,7 @@ export async function recordHetCollection(
     actorId,
     source: 'hetCollectionService.recordHetCollection',
     previousState: auditState(workOrder),
-    newState: { ...auditState(after), hetId },
+    newState: { ...auditState(after), hetId, nextIssuanceOrderId: nextIssuance?.id ?? null },
   });
   await writeAuditLog({
     tenantId: scopedTenantId,
@@ -368,6 +435,19 @@ export async function recordHetCollection(
     after: receipt,
     metadata: { workOrderId, hetId, collectionPointId: collectionPoint.id, issuanceOrderId: issuanceOrderId ?? null },
   });
+  // The next-container issuance is a distinct procurement record, so it gets its
+  // own audit trail linking the collected unit → next unit (the swap loop).
+  if (nextIssuance) {
+    await writeAuditLog({
+      tenantId: scopedTenantId,
+      actorId,
+      entityType: 'IssuanceOrder',
+      entityId: nextIssuance.id,
+      action: 'create',
+      after: nextIssuance,
+      metadata: { workOrderId, collectedUnitId: effectiveUnitId, nextCollectionUnitId: nextUnitId },
+    });
+  }
 
   return getDecoratedWorkOrderOrThrow(workOrderId, scopedTenantId);
 }

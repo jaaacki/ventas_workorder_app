@@ -262,6 +262,80 @@ describe('hetCollectionService.recordHetCollection', () => {
     expect(receiptData.issuanceOrderId).toBeNull();
     expect(mocks.collectionUnit.update).not.toHaveBeenCalled();
   });
+
+  it('issues the next empty container and chains the collected unit -> next unit (swap loop, #190)', async () => {
+    primeHappyPath();
+    // Run already delivered a container: the collected unit is unit-delivered.
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-collect', tenantId: 'ventas', phaseId: 'p1', hetId: null,
+      collectionReceiptId: null, issuanceOrderId: 'iss-1', releaseStatus: null,
+      phase: { processType: 'COLLECTION' },
+    });
+    mocks.issuanceOrderLine.findFirst.mockResolvedValue({ collectionUnitId: 'unit-delivered' });
+    // Next-container validation lookup resolves.
+    mocks.collectionUnit.findFirst.mockResolvedValue({ id: 'unit-next' });
+    mocks.issuanceOrder.create.mockImplementation(({ data }) => Promise.resolve({ id: data.id }));
+    mocks.issuanceOrderLine.create.mockResolvedValue({ id: 'iline-next' });
+
+    await recordHetCollection(
+      'wo-collect',
+      { collectionPointId: 'point-1', quantity: 1, nextCollectionUnitId: 'unit-next', nextParcelTrackingNumber: 'TRACK-NEXT' },
+      'actor1',
+    );
+
+    // A fresh next-container issuance (COLL-…-ISS) with a line for the next unit.
+    const issuanceData = mocks.issuanceOrder.create.mock.calls[0][0].data;
+    expect(issuanceData.id).toMatch(/^COLL-.*-ISS$/);
+    expect(issuanceData.issuedBy).toBe('actor1');
+    const nextLineData = mocks.issuanceOrderLine.create.mock.calls[0][0].data;
+    expect(nextLineData.collectionUnitId).toBe('unit-next');
+    expect(nextLineData.parcelTrackingNumber).toBe('TRACK-NEXT');
+
+    // Next container ISSUED; collected container chained to it (queryable loop).
+    expect(mocks.collectionUnit.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'unit-next' }, data: expect.objectContaining({ status: 'ISSUED' }) }),
+    );
+    expect(mocks.collectionUnit.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'unit-delivered' }, data: expect.objectContaining({ legacyNextHetId: 'unit-next' }) }),
+    );
+
+    // The next issuance gets its own audit trail.
+    expect(auditLogMocks.writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ entityType: 'IssuanceOrder', action: 'create', entityId: issuanceData.id }),
+    );
+  });
+
+  it('rejects a next collection unit that does not belong to the caller tenant', async () => {
+    primeHappyPath();
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-collect', tenantId: 'ventas', phaseId: 'p1', hetId: null,
+      collectionReceiptId: null, issuanceOrderId: 'iss-1', releaseStatus: null,
+      phase: { processType: 'COLLECTION' },
+    });
+    mocks.issuanceOrderLine.findFirst.mockResolvedValue({ collectionUnitId: 'unit-delivered' });
+    mocks.collectionUnit.findFirst.mockResolvedValue(null);
+    await expect(
+      recordHetCollection('wo-collect', { collectionPointId: 'point-1', nextCollectionUnitId: 'unit-other-tenant' }, 'actor1'),
+    ).rejects.toThrow('cannot collect: next collection unit not found');
+    expect(mocks.het.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a next container that equals the collected container', async () => {
+    primeHappyPath();
+    mocks.collectionUnit.findFirst.mockResolvedValue({ id: 'unit-1' });
+    await expect(
+      recordHetCollection('wo-collect', { collectionPointId: 'point-1', collectionUnitId: 'unit-1', nextCollectionUnitId: 'unit-1' }, 'actor1'),
+    ).rejects.toThrow('cannot collect: next container must differ from the collected container');
+    expect(mocks.het.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects issuing a next container when there is no collected container to chain from', async () => {
+    primeHappyPath();
+    await expect(
+      recordHetCollection('wo-collect', { collectionPointId: 'point-1', nextCollectionUnitId: 'unit-next' }, 'actor1'),
+    ).rejects.toThrow('cannot collect: a collected container is required to issue the next container');
+    expect(mocks.het.create).not.toHaveBeenCalled();
+  });
 });
 
 describe('hetCollectionService.deliverEmptyContainer', () => {

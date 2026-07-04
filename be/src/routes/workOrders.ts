@@ -232,6 +232,9 @@ const hetCollectionBodySchema = z.object({
   parcelTrackingNumber: z.string().trim().min(1).max(200).optional(),
   collectionUnitId: z.string().trim().min(1).optional(),
   signatureDataUrl: z.string().trim().min(1).max(7_000_000).optional(),
+  // Next-container swap (#190): issue the next empty container as part of the collect.
+  nextCollectionUnitId: z.string().trim().min(1).optional(),
+  nextParcelTrackingNumber: z.string().trim().min(1).max(200).optional(),
 });
 
 const combineBodySchema = z.object({

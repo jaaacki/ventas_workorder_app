@@ -29,6 +29,7 @@ const ctx: {
   supplyEntityId: string;
   collectionPointId: string;
   collectionUnitId: string;
+  nextCollectionUnitId: string;
   hetId: string;
   collectionReceiptId: string;
   collectionOrderId: string;
@@ -36,7 +37,7 @@ const ctx: {
   workOrderIds: string[];
 } = {
   actorId: '', tenantId: DEFAULT_TENANT_ID, workflowId: '', phaseIds: [],
-  supplyEntityId: '', collectionPointId: '', collectionUnitId: '', hetId: '', collectionReceiptId: '', collectionOrderId: '', issuanceOrderId: '', workOrderIds: [],
+  supplyEntityId: '', collectionPointId: '', collectionUnitId: '', nextCollectionUnitId: '', hetId: '', collectionReceiptId: '', collectionOrderId: '', issuanceOrderId: '', workOrderIds: [],
 };
 
 beforeAll(async () => {
@@ -88,6 +89,13 @@ beforeAll(async () => {
   await prisma.collectionUnit.create({
     data: { id: ctx.collectionUnitId, tenantId: ctx.tenantId, supplyEntityId: ctx.supplyEntityId, collectionPointId: ctx.collectionPointId, unitNumber: 'UNIT-INTEG-1', status: 'AVAILABLE' },
   });
+
+  // The next empty container to swap out on collect (#190). It should end ISSUED,
+  // with the collected container chained to it.
+  ctx.nextCollectionUnitId = `${code}:UNIT-NEXT`;
+  await prisma.collectionUnit.create({
+    data: { id: ctx.nextCollectionUnitId, tenantId: ctx.tenantId, supplyEntityId: ctx.supplyEntityId, collectionPointId: ctx.collectionPointId, unitNumber: 'UNIT-INTEG-2', status: 'AVAILABLE' },
+  });
 });
 
 afterAll(async () => {
@@ -111,7 +119,15 @@ afterAll(async () => {
   if (ctx.collectionOrderId) await prisma.collectionOrder.deleteMany({ where: { id: ctx.collectionOrderId } }).catch(() => undefined);
   if (ctx.issuanceOrderId) await prisma.issuanceOrderLine.deleteMany({ where: { issuanceOrderId: ctx.issuanceOrderId } }).catch(() => undefined);
   if (ctx.issuanceOrderId) await prisma.issuanceOrder.deleteMany({ where: { id: ctx.issuanceOrderId } }).catch(() => undefined);
+  // Next-container swap (#190) leaves a standalone issuance for the next unit.
+  if (ctx.nextCollectionUnitId) {
+    const nextLines = await prisma.issuanceOrderLine.findMany({ where: { collectionUnitId: ctx.nextCollectionUnitId }, select: { issuanceOrderId: true } }).catch(() => [] as { issuanceOrderId: string }[]);
+    const nextIssuanceIds = [...new Set(nextLines.map((line) => line.issuanceOrderId))];
+    await prisma.issuanceOrderLine.deleteMany({ where: { collectionUnitId: ctx.nextCollectionUnitId } }).catch(() => undefined);
+    if (nextIssuanceIds.length) await prisma.issuanceOrder.deleteMany({ where: { id: { in: nextIssuanceIds } } }).catch(() => undefined);
+  }
   if (ctx.collectionUnitId) await prisma.collectionUnit.deleteMany({ where: { id: ctx.collectionUnitId } }).catch(() => undefined);
+  if (ctx.nextCollectionUnitId) await prisma.collectionUnit.deleteMany({ where: { id: ctx.nextCollectionUnitId } }).catch(() => undefined);
   await prisma.phase.deleteMany({ where: { id: { in: ctx.phaseIds } } }).catch(() => undefined);
   await prisma.workflow.deleteMany({ where: { id: ctx.workflowId } }).catch(() => undefined);
   await prisma.collectionPoint.deleteMany({ where: { id: ctx.collectionPointId } }).catch(() => undefined);
@@ -162,7 +178,11 @@ describe('HET collection run (integration)', () => {
     // the prior issuance (unit continuity).
     const collected = await recordHetCollection(
       created.id,
-      { collectionPointId: ctx.collectionPointId, quantity: 1, lotNumber: 'LOT-INTEG-01', parcelTrackingNumber: 'TRACK-INTEG-1', signatureDataUrl: 'data:image/png;base64,AAAA' },
+      {
+        collectionPointId: ctx.collectionPointId, quantity: 1, lotNumber: 'LOT-INTEG-01', parcelTrackingNumber: 'TRACK-INTEG-1', signatureDataUrl: 'data:image/png;base64,AAAA',
+        // Swap loop (#190): issue the next empty container as part of this collect.
+        nextCollectionUnitId: ctx.nextCollectionUnitId, nextParcelTrackingNumber: 'TRACK-NEXT-1',
+      },
       ctx.actorId,
     );
     expect(collected.hetId).not.toBeNull();
@@ -195,6 +215,19 @@ describe('HET collection run (integration)', () => {
     // The container has completed the round-trip: RECEIVED at the facility.
     const unitReceived = await prisma.collectionUnit.findUniqueOrThrow({ where: { id: ctx.collectionUnitId } });
     expect(unitReceived.status).toBe('RECEIVED');
+
+    // Next-container swap (#190): the collected unit is chained to the next unit,
+    // which is now ISSUED and heading out to the clinic on its own issuance.
+    expect(unitReceived.legacyNextHetId).toBe(ctx.nextCollectionUnitId);
+    const nextUnit = await prisma.collectionUnit.findUniqueOrThrow({ where: { id: ctx.nextCollectionUnitId } });
+    expect(nextUnit.status).toBe('ISSUED');
+    const nextLine = await prisma.issuanceOrderLine.findFirstOrThrow({ where: { collectionUnitId: ctx.nextCollectionUnitId } });
+    expect(nextLine.parcelTrackingNumber).toBe('TRACK-NEXT-1');
+    // The next issuance is standalone — NOT this run's deliver issuance.
+    expect(nextLine.issuanceOrderId).not.toBe(ctx.issuanceOrderId);
+    // The unit-to-unit chain is queryable by following legacyNextHetId.
+    const chained = await prisma.collectionUnit.findFirstOrThrow({ where: { id: unitReceived.legacyNextHetId! } });
+    expect(chained.id).toBe(ctx.nextCollectionUnitId);
 
     // The collection work order now reads as a normal (unblocked-for-collection) run.
     expect(collected.readinessBlockers).not.toContain('Collection required');

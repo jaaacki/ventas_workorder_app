@@ -14,6 +14,14 @@ const prismaMock = vi.hoisted(() => ({
   workOrderHet: {
     findMany: vi.fn(async () => []),
   },
+  supplyEntity: { upsert: vi.fn(async () => ({})) },
+  collectionPoint: { upsert: vi.fn(async () => ({})) },
+  collectionUnit: { upsert: vi.fn(async () => ({})), updateMany: vi.fn(async () => ({ count: 1 })) },
+  issuanceOrder: { upsert: vi.fn(async () => ({})) },
+  issuanceOrderLine: { upsert: vi.fn(async () => ({})) },
+  collectionOrder: { upsert: vi.fn(async () => ({})) },
+  collectionReceipt: { upsert: vi.fn(async () => ({})) },
+  collectionReceiptLine: { upsert: vi.fn(async () => ({})) },
   procurementImportReport: {
     create: vi.fn(async () => ({})),
   },
@@ -71,5 +79,32 @@ describe('importProcurementLegacy', () => {
     expect(report.totals.issuanceOrders).toBe(1);
     expect(report.totals.collectionOrders).toBe(1);
     expect(report.totals.collectionReceipts).toBe(1);
+  });
+
+  it('captures a COLLECT event newHetId as the collected unit legacyNextHetId (next-container swap #190)', async () => {
+    writeCsv('HETDeliveryReturnRecords---clinicDb.csv', [
+      ['clinicId', 'clinicName', 'HCICode'],
+      ['CLINIC-1', 'Clinic One', 'HCI-1'],
+    ]);
+    // The COLLECT event issues the next empty container (HET-2) at pickup.
+    writeCsv('HETDeliveryReturnRecords---deliverCollect.csv', [
+      ['deliverCollectId', 'direction', 'hetId', 'clinicId', 'newHetId', 'newParcelNo'],
+      ['DC-1', 'DELIVER', 'HET-1', 'CLINIC-1', '', ''],
+      ['DC-2', 'COLLECT', 'HET-1', 'CLINIC-1', 'HET-2', 'PARCEL-NEXT'],
+    ]);
+    writeCsv('HETDeliveryReturnRecords---HETLot-TODEL.csv', [
+      ['hetId', 'clinicId', 'HETLotNumber'],
+      ['HET-1', 'CLINIC-1', 'LOT-1'],
+    ]);
+
+    await importProcurementLegacy({ sourceDir: tmpDir, dryRun: false });
+
+    const chainWrite = prismaMock.collectionUnit.updateMany.mock.calls.find(
+      (call) => call[0]?.data?.legacyNextHetId !== undefined,
+    );
+    expect(chainWrite, 'expected a legacyNextHetId chain write on the collected unit').toBeDefined();
+    // Collected unit (HET-1) points at the next unit (stable id of HET-2).
+    expect(chainWrite![0].where.id).toBe('unit:HET-1');
+    expect(chainWrite![0].data.legacyNextHetId).toBe('unit:HET-2');
   });
 });

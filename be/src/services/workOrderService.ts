@@ -114,6 +114,7 @@ export type WorkOrderAuditAction =
   | 'work_order.output_quantity_recorded'
   | 'work_order.release_recorded'
   | 'work_order.serial_recorded'
+  | 'work_order.empty_delivered'
   | 'work_order.het_collected'
   | 'work_order.hets_combined'
   | 'work_order.evidence_amended'

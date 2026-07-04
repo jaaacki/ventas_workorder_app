@@ -10,7 +10,7 @@ import {
   startWorkOrderPhase,
   finishWorkOrderPhase,
 } from '../../services/workOrderService.js';
-import { recordHetCollection } from '../../services/hetCollectionService.js';
+import { recordHetCollection, deliverEmptyContainer } from '../../services/hetCollectionService.js';
 import { DEFAULT_TENANT_ID } from '../../services/tenant.js';
 
 // A full HET-less collection-start run against the real DB. The workflow's first
@@ -28,13 +28,15 @@ const ctx: {
   phaseIds: string[];
   supplyEntityId: string;
   collectionPointId: string;
+  collectionUnitId: string;
   hetId: string;
   collectionReceiptId: string;
   collectionOrderId: string;
+  issuanceOrderId: string;
   workOrderIds: string[];
 } = {
   actorId: '', tenantId: DEFAULT_TENANT_ID, workflowId: '', phaseIds: [],
-  supplyEntityId: '', collectionPointId: '', hetId: '', collectionReceiptId: '', collectionOrderId: '', workOrderIds: [],
+  supplyEntityId: '', collectionPointId: '', collectionUnitId: '', hetId: '', collectionReceiptId: '', collectionOrderId: '', issuanceOrderId: '', workOrderIds: [],
 };
 
 beforeAll(async () => {
@@ -79,13 +81,20 @@ beforeAll(async () => {
   await prisma.collectionPoint.create({
     data: { id: ctx.collectionPointId, tenantId: ctx.tenantId, supplyEntityId: ctx.supplyEntityId, displayName: 'Integration Clinic', hciCode: 'HCI-TEST' },
   });
+
+  // An empty container to send out on the deliver leg; starts on a neutral status
+  // and must round-trip ISSUED -> RECEIVED through the two legs.
+  ctx.collectionUnitId = `${code}:UNIT`;
+  await prisma.collectionUnit.create({
+    data: { id: ctx.collectionUnitId, tenantId: ctx.tenantId, supplyEntityId: ctx.supplyEntityId, collectionPointId: ctx.collectionPointId, unitNumber: 'UNIT-INTEG-1', status: 'AVAILABLE' },
+  });
 });
 
 afterAll(async () => {
   const woIds = ctx.workOrderIds;
   // Break circular FKs before deleting (WorkOrder <-> Sterilise/CollectionReceipt,
   // Het <-> WorkOrder), mirroring the AmGraft integration teardown.
-  await prisma.workOrder.updateMany({ where: { id: { in: woIds } }, data: { steralisationCurrentId: null, collectionReceiptId: null } }).catch(() => undefined);
+  await prisma.workOrder.updateMany({ where: { id: { in: woIds } }, data: { steralisationCurrentId: null, collectionReceiptId: null, issuanceOrderId: null } }).catch(() => undefined);
   if (ctx.hetId) {
     await prisma.het.updateMany({ where: { id: ctx.hetId }, data: { usedById: null, finishedById: null } }).catch(() => undefined);
   }
@@ -100,6 +109,9 @@ afterAll(async () => {
   if (ctx.collectionReceiptId) await prisma.collectionReceiptLine.deleteMany({ where: { collectionReceiptId: ctx.collectionReceiptId } }).catch(() => undefined);
   if (ctx.collectionReceiptId) await prisma.collectionReceipt.deleteMany({ where: { id: ctx.collectionReceiptId } }).catch(() => undefined);
   if (ctx.collectionOrderId) await prisma.collectionOrder.deleteMany({ where: { id: ctx.collectionOrderId } }).catch(() => undefined);
+  if (ctx.issuanceOrderId) await prisma.issuanceOrderLine.deleteMany({ where: { issuanceOrderId: ctx.issuanceOrderId } }).catch(() => undefined);
+  if (ctx.issuanceOrderId) await prisma.issuanceOrder.deleteMany({ where: { id: ctx.issuanceOrderId } }).catch(() => undefined);
+  if (ctx.collectionUnitId) await prisma.collectionUnit.deleteMany({ where: { id: ctx.collectionUnitId } }).catch(() => undefined);
   await prisma.phase.deleteMany({ where: { id: { in: ctx.phaseIds } } }).catch(() => undefined);
   await prisma.workflow.deleteMany({ where: { id: ctx.workflowId } }).catch(() => undefined);
   await prisma.collectionPoint.deleteMany({ where: { id: ctx.collectionPointId } }).catch(() => undefined);
@@ -120,7 +132,34 @@ describe('HET collection run (integration)', () => {
     // A HET-less collection work order cannot start yet.
     await expect(startWorkOrderPhase(created.id, ctx.actorId)).rejects.toThrow('cannot start: HET not assigned');
 
-    // 2. Perform HET collection: mints a real Het and attaches it + a receipt.
+    // 1b. Deliver-empty leg: issue an empty container out to the clinic. This is
+    // the outbound half of the courier round-trip — no HET yet.
+    const delivered = await deliverEmptyContainer(
+      created.id,
+      { collectionPointId: ctx.collectionPointId, collectionUnitId: ctx.collectionUnitId, parcelTrackingNumber: 'TRACK-OUT-1', signatureDataUrl: 'data:image/png;base64,BBBB' },
+      ctx.actorId,
+    );
+    expect(delivered.issuanceOrderId).not.toBeNull();
+    ctx.issuanceOrderId = delivered.issuanceOrderId!;
+    expect(delivered.hetId).toBeNull();
+
+    // The container is now ISSUED, with parcel + custody signature on the issuance.
+    const unitIssued = await prisma.collectionUnit.findUniqueOrThrow({ where: { id: ctx.collectionUnitId } });
+    expect(unitIssued.status).toBe('ISSUED');
+    const issuance = await prisma.issuanceOrder.findUniqueOrThrow({ where: { id: ctx.issuanceOrderId } });
+    expect(issuance.signaturePath).toBe('data:image/png;base64,BBBB');
+    expect(issuance.issuedBy).toBe(ctx.actorId);
+    const issuanceLine = await prisma.issuanceOrderLine.findFirstOrThrow({ where: { issuanceOrderId: ctx.issuanceOrderId } });
+    expect(issuanceLine.collectionUnitId).toBe(ctx.collectionUnitId);
+    expect(issuanceLine.parcelTrackingNumber).toBe('TRACK-OUT-1');
+
+    // A container cannot be issued twice for the same run.
+    await expect(
+      deliverEmptyContainer(created.id, { collectionPointId: ctx.collectionPointId, collectionUnitId: ctx.collectionUnitId }, ctx.actorId),
+    ).rejects.toThrow('cannot deliver:');
+
+    // 2. Collect-filled leg: mints a real Het, attaches it + a receipt, and closes
+    // the prior issuance (unit continuity).
     const collected = await recordHetCollection(
       created.id,
       { collectionPointId: ctx.collectionPointId, quantity: 1, lotNumber: 'LOT-INTEG-01', parcelTrackingNumber: 'TRACK-INTEG-1', signatureDataUrl: 'data:image/png;base64,AAAA' },
@@ -139,14 +178,23 @@ describe('HET collection run (integration)', () => {
     expect(het.quantity).toBe(1);
     expect(het.usedById).toBe(created.id);
     expect(het.collectionReceiptLineId).not.toBeNull();
+    // The HET carries the SAME physical container that was delivered empty.
+    expect(het.collectionUnitId).toBe(ctx.collectionUnitId);
 
     const receipt = await prisma.collectionReceipt.findUniqueOrThrow({ where: { id: ctx.collectionReceiptId } });
     expect(receipt.signaturePath).toBe('data:image/png;base64,AAAA');
+    // The receipt closes the prior deliver issuance (round-trip continuity).
+    expect(receipt.issuanceOrderId).toBe(ctx.issuanceOrderId);
     ctx.collectionOrderId = receipt.collectionOrderId!;
 
     const line = await prisma.collectionReceiptLine.findFirstOrThrow({ where: { collectionReceiptId: ctx.collectionReceiptId } });
     expect(line.resultingHetId).toBe(ctx.hetId);
+    expect(line.collectionUnitId).toBe(ctx.collectionUnitId);
     expect(het.collectionReceiptLineId).toBe(line.id);
+
+    // The container has completed the round-trip: RECEIVED at the facility.
+    const unitReceived = await prisma.collectionUnit.findUniqueOrThrow({ where: { id: ctx.collectionUnitId } });
+    expect(unitReceived.status).toBe('RECEIVED');
 
     // The collection work order now reads as a normal (unblocked-for-collection) run.
     expect(collected.readinessBlockers).not.toContain('Collection required');

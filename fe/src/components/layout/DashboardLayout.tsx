@@ -35,6 +35,7 @@ import {
   Ban,
   Waypoints,
   Database,
+  FileBarChart,
   Moon,
   Sun,
 } from 'lucide-react';
@@ -98,6 +99,7 @@ const navGroups: NavGroup[] = [
       { label: 'Inventory', href: '/dashboard/inventory', icon: Warehouse, roles: ALL_ROLES, keywords: ['lots', 'sku', 'stock', 'reagents', 'locations'] },
       { label: 'Finished goods', href: '/dashboard/lots', icon: PackageCheck, roles: ['owner', 'admin', 'qa_manager', 'production_manager'], keywords: ['lots', 'batch record', 'finished goods', 'released', 'genealogy', 'certificate'] },
       { label: 'Traceability', href: '/dashboard/traceability', icon: Waypoints, roles: ALL_ROLES, keywords: ['genealogy', 'chain of custody', 'trace', 'parent', 'child'] },
+      { label: 'Collection report', href: '/dashboard/reports/collections', icon: FileBarChart, roles: ['owner', 'admin', 'production_manager', 'qa_manager'], keywords: ['report', 'collections', 'clinic', 'period', 'het', 'analytics'] },
     ],
   },
   {

@@ -272,6 +272,15 @@ const inventoryTraceExample = {
   genealogy: [],
   hets: [{ id: 'het-1001', hetNumber: 'HET-1001', collectionUnitId: 'cu-1001', usedById: 'WO-1001', finishedById: null }],
   workOrders: [{ id: 'WO-1001', woNumber: 'WO-1001', hetId: 'het-1001', phaseOrder: 10 }],
+  collection: {
+    supplyEntities: [{ id: 'supply-1', name: 'Clinic Group A', legalName: 'Clinic Group A Pte Ltd', externalCode: 'CGA', createdAt: '2026-07-01T00:00:00.000Z' }],
+    collectionPoints: [{ id: 'point-1', supplyEntityId: 'supply-1', displayName: 'Clinic A', hciCode: 'HCI-001', address: '1 Example Road', createdAt: '2026-07-01T00:00:00.000Z' }],
+    collectionUnits: [{ id: 'cu-1001', unitNumber: 'CU-1001', status: 'RECEIVED', supplyEntityId: 'supply-1', collectionPointId: 'point-1', parcelTrackingNumber: 'TRACK-1001', createdAt: '2026-07-01T00:00:00.000Z' }],
+    issuanceOrders: [{ id: 'COLL-ISS-1001', supplyEntityId: 'supply-1', collectionPointId: 'point-1', issuedAt: '2026-07-01T08:00:00.000Z', issuedBy: 'staff-operator-1', createdAt: '2026-07-01T08:00:00.000Z' }],
+    collectionOrders: [{ id: 'COLL-ORD-1001', supplyEntityId: 'supply-1', collectionPointId: 'point-1', requestedAt: '2026-07-01T09:00:00.000Z', status: 'COLLECTED', createdAt: '2026-07-01T09:00:00.000Z' }],
+    collectionReceipts: [{ id: 'COLL-RCP-1001', collectionOrderId: 'COLL-ORD-1001', issuanceOrderId: 'COLL-ISS-1001', receivedAt: '2026-07-01T09:30:00.000Z', receivedBy: 'staff-operator-1', signaturePath: null, acceptanceState: 'ACCEPTED', createdAt: '2026-07-01T09:30:00.000Z' }],
+    collectionReceiptLines: [{ id: 'receipt-line-1001', collectionReceiptId: 'COLL-RCP-1001', collectionUnitId: 'cu-1001', itemCode: null, quantity: '1', uom: null, conditionStatus: null, acceptanceStatus: 'ACCEPTED', resultingHetId: 'het-1001', createdAt: '2026-07-01T09:30:00.000Z' }],
+  },
 };
 
 const auditLogExample = {
@@ -559,6 +568,7 @@ const successExamples: Record<string, unknown> = {
   getBatchRecord: { id: 'manu-1001', manuNumber: 'MANU-1001', manuName: 'AmGraft batch WO-1001', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z' },
   listHets: [{ id: 'het-1001', hetNumber: 'HET-1001', usedById: 'WO-1001', finishedById: null, deleted: false, createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z', createdById: null, updatedById: null }],
   getHetInventoryTrace: { ...inventoryTraceExample, subject: { type: 'het', id: 'het-1001', label: 'HET-1001' } },
+  getLotInventoryTrace: { ...inventoryTraceExample, subject: { type: 'lot', id: 'lot-1001', label: 'LOT-1001' } },
   useHet: { id: 'het-1001', usedById: 'WO-1001', finishedById: null, deleted: false, createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T09:00:00.000Z', createdById: null, updatedById: null },
   finishHet: { id: 'het-1001', usedById: 'WO-1001', finishedById: 'WO-1001', deleted: false, createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T11:00:00.000Z', createdById: null, updatedById: null },
   getMetricsOverview: {
@@ -573,6 +583,22 @@ const successExamples: Record<string, unknown> = {
     },
     stalledRuns: [{ id: 'WO-1001', woNumber: 'WO-1001', phaseShort: 'C', ageDays: 9, updatedAt: '2026-06-25T09:00:00.000Z' }],
     collectionPipeline: [{ status: 'RECEIVED_AS_HET', count: 118 }, { status: 'CONSUMED_IN_WORK_ORDER', count: 22 }],
+  },
+  getCollectionReport: {
+    from: '2026-01-01T00:00:00.000Z',
+    to: '2026-07-01T00:00:00.000Z',
+    clinicId: null,
+    groupBy: 'month',
+    generatedAt: '2026-07-04T00:00:00.000Z',
+    total: 42,
+    byClinic: [
+      { clinicId: 'point-1', clinicName: 'Clinic A', hciCode: 'HCI-001', count: 30 },
+      { clinicId: 'point-2', clinicName: 'Clinic B', hciCode: 'HCI-002', count: 12 },
+    ],
+    byPeriod: [
+      { period: '2026-05', count: 18 },
+      { period: '2026-06', count: 24 },
+    ],
   },
   getProcurementOverview: { supplyEntities: 3, collectionPoints: 12, unitsTotal: 140, unitsOperational: 132, unitsPlaceholder: 8, issuanceOrders: 25, collectionOrders: 18, collectionReceipts: 16, linkedHets: 118 },
   listSupplyEntities: [{ id: 'supply-1', name: 'Clinic Group A', legalName: 'Clinic Group A Pte Ltd', externalCode: 'CGA', sourceSystem: 'legacy', legacyClinicId: 'clinic-1', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z' }],
@@ -1118,13 +1144,22 @@ const readOnlyTracePolicy = {
   destructiveDeletes: 'not-exposed' as const,
 };
 
-for (const operationId of ['getWorkOrderInventoryTrace', 'getHetInventoryTrace', 'getCollectionUnitInventoryTrace']) {
+for (const operationId of ['getWorkOrderInventoryTrace', 'getHetInventoryTrace', 'getCollectionUnitInventoryTrace', 'getLotInventoryTrace']) {
   methodPolicies[operationId] = {
     resource: 'Inventory trace',
     ...readOnlyTracePolicy,
-    notes: 'Derived traceability read model spanning lots, transactions, genealogy, HETs, and work orders.',
+    notes: 'Derived traceability read model spanning lots, transactions, genealogy, HETs, work orders, and the upstream clinic collection leg.',
   };
 }
+
+methodPolicies.getCollectionReport = {
+  resource: 'Collection report',
+  completeness: 'read-model',
+  allowedMethods: ['GET'],
+  omittedMethods: [{ method: 'POST/PATCH/DELETE', reason: 'Collection reports are derived read-only aggregates over minted HETs; nothing is created or deleted here.' }],
+  destructiveDeletes: 'not-exposed',
+  notes: 'Role-gated read model aggregating minted/collected HETs per clinic and per week/month period for the collection report view.',
+};
 
 methodPolicies.getInventoryLotGenealogy = {
   resource: 'Inventory trace',
@@ -1342,6 +1377,7 @@ export async function registerOpenApi(app: FastifyInstance) {
         { name: 'Procurement', description: 'Read models and permission-gated soft-delete CRUD for procurement traceability and import audit records.' },
         { name: 'Inventory', description: 'Read models and permission-gated soft-delete CRUD for inventory lots, transactions, locations, genealogy, and import audit records.' },
         { name: 'Metrics', description: 'Role-gated manager metrics read models (cycle time, WIP, throughput, stalled runs, collection pipeline).' },
+        { name: 'Reports', description: 'Role-gated manager reporting read models (collections per clinic and period).' },
       ],
       components: {
         securitySchemes: {

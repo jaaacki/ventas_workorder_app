@@ -11,6 +11,8 @@ import {
   finishWorkOrderPhase,
 } from '../../services/workOrderService.js';
 import { recordHetCollection, deliverEmptyContainer } from '../../services/hetCollectionService.js';
+import { getHetInventoryTrace, getLotInventoryTrace } from '../../services/inventoryTraceService.js';
+import { getCollectionReport } from '../../services/collectionReportService.js';
 import { DEFAULT_TENANT_ID } from '../../services/tenant.js';
 
 // A full HET-less collection-start run against the real DB. The workflow's first
@@ -34,10 +36,11 @@ const ctx: {
   collectionReceiptId: string;
   collectionOrderId: string;
   issuanceOrderId: string;
+  finishedLotId: string;
   workOrderIds: string[];
 } = {
   actorId: '', tenantId: DEFAULT_TENANT_ID, workflowId: '', phaseIds: [],
-  supplyEntityId: '', collectionPointId: '', collectionUnitId: '', nextCollectionUnitId: '', hetId: '', collectionReceiptId: '', collectionOrderId: '', issuanceOrderId: '', workOrderIds: [],
+  supplyEntityId: '', collectionPointId: '', collectionUnitId: '', nextCollectionUnitId: '', hetId: '', collectionReceiptId: '', collectionOrderId: '', issuanceOrderId: '', finishedLotId: '', workOrderIds: [],
 };
 
 beforeAll(async () => {
@@ -106,6 +109,12 @@ afterAll(async () => {
   if (ctx.hetId) {
     await prisma.het.updateMany({ where: { id: ctx.hetId }, data: { usedById: null, finishedById: null } }).catch(() => undefined);
   }
+  // Inventory minted on release references the work orders (and the HET), so clear
+  // it before deleting the work orders.
+  await prisma.inventoryGenealogy.deleteMany({ where: { OR: [{ workOrderId: { in: woIds } }, { childInventoryLotId: ctx.finishedLotId }, { parentInventoryLotId: ctx.finishedLotId }] } }).catch(() => undefined);
+  await prisma.inventoryTransaction.deleteMany({ where: { OR: [{ workOrderId: { in: woIds } }, { inventoryLotId: ctx.finishedLotId }] } }).catch(() => undefined);
+  await prisma.workOrderInventoryConsumption.deleteMany({ where: { workOrderId: { in: woIds } } }).catch(() => undefined);
+  await prisma.inventoryLot.deleteMany({ where: { OR: [{ workOrderId: { in: woIds } }, { hetId: ctx.hetId }] } }).catch(() => undefined);
   if (woIds.length) {
     await prisma.workOrderAuditEvent.deleteMany({ where: { workOrderId: { in: woIds } } }).catch(() => undefined);
     await prisma.woSerial.deleteMany({ where: { workOrderId: { in: woIds } } }).catch(() => undefined);
@@ -269,5 +278,38 @@ describe('HET collection run (integration)', () => {
     expect(collectionEvent?.hetId).toBe(ctx.hetId);
     const events = await prisma.workOrderAuditEvent.findMany({ where: { workOrderId: created.id, action: 'work_order.het_collected' } });
     expect(events).toHaveLength(1);
+
+    // 7. Release minted a FINISHED_GOOD lot linked to both the release WO and the HET.
+    const finishedLot = await prisma.inventoryLot.findFirstOrThrow({
+      where: { tenantId: ctx.tenantId, workOrderId: release.id, inventoryType: 'FINISHED_GOOD' },
+    });
+    ctx.finishedLotId = finishedLot.id;
+    expect(finishedLot.hetId).toBe(ctx.hetId);
+
+    // 8. End-to-end trace: the HET traces the full chain clinic → unit → issuance →
+    // receipt → minted HET → run → finished LOT, in one call.
+    const hetTrace = await getHetInventoryTrace(ctx.hetId, ctx.tenantId);
+    expect(hetTrace).not.toBeNull();
+    expect(hetTrace!.lots.map((lot) => lot.id)).toContain(finishedLot.id); // → LOT (downstream)
+    expect(hetTrace!.collection.supplyEntities.map((entity) => entity.id)).toContain(ctx.supplyEntityId); // clinic group
+    expect(hetTrace!.collection.collectionPoints.map((point) => point.id)).toContain(ctx.collectionPointId); // clinic
+    expect(hetTrace!.collection.collectionUnits.map((unit) => unit.id)).toContain(ctx.collectionUnitId); // container
+    expect(hetTrace!.collection.issuanceOrders.map((order) => order.id)).toContain(ctx.issuanceOrderId); // deliver leg
+    expect(hetTrace!.collection.collectionReceipts.map((receipt) => receipt.id)).toContain(ctx.collectionReceiptId); // collect leg
+    expect(hetTrace!.collection.collectionReceiptLines.some((line) => line.resultingHetId === ctx.hetId)).toBe(true);
+
+    // 8b. The lot-keyed trace surfaces the same upstream clinic origin from the LOT.
+    const lotTrace = await getLotInventoryTrace(finishedLot.id, ctx.tenantId);
+    expect(lotTrace).not.toBeNull();
+    expect(lotTrace!.subject).toMatchObject({ type: 'lot', id: finishedLot.id });
+    expect(lotTrace!.collection.collectionPoints.map((point) => point.id)).toContain(ctx.collectionPointId);
+
+    // 9. Collection report counts this clinic's single collected HET for the window.
+    const report = await getCollectionReport({ tenantId: ctx.tenantId, clinicId: ctx.collectionPointId });
+    expect(report.total).toBe(1);
+    expect(report.byClinic).toEqual([
+      { clinicId: ctx.collectionPointId, clinicName: 'Integration Clinic', hciCode: 'HCI-TEST', count: 1 },
+    ]);
+    expect(report.byPeriod.reduce((sum, point) => sum + point.count, 0)).toBe(1);
   });
 });

@@ -26,6 +26,7 @@ import {
   type WorkOrderSummary,
 } from '@/lib/work-orders-api';
 import { useWorkflowContext } from '@/store/workflowContext';
+import { useAuthStore } from '@/store/authStore';
 import { unitsLabel, productLabel } from '@/lib/work-order-ui';
 
 interface BetResult {
@@ -46,6 +47,7 @@ function betResult(wo: WorkOrderSummary): BetResult {
 function ReleaseDialog({ workOrder }: { workOrder: WorkOrderSummary }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const canRelease = useAuthStore((state) => state.hasPermission)('workOrder.release');
   const product = productLabel(workOrder);
 
   const releaseMutation = useMutation({
@@ -59,6 +61,14 @@ function ReleaseDialog({ workOrder }: { workOrder: WorkOrderSummary }) {
     onError: (e: AxiosError<{ error?: string }>) =>
       toast.error(e.response?.data?.error || 'Failed to record release'),
   });
+
+  if (!canRelease) {
+    return (
+      <Button size="sm" disabled title="Your role cannot release work orders">
+        Release
+      </Button>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

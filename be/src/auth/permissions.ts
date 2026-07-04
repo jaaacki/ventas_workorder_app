@@ -35,6 +35,15 @@ export const ADMIN_PERMISSIONS = [
   permissionKey('auth.role', 'update'),
 ] as const;
 
+// Work-order lifecycle permissions. Unlike the CRUD resources these are custom
+// verbs, not read/create/update/…: `execute` covers start/finish + every phase
+// evidence recorder (serial/equipment/photo/output); the rest gate one action
+// each. Gating the lifecycle routes on these keys closes the split-brain where
+// any authenticated user could push a HET past a sterilisation gate (#208).
+export const WORKORDER_RESOURCE = 'workOrder';
+export const WORKORDER_ACTIONS = ['create', 'execute', 'advance', 'release', 'combine', 'collect'] as const;
+export const WORKORDER_PERMISSIONS = WORKORDER_ACTIONS.map((action) => permissionKey(WORKORDER_RESOURCE, action));
+
 export function permissionKey(resource: string, action: string): string {
   return `${resource}.${action}`;
 }
@@ -51,6 +60,12 @@ export function crudPermissions(resource: string) {
 export const ALL_OPERATIONAL_PERMISSIONS = [
   ...PROCUREMENT_RESOURCES.flatMap((resource) => crudPermissions(resource)),
   ...INVENTORY_RESOURCES.flatMap((resource) => crudPermissions(resource)),
+  ...WORKORDER_ACTIONS.map((action) => ({
+    key: permissionKey(WORKORDER_RESOURCE, action),
+    resource: WORKORDER_RESOURCE,
+    action,
+    description: `${action} ${WORKORDER_RESOURCE}`,
+  })),
   ...ADMIN_PERMISSIONS.map((key) => {
     const parts = key.split('.');
     return {
@@ -71,6 +86,8 @@ const procurementWrite = keysFor(PROCUREMENT_RESOURCES, ['create', 'update', 'de
 const inventoryRead = keysFor(INVENTORY_RESOURCES, ['read']);
 const inventoryWrite = keysFor(INVENTORY_RESOURCES, ['create', 'update', 'delete', 'restore', 'readDeleted', 'readAudit']);
 
+const workOrder = (action: (typeof WORKORDER_ACTIONS)[number]) => permissionKey(WORKORDER_RESOURCE, action);
+
 export const ROLE_PERMISSION_KEYS: Record<string, string[]> = {
   owner: ALL_OPERATIONAL_PERMISSIONS.map((permission) => permission.key),
   admin: ALL_OPERATIONAL_PERMISSIONS.map((permission) => permission.key).filter((key) => key !== permissionKey('auth.role', 'update')),
@@ -79,6 +96,11 @@ export const ROLE_PERMISSION_KEYS: Record<string, string[]> = {
   production_manager: [
     ...procurementRead,
     ...inventoryRead,
+    // Runs production end to end but not the final QA release or combine.
+    workOrder('create'),
+    workOrder('execute'),
+    workOrder('advance'),
+    workOrder('collect'),
     permissionKey('procurement.collectionUnit', 'update'),
     permissionKey('procurement.collectionUnitFulfilment', 'create'),
     permissionKey('procurement.collectionUnitFulfilment', 'update'),
@@ -91,6 +113,9 @@ export const ROLE_PERMISSION_KEYS: Record<string, string[]> = {
   qa_manager: [
     ...procurementRead,
     ...inventoryRead,
+    // QA drives the release disposition and can record phase evidence/gates.
+    workOrder('execute'),
+    workOrder('release'),
     permissionKey('procurement.collectionUnit', 'update'),
     permissionKey('procurement.collectionReceiptLine', 'update'),
     permissionKey('inventory.lot', 'update'),
@@ -100,6 +125,10 @@ export const ROLE_PERMISSION_KEYS: Record<string, string[]> = {
   operator: [
     ...procurementRead,
     ...inventoryRead,
+    // Shop-floor execution: record evidence, advance phases, perform collection.
+    workOrder('execute'),
+    workOrder('advance'),
+    workOrder('collect'),
     permissionKey('procurement.collectionUnitFulfilment', 'create'),
     permissionKey('inventory.transaction', 'create'),
     permissionKey('inventory.workOrderConsumption', 'create'),

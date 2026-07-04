@@ -1,6 +1,8 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { Prisma, type WorkOrder } from '@prisma/client';
+import { releaseStatusSchema } from '@workorder/shared';
 import { prisma } from '../db/prisma.js';
+import { generatePrefixedId } from '../lib/ids.js';
 import { tenantIdOrDefault } from './tenant.js';
 
 /**
@@ -12,14 +14,14 @@ import { tenantIdOrDefault } from './tenant.js';
  * as an opaque 500.
  */
 function generateWoNumber() {
-  return `WO-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString('hex').toUpperCase()}`;
+  return generatePrefixedId('WO');
 }
 
 // Fallback finished-goods lot number when the releasing work order has no
 // manuNumber. Same shape/idiom as generateWoNumber so ids stay roughly
 // sortable and collision-resistant across concurrent releases.
 function generateLotNumber() {
-  return `LOT-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString('hex').toUpperCase()}`;
+  return generatePrefixedId('LOT');
 }
 
 /**
@@ -929,6 +931,14 @@ export async function recordWorkOrderRelease(
   actorId: string,
   tenantId?: string | null,
 ) {
+  // Validate the disposition at the service boundary, not just the HTTP route,
+  // so programmatic callers (imports, scripts, other services) can't persist a
+  // status outside the closed released|quarantined|rejected set. Mapped to 409
+  // by the route's `cannot release:` handler.
+  if (!releaseStatusSchema.safeParse(input.releaseStatus).success) {
+    throw new Error(`cannot release: invalid release status "${input.releaseStatus}"`);
+  }
+
   const scopedTenantId = tenantIdOrDefault(tenantId);
   const workOrder = await prisma.workOrder.findFirst({
     where: { id, tenantId: scopedTenantId },

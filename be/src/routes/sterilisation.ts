@@ -1,6 +1,7 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import { sterilisationDirectionSchema } from '@workorder/shared';
 import { tenantIdOf, actorIdOf } from './requestContext.js';
 import * as sterilisationService from '../services/sterilisationService.js';
 
@@ -39,7 +40,7 @@ const steriliseDetailSchema = z.object({
 
 const createBodySchema = z.object({
   workOrderId: z.string().min(1),
-  direction: z.enum(['OUT', 'IN']),
+  direction: sterilisationDirectionSchema,
   result: z.boolean().optional(),
   signById: z.string().optional(),
   hetIds: z.array(z.string()).optional(),

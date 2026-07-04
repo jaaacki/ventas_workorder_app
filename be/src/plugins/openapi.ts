@@ -806,7 +806,7 @@ const methodPolicies: Record<string, MethodPolicy> = {
     allowedMethods: ['POST'],
     omittedMethods: [{ method: 'PATCH/DELETE', reason: 'Final release disposition is a controlled QA action; corrections should be audit-backed rather than destructive.' }],
     destructiveDeletes: 'not-exposed',
-    notes: 'Admin/owner action that records final release, quarantine, or rejection only after final-phase production is finished and required photo, output, serial, equipment, HET, and sterilisation/BET gates pass.',
+    notes: 'Permission-gated (workOrder.release) action that records final release, quarantine, or rejection only after final-phase production is finished and required photo, output, serial, equipment, HET, and sterilisation/BET gates pass.',
   },
   recordWorkOrderSerial: {
     resource: 'Work order BOM serial evidence',
@@ -822,7 +822,7 @@ const methodPolicies: Record<string, MethodPolicy> = {
     allowedMethods: ['POST'],
     omittedMethods: [{ method: 'PATCH/DELETE', reason: 'Collection mints a HET and custody receipt once; corrections are audit-backed, not destructive edits.' }],
     destructiveDeletes: 'not-exposed',
-    notes: 'Admin/owner action at a collection phase: creates the collection order/receipt/line custody records, mints a real HET, and attaches it to the work order.',
+    notes: 'Permission-gated (workOrder.collect) action at a collection phase: creates the collection order/receipt/line custody records, mints a real HET, and attaches it to the work order.',
   },
   finishWorkOrderPhase: {
     resource: 'Work order phase execution',

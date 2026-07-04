@@ -652,6 +652,16 @@ describe('workOrderService', () => {
     expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
   });
 
+  it('recordWorkOrderRelease rejects a status outside the closed enum before any lookup', async () => {
+    await expect(
+      recordWorkOrderRelease('wo-1', { releaseStatus: 'approved' as 'released' }, 'actor1', 'tenant-a'),
+    ).rejects.toThrow('cannot release: invalid release status');
+
+    // The enum guard runs first, so no read/write is attempted for a bad status.
+    expect(mocks.workOrder.findFirst).not.toHaveBeenCalled();
+    expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
+  });
+
   it('recordWorkOrderEquipment records allowed current-phase equipment and writes an audit event', async () => {
     const workOrder = {
       id: 'wo-1',

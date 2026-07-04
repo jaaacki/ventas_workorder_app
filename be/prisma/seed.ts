@@ -157,6 +157,42 @@ async function bindPhaseBoms(workflowId: string): Promise<number> {
   return bound;
 }
 
+// Canonical AmGraft BOM material -> InventorySku sku code (epic #181, confident
+// matches only). BOM and Inventory were separate legacy systems; this wires the
+// same real item across them. Unlisted materials (reagents/waters/labels) stay
+// unlinked for manual mapping.
+const AMG_BOMLINE_SKU: Record<string, string> = {
+  Ethanol: 'ENT-PRA-CNN-5LL-GER-BCM',
+  'Tungsten carbide bur': 'TCB-PRA-PII-1PP-NCO-KTE',
+  'Aluminium cake tray (round)': 'ACT-SCN-PCC-1PC-NCO-AAD',
+  'PETG packaging tray (inner)': 'IPT-PAK-PCC-5PS-NCO-PTT',
+  'PETG outer tray': 'OPT-PAK-PCC-7PE-NCO-PTT',
+  'Tyvek lid (inner)': 'TLF-PAK-PCC-5PE-NCO-AMC',
+  'Tyvek lid (outer)': 'TLO-PAK-PCC-2PI-NCO-AMC',
+  'Sterile sample container': 'SSC-SCN-BTT-1UN-NCO-PME',
+  'Sterile bag': 'SBP-SCN-BAA-4PC-NCO-HCC',
+};
+
+// Fill any NULL bomLine.inventorySkuId by matching description -> SKU code against
+// the imported inventory catalog. Idempotent (NULL only), so it wires the links on
+// a later deploy without disturbing manual edits; a no-op on a DB with no inventory.
+async function bindBomLineSkus(): Promise<number> {
+  let bound = 0;
+  for (const [description, skuCode] of Object.entries(AMG_BOMLINE_SKU)) {
+    const sku = await prisma.inventorySku.findFirst({
+      where: { tenantId: DEFAULT_TENANT_ID, sku: skuCode, deleted: false },
+      select: { id: true },
+    });
+    if (!sku) continue;
+    const res = await prisma.bomLine.updateMany({
+      where: { tenantId: DEFAULT_TENANT_ID, deleted: false, inventorySkuId: null, description },
+      data: { inventorySkuId: sku.id },
+    });
+    bound += res.count;
+  }
+  return bound;
+}
+
 async function seedAmGraftWorkflow() {
   // Real AmGraft A–H production recipe. Each phase (letter group) owns an
   // ordered set of steps. isGate marks the sterilisation/BET gate; blocksCombine
@@ -268,6 +304,8 @@ async function seedAmGraftWorkflow() {
     console.log(`AmGraft workflow (${workflow.code}) already has ${existingPhases} phases; leaving them intact`);
     const bound = await bindPhaseBoms(workflow.id);
     if (bound > 0) console.log(`Bound ${bound} phase BOM(s) to existing AmGraft phases`);
+    const skuBound = await bindBomLineSkus();
+    if (skuBound > 0) console.log(`Linked ${skuBound} BOM line(s) to inventory SKUs`);
     return workflow;
   }
 
@@ -308,7 +346,8 @@ async function seedAmGraftWorkflow() {
   });
 
   const bound = await bindPhaseBoms(workflow.id);
-  console.log(`Seeded AmGraft workflow (${workflow.code}) with ${recipe.length} phases, ${stepCount} steps, ${bound} BOM binding(s)`);
+  const skuBound = await bindBomLineSkus();
+  console.log(`Seeded AmGraft workflow (${workflow.code}) with ${recipe.length} phases, ${stepCount} steps, ${bound} BOM binding(s), ${skuBound} SKU link(s)`);
   return workflow;
 }
 

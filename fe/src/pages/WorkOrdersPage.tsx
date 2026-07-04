@@ -9,6 +9,7 @@ import { fetchWorkflows, fetchWorkflow } from '@/lib/workflows-api';
 import { fetchHets, type HetSummary } from '@/lib/hets-api';
 import { statusTone, workflowLabel, unitsLabel } from '@/lib/work-order-ui';
 import { useWorkflowContext } from '@/store/workflowContext';
+import { useAuthStore } from '@/store/authStore';
 import { humanStatus, toneToBadgeVariant } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -455,6 +456,10 @@ export function WorkOrderWorkspace({
 }) {
   const [startSignature, setStartSignature] = useState('');
   const [finishSignature, setFinishSignature] = useState('');
+  const hasPermission = useAuthStore((state) => state.hasPermission);
+  // start/finish + all phase evidence share workOrder.execute; advance has its own key.
+  const canExecute = hasPermission('workOrder.execute');
+  const canAdvancePermission = hasPermission('workOrder.advance');
   const canAdvance = workOrder.canAdvanceLegacy;
   const canStart = workOrder.lifecycleState === 'NotStarted' && workOrder.operationalStatus !== 'Blocked';
   const canFinish = workOrder.lifecycleState === 'InProgress';
@@ -547,24 +552,30 @@ export function WorkOrderWorkspace({
         </div>
       )}
 
-      {canStart && <SignaturePad label="Start sign-off" value={startSignature} onChange={setStartSignature} />}
-      {canFinish && <SignaturePad label="Finish sign-off" value={finishSignature} onChange={setFinishSignature} />}
+      {canStart && canExecute && <SignaturePad label="Start sign-off" value={startSignature} onChange={setStartSignature} />}
+      {canFinish && canExecute && <SignaturePad label="Finish sign-off" value={finishSignature} onChange={setFinishSignature} />}
+
+      {((canStart || canFinish) && !canExecute) || (canAdvance && !canAdvancePermission) ? (
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Your role cannot perform this action. Ask an administrator for the required work-order permission.
+        </p>
+      ) : null}
 
       <SheetFooter className="border-t border-gray-100 px-0 pb-0 dark:border-gray-800">
         {!canAdvance && workOrder.legacyStateBucket === '2. Next Phase' ? (
           <Button disabled>Next phase blocked</Button>
         ) : canStart ? (
-          <Button onClick={() => onStart(workOrder.id, startSignature)} disabled={actionPending || !startSignature}>
+          <Button onClick={() => onStart(workOrder.id, startSignature)} disabled={actionPending || !startSignature || !canExecute}>
             <FileSignature className="h-4 w-4" />
             Start phase
           </Button>
         ) : canFinish ? (
-          <Button onClick={() => onFinish(workOrder.id, finishSignature)} disabled={actionPending || !finishSignature}>
+          <Button onClick={() => onFinish(workOrder.id, finishSignature)} disabled={actionPending || !finishSignature || !canExecute}>
             <FileSignature className="h-4 w-4" />
             Finish phase
           </Button>
         ) : (
-          <Button onClick={() => onAdvance(workOrder.id)} disabled={actionPending || !canAdvance}>
+          <Button onClick={() => onAdvance(workOrder.id)} disabled={actionPending || !canAdvance || !canAdvancePermission}>
             Advance phase
             <ArrowRight className="h-4 w-4" />
           </Button>
@@ -577,6 +588,7 @@ export function WorkOrderWorkspace({
 export default function WorkOrdersPage() {
   const queryClient = useQueryClient();
   const { activeWorkflowId } = useWorkflowContext();
+  const canCreate = useAuthStore((state) => state.hasPermission)('workOrder.create');
   const [allLines, setAllLines] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('wo');
@@ -701,10 +713,12 @@ export default function WorkOrdersPage() {
             <Button variant={allLines ? 'default' : 'outline'} onClick={() => setAllLines((value) => !value)}>
               {allLines ? 'Active line' : 'All lines'}
             </Button>
-            <Button onClick={openCreate}>
-              <Plus className="h-4 w-4" />
-              New work order
-            </Button>
+            {canCreate && (
+              <Button onClick={openCreate}>
+                <Plus className="h-4 w-4" />
+                New work order
+              </Button>
+            )}
           </div>
         }
       />

@@ -1,6 +1,7 @@
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import { releaseStatusSchema } from '@workorder/shared';
 import { tenantIdOf, actorIdOf } from './requestContext.js';
 import * as workOrderService from '../services/workOrderService.js';
 import * as hetCollectionService from '../services/hetCollectionService.js';
@@ -198,7 +199,7 @@ const photoEvidenceBodySchema = z.object({
 });
 
 const releaseBodySchema = z.object({
-  releaseStatus: z.enum(['released', 'quarantined', 'rejected']),
+  releaseStatus: releaseStatusSchema,
   remarks: z.string().trim().max(2000).optional(),
 });
 
@@ -328,7 +329,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
   app.post(
     '/:id/equipment',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.requirePermission('workOrder', 'execute')],
       schema: {
         tags: ['Work Orders'],
         summary: 'Record work order equipment',
@@ -336,13 +337,15 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'recordWorkOrderEquipment',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',
-        'x-auth': 'authenticated',
+        'x-auth': 'permission',
+        'x-required-permissions': ['workOrder.execute'],
         params: z.object({ id: z.string() }),
         body: equipmentBodySchema,
         response: {
           200: workOrderDetailSchema,
           400: errorResponse,
           401: errorResponse,
+          403: errorResponse,
           404: errorResponse,
           409: errorResponse,
         },
@@ -376,7 +379,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
   app.post(
     '/:id/photo-evidence',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.requirePermission('workOrder', 'execute')],
       schema: {
         tags: ['Work Orders'],
         summary: 'Record work order photo evidence',
@@ -384,13 +387,15 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'recordWorkOrderPhotoEvidence',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',
-        'x-auth': 'authenticated',
+        'x-auth': 'permission',
+        'x-required-permissions': ['workOrder.execute'],
         params: z.object({ id: z.string() }),
         body: photoEvidenceBodySchema,
         response: {
           200: workOrderDetailSchema,
           400: errorResponse,
           401: errorResponse,
+          403: errorResponse,
           404: errorResponse,
           409: errorResponse,
         },
@@ -419,7 +424,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
   app.post(
     '/:id/output-quantity',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.requirePermission('workOrder', 'execute')],
       schema: {
         tags: ['Work Orders'],
         summary: 'Record work order output quantity',
@@ -427,13 +432,15 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'recordWorkOrderOutputQuantity',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',
-        'x-auth': 'authenticated',
+        'x-auth': 'permission',
+        'x-required-permissions': ['workOrder.execute'],
         params: z.object({ id: z.string() }),
         body: outputQuantityBodySchema,
         response: {
           200: workOrderDetailSchema,
           400: errorResponse,
           401: errorResponse,
+          403: errorResponse,
           404: errorResponse,
           409: errorResponse,
         },
@@ -465,22 +472,23 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
   app.post(
     '/:id/release',
     {
-      onRequest: [app.requireRole('admin', 'owner')],
+      onRequest: [app.requirePermission('workOrder', 'release')],
       schema: {
         tags: ['Work Orders'],
         summary: 'Record work order release disposition',
-        description: 'Record final QA release disposition for a final-phase work order that has finished production and all required evidence. Admin or owner role required.',
+        description: 'Record final QA release disposition for a final-phase work order that has finished production and all required evidence. Requires the workOrder.release permission.',
         operationId: 'recordWorkOrderRelease',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',
-        'x-auth': 'role',
-        'x-required-roles': ['admin', 'owner'],
+        'x-auth': 'permission',
+        'x-required-permissions': ['workOrder.release'],
         params: z.object({ id: z.string() }),
         body: releaseBodySchema,
         response: {
           200: workOrderDetailSchema,
           400: errorResponse,
           401: errorResponse,
+          403: errorResponse,
           404: errorResponse,
           409: errorResponse,
         },
@@ -509,22 +517,23 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
   app.post(
     '/:id/het-collection',
     {
-      onRequest: [app.requireRole('admin', 'owner')],
+      onRequest: [app.requirePermission('workOrder', 'collect')],
       schema: {
         tags: ['Work Orders'],
         summary: 'Record HET collection',
-        description: 'Perform HET collection at a collection phase: create the custody records, mint a real HET, and attach it to the work order. Admin or owner role required.',
+        description: 'Perform HET collection at a collection phase: create the custody records, mint a real HET, and attach it to the work order. Requires the workOrder.collect permission.',
         operationId: 'recordHetCollection',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',
-        'x-auth': 'role',
-        'x-required-roles': ['admin', 'owner'],
+        'x-auth': 'permission',
+        'x-required-permissions': ['workOrder.collect'],
         params: z.object({ id: z.string() }),
         body: hetCollectionBodySchema,
         response: {
           200: workOrderDetailSchema,
           400: errorResponse,
           401: errorResponse,
+          403: errorResponse,
           404: errorResponse,
           409: errorResponse,
         },
@@ -561,7 +570,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
   app.post(
     '/:id/serials',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.requirePermission('workOrder', 'execute')],
       schema: {
         tags: ['Work Orders'],
         summary: 'Record work order serial',
@@ -569,13 +578,15 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'recordWorkOrderSerial',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',
-        'x-auth': 'authenticated',
+        'x-auth': 'permission',
+        'x-required-permissions': ['workOrder.execute'],
         params: z.object({ id: z.string() }),
         body: serialBodySchema,
         response: {
           200: workOrderDetailSchema,
           400: errorResponse,
           401: errorResponse,
+          403: errorResponse,
           404: errorResponse,
           409: errorResponse,
         },
@@ -612,16 +623,16 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
   app.post(
     '/',
     {
-      onRequest: [app.requireRole('admin', 'owner')],
+      onRequest: [app.requirePermission('workOrder', 'create')],
       schema: {
         tags: ['Work Orders'],
         summary: 'Create work order',
-        description: 'Create a new production run at the first phase of the selected workflow. Admin or owner role required.',
+        description: 'Create a new production run at the first phase of the selected workflow. Requires the workOrder.create permission.',
         operationId: 'createWorkOrder',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',
-        'x-auth': 'role',
-        'x-required-roles': ['admin', 'owner'],
+        'x-auth': 'permission',
+        'x-required-permissions': ['workOrder.create'],
         body: createBodySchema,
         response: {
           201: workOrderDetailSchema,
@@ -656,7 +667,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
   app.post(
     '/:id/start',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.requirePermission('workOrder', 'execute')],
       schema: {
         tags: ['Work Orders'],
         summary: 'Start work order phase',
@@ -664,12 +675,14 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'startWorkOrderPhase',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',
-        'x-auth': 'authenticated',
+        'x-auth': 'permission',
+        'x-required-permissions': ['workOrder.execute'],
         params: z.object({ id: z.string() }),
         body: phaseSignoffBodySchema,
         response: {
           200: workOrderDetailSchema,
           401: errorResponse,
+          403: errorResponse,
           404: errorResponse,
           409: errorResponse,
         },
@@ -693,7 +706,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
   app.post(
     '/:id/finish',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.requirePermission('workOrder', 'execute')],
       schema: {
         tags: ['Work Orders'],
         summary: 'Finish work order phase',
@@ -701,12 +714,14 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'finishWorkOrderPhase',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',
-        'x-auth': 'authenticated',
+        'x-auth': 'permission',
+        'x-required-permissions': ['workOrder.execute'],
         params: z.object({ id: z.string() }),
         body: phaseSignoffBodySchema,
         response: {
           200: workOrderDetailSchema,
           401: errorResponse,
+          403: errorResponse,
           404: errorResponse,
           409: errorResponse,
         },
@@ -730,7 +745,7 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
   app.post(
     '/:id/advance',
     {
-      onRequest: [app.authenticate],
+      onRequest: [app.requirePermission('workOrder', 'advance')],
       schema: {
         tags: ['Work Orders'],
         summary: 'Advance work order',
@@ -738,11 +753,13 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         operationId: 'advanceWorkOrder',
         security: [{ bearerAuth: [] }],
         'x-route-kind': 'lifecycle-action',
-        'x-auth': 'authenticated',
+        'x-auth': 'permission',
+        'x-required-permissions': ['workOrder.advance'],
         params: z.object({ id: z.string() }),
         response: {
           200: workOrderDetailSchema,
           401: errorResponse,
+          403: errorResponse,
           404: errorResponse,
           409: errorResponse,
         },

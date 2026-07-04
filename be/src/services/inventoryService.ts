@@ -1,3 +1,4 @@
+import { inventoryTypeSchema, inventoryTypeValues } from '@workorder/shared';
 import { prisma } from '../db/prisma.js';
 import type { JwtPayload } from '../plugins/auth.js';
 import {
@@ -14,6 +15,19 @@ import {
   type CrudResourceConfig,
 } from './auditedCrudService.js';
 import { tenantIdOrDefault } from './tenant.js';
+
+// Reject inventoryType values outside the closed HET|FINISHED_GOOD set on the
+// API write path. Legacy rows are imported via prisma directly (bypassing these
+// validators), so this only constrains records created/updated through the API.
+function validateInventoryType(input: { payload: Record<string, unknown> }): Promise<void> {
+  if (
+    input.payload.inventoryType !== undefined &&
+    !inventoryTypeSchema.safeParse(input.payload.inventoryType).success
+  ) {
+    throw new CrudValidationError(`inventoryType must be one of: ${inventoryTypeValues.join(', ')}`);
+  }
+  return Promise.resolve();
+}
 
 async function validateLocationParent(input: {
   tenantId: string;
@@ -150,6 +164,7 @@ export const inventoryCrudResources = {
     defaultOrderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
     include: { inventorySku: true, currentLocation: true },
     validators: [
+      validateInventoryType,
       ({ tenantId, payload }) => requireSameTenant('inventorySku', payload.inventorySkuId, tenantId, 'Inventory SKU'),
       ({ tenantId, payload }) => requireSameTenant('inventoryLocation', payload.currentLocationId, tenantId, 'Current location'),
       ({ tenantId, payload }) => requireSameTenant('collectionUnit', payload.collectionUnitId, tenantId, 'Collection unit'),

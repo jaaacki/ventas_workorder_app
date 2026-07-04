@@ -110,6 +110,25 @@ export default function RolesPage() {
               </div>
               <div className="mt-4 space-y-4">
                 <p className="min-h-10 text-sm text-gray-500 dark:text-gray-400">{role.description || 'No description'}</p>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+                    Permissions ({role.permissions?.length ?? 0})
+                  </p>
+                  {role.permissions && role.permissions.length > 0 ? (
+                    <div className="mt-2 flex max-h-28 flex-wrap gap-1 overflow-y-auto">
+                      {role.permissions.map((key) => (
+                        <span
+                          key={key}
+                          className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-600 dark:bg-white/[0.06] dark:text-gray-300"
+                        >
+                          {key}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs text-gray-400">No permissions granted</p>
+                  )}
+                </div>
                 <Button className="w-full" variant="outline" disabled={mutation.isPending} onClick={() => startEdit(role)}>
                   <Edit3 className="h-4 w-4" />
                   Edit role

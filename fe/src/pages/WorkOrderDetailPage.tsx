@@ -44,6 +44,7 @@ import {
 } from '@/lib/work-orders-api';
 import { fetchCollectionPoints } from '@/lib/procurement-api';
 import { workflowLabel } from '@/lib/work-order-ui';
+import { useAuthStore } from '@/store/authStore';
 import { SignaturePad, WorkOrderWorkspace } from './WorkOrdersPage';
 
 const MAX_PHOTO_EVIDENCE_BYTES = 5 * 1024 * 1024;
@@ -128,9 +129,11 @@ function equipmentLabel(equipment: WorkOrderAllowedEquipment) {
 function ReleaseDispositionPanel({
   workOrder,
   onSaved,
+  disabled = false,
 }: {
   workOrder: WorkOrderDetail;
   onSaved: (updated: WorkOrderDetail) => void;
+  disabled?: boolean;
 }) {
   const [releaseStatus, setReleaseStatus] = useState<'released' | 'quarantined' | 'rejected'>('released');
   const [remarks, setRemarks] = useState('');
@@ -200,7 +203,7 @@ function ReleaseDispositionPanel({
                 placeholder={canRecord ? 'Release notes or quarantine/rejection reason' : 'Work order must be in final release readiness before disposition.'}
               />
             </div>
-            <Button type="submit" disabled={!canRecord || releaseMutation.isPending}>
+            <Button type="submit" disabled={disabled || !canRecord || releaseMutation.isPending}>
               Record disposition
             </Button>
           </form>
@@ -213,9 +216,11 @@ function ReleaseDispositionPanel({
 function CollectionProcessPanel({
   workOrder,
   onSaved,
+  disabled = false,
 }: {
   workOrder: WorkOrderDetail;
   onSaved: (updated: WorkOrderDetail) => void;
+  disabled?: boolean;
 }) {
   const [collectionPointId, setCollectionPointId] = useState('');
   const [lotNumber, setLotNumber] = useState('');
@@ -306,7 +311,7 @@ function CollectionProcessPanel({
               <Input id="collection-parcel" value={parcelTrackingNumber} onChange={(event) => setParcelTrackingNumber(event.target.value)} placeholder="Courier tracking number" />
             </div>
             <SignaturePad label="Custody sign-off (optional)" value={signature} onChange={setSignature} />
-            <Button type="submit" disabled={!collectionPointId || collectMutation.isPending}>
+            <Button type="submit" disabled={disabled || !collectionPointId || collectMutation.isPending}>
               Record collection &amp; mint HET
             </Button>
           </form>
@@ -319,9 +324,11 @@ function CollectionProcessPanel({
 function PhotoEvidencePanel({
   workOrder,
   onSaved,
+  disabled = false,
 }: {
   workOrder: WorkOrderDetail;
   onSaved: (updated: WorkOrderDetail) => void;
+  disabled?: boolean;
 }) {
   const [imageDataUrl, setImageDataUrl] = useState('');
   const [fileName, setFileName] = useState('');
@@ -397,7 +404,7 @@ function PhotoEvidencePanel({
               {fileName || (workOrder.imagePath ? 'Photo evidence already recorded' : 'No photo evidence recorded')}
             </div>
           </div>
-          <Button type="submit" disabled={!imageDataUrl || photoMutation.isPending}>
+          <Button type="submit" disabled={disabled || !imageDataUrl || photoMutation.isPending}>
             Record
           </Button>
         </form>
@@ -409,9 +416,11 @@ function PhotoEvidencePanel({
 function EquipmentEvidencePanel({
   workOrder,
   onSaved,
+  disabled = false,
 }: {
   workOrder: WorkOrderDetail;
   onSaved: (updated: WorkOrderDetail) => void;
+  disabled?: boolean;
 }) {
   const [phaseEquipId, setPhaseEquipId] = useState('');
   const missingEquipment = useMemo(
@@ -461,7 +470,7 @@ function EquipmentEvidencePanel({
                 ))}
               </select>
             </div>
-            <Button type="submit" disabled={!selectedPhaseEquipId || equipmentMutation.isPending}>
+            <Button type="submit" disabled={disabled || !selectedPhaseEquipId || equipmentMutation.isPending}>
               Record
             </Button>
           </form>
@@ -500,9 +509,11 @@ function EquipmentEvidencePanel({
 function OutputEvidencePanel({
   workOrder,
   onSaved,
+  disabled = false,
 }: {
   workOrder: WorkOrderDetail;
   onSaved: (updated: WorkOrderDetail) => void;
+  disabled?: boolean;
 }) {
   const [outputQuantity, setOutputQuantity] = useState(workOrder.outputQuantity ? String(workOrder.outputQuantity) : '');
 
@@ -540,7 +551,7 @@ function OutputEvidencePanel({
               placeholder="1.0000"
             />
           </div>
-          <Button type="submit" disabled={!outputQuantity.trim() || outputMutation.isPending}>
+          <Button type="submit" disabled={disabled || !outputQuantity.trim() || outputMutation.isPending}>
             Record
           </Button>
         </form>
@@ -556,9 +567,11 @@ function serialLabel(serial: WorkOrderRequiredSerial) {
 function SerialEvidencePanel({
   workOrder,
   onSaved,
+  disabled = false,
 }: {
   workOrder: WorkOrderDetail;
   onSaved: (updated: WorkOrderDetail) => void;
+  disabled?: boolean;
 }) {
   const [bomRefId, setBomRefId] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
@@ -617,7 +630,7 @@ function SerialEvidencePanel({
                 placeholder="SN-AMG-1001"
               />
             </div>
-            <Button type="submit" disabled={!selectedBomRefId || !serialNumber.trim() || serialMutation.isPending}>
+            <Button type="submit" disabled={disabled || !selectedBomRefId || !serialNumber.trim() || serialMutation.isPending}>
               Record
             </Button>
           </form>
@@ -667,6 +680,13 @@ export default function WorkOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const hasPermission = useAuthStore((state) => state.hasPermission);
+  // Evidence recorders all require workOrder.execute; release and collect have
+  // their own keys. Panels below are disabled (not hidden) so recorded evidence
+  // stays visible to read-only roles.
+  const canExecute = hasPermission('workOrder.execute');
+  const canRelease = hasPermission('workOrder.release');
+  const canCollect = hasPermission('workOrder.collect');
 
   const workOrderQuery = useQuery({
     queryKey: ['work-order', id],
@@ -828,20 +848,20 @@ export default function WorkOrderDetailPage() {
       </AdminPanel>
 
       {workOrder.isCollectionPhase && (
-        <CollectionProcessPanel workOrder={workOrder} onSaved={updateCachedWorkOrder} />
+        <CollectionProcessPanel workOrder={workOrder} onSaved={updateCachedWorkOrder} disabled={!canCollect} />
       )}
 
       <GenealogyCard genealogy={trace?.genealogy ?? []} lots={trace?.lots ?? []} />
 
-      <OutputEvidencePanel key={workOrder.id} workOrder={workOrder} onSaved={recordOutputSaved} />
+      <OutputEvidencePanel key={workOrder.id} workOrder={workOrder} onSaved={recordOutputSaved} disabled={!canExecute} />
 
-      <PhotoEvidencePanel workOrder={workOrder} onSaved={recordPhotoSaved} />
+      <PhotoEvidencePanel workOrder={workOrder} onSaved={recordPhotoSaved} disabled={!canExecute} />
 
-      <ReleaseDispositionPanel workOrder={workOrder} onSaved={recordReleaseSaved} />
+      <ReleaseDispositionPanel workOrder={workOrder} onSaved={recordReleaseSaved} disabled={!canRelease} />
 
-      <EquipmentEvidencePanel workOrder={workOrder} onSaved={recordEquipmentSaved} />
+      <EquipmentEvidencePanel workOrder={workOrder} onSaved={recordEquipmentSaved} disabled={!canExecute} />
 
-      <SerialEvidencePanel workOrder={workOrder} onSaved={recordSerialSaved} />
+      <SerialEvidencePanel workOrder={workOrder} onSaved={recordSerialSaved} disabled={!canExecute} />
 
       {(workOrder.startSignPath || workOrder.endSignPath) && (
         <AdminPanel title="Signatures" description="Operator start and end sign-off captured for this phase.">

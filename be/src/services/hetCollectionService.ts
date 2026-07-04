@@ -1,6 +1,6 @@
-import { randomBytes } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
+import { generatePrefixedId } from '../lib/ids.js';
 import { tenantIdOrDefault } from './tenant.js';
 import { writeAuditLog } from './auditLogService.js';
 import {
@@ -16,14 +16,6 @@ export interface RecordHetCollectionInput {
   parcelTrackingNumber?: string;
   collectionUnitId?: string;
   signatureDataUrl?: string;
-}
-
-/**
- * Mint an id in the generateWoNumber idiom (readable millisecond timestamp +
- * random suffix so same-millisecond collections don't clash on the PK).
- */
-function mintId(prefix: string) {
-  return `${prefix}-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString('hex').toUpperCase()}`;
 }
 
 /**
@@ -73,10 +65,10 @@ export async function recordHetCollection(
   }
 
   const now = new Date();
-  const collectionBase = mintId('COLL');
+  const collectionBase = generatePrefixedId('COLL');
   const orderId = `${collectionBase}-ORD`;
   const receiptId = `${collectionBase}-RCP`;
-  const hetId = mintId('HET');
+  const hetId = generatePrefixedId('HET');
 
   const { receipt } = await prisma.$transaction(async (tx) => {
     const order = await tx.collectionOrder.create({

@@ -180,6 +180,7 @@ const expectedOperations: ExpectedOperation[] = [
   { method: 'post', path: '/api/work-orders/{id}/photo-evidence', operationId: 'recordWorkOrderPhotoEvidence', routeKind: 'lifecycle-action', auth: 'permission', requiredPermissions: ['workOrder.execute'] },
   { method: 'post', path: '/api/work-orders/{id}/release', operationId: 'recordWorkOrderRelease', routeKind: 'lifecycle-action', auth: 'permission', requiredPermissions: ['workOrder.release'] },
   { method: 'post', path: '/api/work-orders/{id}/serials', operationId: 'recordWorkOrderSerial', routeKind: 'lifecycle-action', auth: 'permission', requiredPermissions: ['workOrder.execute'] },
+  { method: 'post', path: '/api/work-orders/{id}/deliver-empty', operationId: 'deliverEmptyContainer', routeKind: 'lifecycle-action', auth: 'permission', requiredPermissions: ['workOrder.collect'] },
   { method: 'post', path: '/api/work-orders/{id}/het-collection', operationId: 'recordHetCollection', routeKind: 'lifecycle-action', auth: 'permission', requiredPermissions: ['workOrder.collect'] },
   { method: 'post', path: '/api/work-orders/{id}/start', operationId: 'startWorkOrderPhase', routeKind: 'lifecycle-action', auth: 'permission', requiredPermissions: ['workOrder.execute'] },
   { method: 'post', path: '/api/work-orders/{id}/finish', operationId: 'finishWorkOrderPhase', routeKind: 'lifecycle-action', auth: 'permission', requiredPermissions: ['workOrder.execute'] },

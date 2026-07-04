@@ -81,6 +81,7 @@ const workOrderSchema = z.object({
   previousWoId: z.string().nullable(),
   steralisationCurrentId: z.string().nullable(),
   collectionReceiptId: z.string().nullable(),
+  issuanceOrderId: z.string().nullable(),
   nextPhaseId: z.string().nullable(),
   workflowId: z.string().nullable(),
   workflow: workflowRefSchema.nullable(),
@@ -204,6 +205,13 @@ const photoEvidenceBodySchema = z.object({
 const releaseBodySchema = z.object({
   releaseStatus: releaseStatusSchema,
   remarks: z.string().trim().max(2000).optional(),
+});
+
+const deliverEmptyBodySchema = z.object({
+  collectionPointId: z.string().min(1),
+  collectionUnitId: z.string().trim().min(1),
+  parcelTrackingNumber: z.string().trim().min(1).max(200).optional(),
+  signatureDataUrl: z.string().trim().min(1).max(7_000_000).optional(),
 });
 
 const hetCollectionBodySchema = z.object({
@@ -582,6 +590,59 @@ export const workOrderRoutes: FastifyPluginAsyncZod = async function (app) {
         }
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
           return reply.status(404).send({ error: 'Work order not found' });
+        }
+        throw err;
+      }
+    },
+  );
+
+  app.post(
+    '/:id/deliver-empty',
+    {
+      onRequest: [app.requirePermission('workOrder', 'collect')],
+      schema: {
+        tags: ['Work Orders'],
+        summary: 'Deliver empty collection container',
+        description: 'Deliver-empty leg of the collection round-trip: issue an empty container out to a clinic with parcel tracking + custody signature, moving the container into the ISSUED lifecycle state. Requires the workOrder.collect permission.',
+        operationId: 'deliverEmptyContainer',
+        security: [{ bearerAuth: [] }],
+        'x-route-kind': 'lifecycle-action',
+        'x-auth': 'permission',
+        'x-required-permissions': ['workOrder.collect'],
+        params: z.object({ id: z.string() }),
+        body: deliverEmptyBodySchema,
+        response: {
+          200: workOrderDetailSchema,
+          400: errorResponse,
+          401: errorResponse,
+          403: errorResponse,
+          404: errorResponse,
+          409: errorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      try {
+        return await hetCollectionService.deliverEmptyContainer(
+          req.params.id,
+          req.body,
+          actorIdOf(req),
+          tenantIdOf(req),
+        );
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith('cannot deliver:')) {
+          return reply.status(409).send({ error: err.message });
+        }
+        if (err instanceof Prisma.PrismaClientKnownRequestError) {
+          if (err.code === 'P2025') {
+            return reply.status(404).send({ error: 'Work order not found' });
+          }
+          if (err.code === 'P2002') {
+            return reply.status(409).send({ error: 'work order already has an issued container' });
+          }
+          if (err.code === 'P2003') {
+            return reply.status(400).send({ error: 'Referenced collection point or unit does not exist' });
+          }
         }
         throw err;
       }

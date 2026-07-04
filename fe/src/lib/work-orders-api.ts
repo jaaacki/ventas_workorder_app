@@ -136,6 +136,9 @@ export interface WorkOrderSummary {
   releaseDecisionById: string | null;
   releaseRemarks: string | null;
   collectionReceiptId: string | null;
+  // Set once the deliver-empty leg has issued a container out to the clinic (#189).
+  // Non-null means the outbound half of the round-trip is done, awaiting collect.
+  issuanceOrderId: string | null;
   // True when the current phase is a HET-collection phase (Phase.processType).
   // A collection phase starts HET-less and the collection process mints the HET.
   isCollectionPhase: boolean;
@@ -302,6 +305,23 @@ export async function recordHetCollection(
   payload: RecordHetCollectionPayload,
 ): Promise<WorkOrderDetail> {
   const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/het-collection`, payload);
+  return data;
+}
+
+export interface DeliverEmptyPayload {
+  collectionPointId: string;
+  collectionUnitId: string;
+  parcelTrackingNumber?: string;
+  signatureDataUrl?: string;
+}
+
+// Deliver-empty leg (#189): issue an empty container out to the clinic before the
+// filled collection comes back. The collect leg then closes this issuance.
+export async function deliverEmptyContainer(
+  id: string,
+  payload: DeliverEmptyPayload,
+): Promise<WorkOrderDetail> {
+  const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/deliver-empty`, payload);
   return data;
 }
 

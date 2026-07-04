@@ -29,9 +29,18 @@ const mocks = vi.hoisted(() => ({
   },
   het: {
     updateMany: vi.fn(),
+    findMany: vi.fn(),
   },
   workOrderHet: {
     createMany: vi.fn(),
+  },
+  inventoryLot: {
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+  },
+  inventoryGenealogy: {
+    upsert: vi.fn(),
   },
 }));
 
@@ -45,12 +54,16 @@ vi.mock('../../db/prisma.js', () => ({
     sterilise: mocks.sterilise,
     het: mocks.het,
     workOrderHet: mocks.workOrderHet,
+    inventoryLot: mocks.inventoryLot,
+    inventoryGenealogy: mocks.inventoryGenealogy,
     $transaction: vi.fn((callback) => callback({
       workOrder: mocks.workOrder,
       workOrderPhaseEquip: mocks.workOrderPhaseEquip,
       woSerial: mocks.woSerial,
       het: mocks.het,
       workOrderHet: mocks.workOrderHet,
+      inventoryLot: mocks.inventoryLot,
+      inventoryGenealogy: mocks.inventoryGenealogy,
     })),
   },
 }));
@@ -69,7 +82,35 @@ import {
   startWorkOrderPhase,
   finishWorkOrderPhase,
   advanceWorkOrder,
+  combineHets,
+  amendWorkOrderEvidence,
 } from '../workOrderService.js';
+
+// A decorated-work-order stub for findFirstOrThrow so getDecoratedWorkOrderOrThrow
+// can re-read + decorate after a mutation in these tests.
+function decoratedStub(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'wo-1',
+    tenantId: 'tenant-a',
+    workflowId: 'workflow-1',
+    phaseId: 'phase-1',
+    phaseOrder: 10,
+    hetId: 'het-1',
+    prodStart: new Date('2026-07-01T09:00:00Z'),
+    prodEnd: new Date('2026-07-01T11:00:00Z'),
+    prodDuration: null,
+    outputQuantity: null,
+    releaseStatus: null,
+    releaseDecisionAt: null,
+    workflow: { phases: [] },
+    phase: { id: 'phase-1', phaseShort: 'P1', blocksCombine: false, bom: { lines: [] }, phaseEquips: [] },
+    sterilises: [],
+    woSerials: [],
+    phaseEquips: [],
+    batchHets: [],
+    ...overrides,
+  };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -514,6 +555,10 @@ describe('workOrderService', () => {
     mocks.workOrder.findMany.mockResolvedValue([]);
     mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
     mocks.workOrder.findFirstOrThrow.mockResolvedValue(updated);
+    mocks.inventoryLot.findFirst.mockResolvedValue(null);
+    mocks.inventoryLot.findMany.mockResolvedValue([]);
+    mocks.inventoryLot.create.mockResolvedValue({ id: 'lot-new', lotNumber: 'LOT-TEST' });
+    mocks.inventoryGenealogy.upsert.mockResolvedValue({});
 
     const result = await recordWorkOrderRelease(
       'wo-1',
@@ -549,7 +594,58 @@ describe('workOrderService', () => {
         }),
       }),
     );
+    // A released run mints an available FINISHED_GOOD lot inside the same tx and
+    // emits a lot_minted audit event.
+    expect(mocks.inventoryLot.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          inventoryType: 'FINISHED_GOOD',
+          status: 'available',
+          workOrderId: 'wo-1',
+        }),
+      }),
+    );
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'work_order.lot_minted' }) }),
+    );
     expect(result).toMatchObject({ id: 'wo-1', releaseStatus: 'released', lifecycleState: 'Released' });
+  });
+
+  it('recordWorkOrderRelease aborts without minting a lot when released concurrently (in-tx status guard)', async () => {
+    const workOrder = {
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-release',
+      phaseOrder: 30,
+      hetId: 'het-1',
+      prodStart: new Date('2026-07-01T09:00:00Z'),
+      prodEnd: new Date('2026-07-01T11:00:00Z'),
+      prodDuration: null,
+      outputQuantity: { toString: () => '1.0000', gt: () => true },
+      releaseStatus: null,
+      releaseDecisionAt: null,
+      workflow: {
+        phases: [{ id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', sortOrder: 30, isGate: false, blocksCombine: false }],
+      },
+      phase: { id: 'phase-release', phaseName: 'Release', phaseShort: 'REL', sortOrder: 30, isGate: false, blocksCombine: false, bom: { lines: [] }, phaseEquips: [] },
+      sterilises: [{ id: 'ster-pass', result: true }],
+      woSerials: [],
+      phaseEquips: [],
+      batchHets: [],
+      imagePath: 'data:image/png;base64,AAAA',
+    };
+    mocks.workOrder.findFirst.mockResolvedValue(workOrder);
+    mocks.workOrder.findMany.mockResolvedValue([]);
+    mocks.inventoryLot.findFirst.mockResolvedValue(null);
+    // A concurrent release committed first: the status-scoped guard inside the tx
+    // matches 0 rows, so this release must abort BEFORE any lot is minted.
+    mocks.workOrder.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      recordWorkOrderRelease('wo-1', { releaseStatus: 'released' }, 'actor1', 'tenant-a'),
+    ).rejects.toThrow('cannot release: work order already has a release disposition');
+    expect(mocks.inventoryLot.create).not.toHaveBeenCalled();
   });
 
   it('recordWorkOrderRelease rejects work orders that are not release-ready', async () => {
@@ -622,6 +718,16 @@ describe('workOrderService', () => {
 
     expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
     expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('recordWorkOrderRelease rejects a status outside the closed enum before any lookup', async () => {
+    await expect(
+      recordWorkOrderRelease('wo-1', { releaseStatus: 'approved' as 'released' }, 'actor1', 'tenant-a'),
+    ).rejects.toThrow('cannot release: invalid release status');
+
+    // The enum guard runs first, so no read/write is attempted for a bad status.
+    expect(mocks.workOrder.findFirst).not.toHaveBeenCalled();
+    expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
   });
 
   it('recordWorkOrderEquipment records allowed current-phase equipment and writes an audit event', async () => {
@@ -748,6 +854,41 @@ describe('workOrderService', () => {
       counts: { equipment: 1 },
       allowedEquipment: [expect.objectContaining({ phaseEquipId: 'equip-1', recorded: true })],
     });
+  });
+
+  it('amendWorkOrderEvidence on already-recorded equipment still writes an evidence_amended event', async () => {
+    const workOrder = {
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: new Date('2026-07-01T09:00:00Z'),
+      prodEnd: new Date('2026-07-01T10:00:00Z'),
+      prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: null,
+      // Superseded (advanced), so the record is locked — amend is the only path.
+      nextPhaseId: 'phase-2',
+      phase: { phaseEquips: [{ phaseEquipId: 'equip-1' }] },
+      phaseEquips: [{ phaseEquipId: 'equip-1' }],
+    };
+    mocks.workOrder.findFirst.mockResolvedValue(workOrder);
+    mocks.workOrder.findFirstOrThrow.mockResolvedValue(decoratedStub());
+
+    await amendWorkOrderEvidence('wo-1', { kind: 'equipment', phaseEquipId: 'equip-1' }, 'actor1', 'tenant-a');
+
+    // The join row already exists, so it is NOT re-inserted (would break its PK)...
+    expect(mocks.workOrderPhaseEquip.create).not.toHaveBeenCalled();
+    // ...but the amendment is never silent: both the equipment event and the
+    // evidence_amended marker are written.
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'work_order.equipment_recorded' }) }),
+    );
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'work_order.evidence_amended' }) }),
+    );
   });
 
   it('recordWorkOrderSerial rejects BOM lines not required by the current phase', async () => {
@@ -1373,6 +1514,50 @@ describe('workOrderService', () => {
     expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
   });
 
+  it('advanceWorkOrder blocks a collection phase until collection is recorded', async () => {
+    mocks.workOrder.findFirst.mockResolvedValueOnce({
+      id: 'wo-1',
+      phaseId: 'p1',
+      hetId: null,
+      collectionReceiptId: null,
+      prodStart: new Date('2026-06-30T08:00:00Z'),
+      prodEnd: new Date('2026-06-30T09:00:00Z'),
+      workflow: {
+        phases: [
+          { id: 'p1', phaseName: 'Collection', phaseShort: 'COL', sortOrder: 0, isGate: false, processType: 'COLLECTION' },
+          { id: 'p2', phaseName: 'Pour', phaseShort: 'PR', sortOrder: 1, isGate: false, processType: null },
+        ],
+      },
+    });
+
+    await expect(advanceWorkOrder('wo-1', 'actor1')).rejects.toThrow(
+      'cannot advance: collection not recorded',
+    );
+    expect(mocks.workOrder.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('a HET-less collection phase reads as "Collection required", not "HET not assigned"', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-collect',
+      phaseId: 'p1',
+      hetId: null,
+      prodStart: null,
+      prodEnd: null,
+      workflow: {
+        phases: [{ id: 'p1', phaseName: 'Collection', phaseShort: 'COL', sortOrder: 0, isGate: false, blocksCombine: false, processType: 'COLLECTION' }],
+      },
+      phase: { id: 'p1', phaseName: 'Collection', phaseShort: 'COL', sortOrder: 0, isGate: false, blocksCombine: false, processType: 'COLLECTION' },
+      sterilises: [],
+      woSerials: [],
+      phaseEquips: [],
+    });
+
+    const result = await getWorkOrder('wo-collect');
+    expect(result).toMatchObject({ isCollectionPhase: true });
+    expect(result?.readinessBlockers).toContain('Collection required');
+    expect(result?.readinessBlockers).not.toContain('HET not assigned');
+  });
+
   it('advanceWorkOrder blocks unfinished phases before changing phase', async () => {
     mocks.workOrder.findFirst.mockResolvedValueOnce({
       id: 'wo-1',
@@ -1642,5 +1827,230 @@ describe('workOrderService', () => {
       missingAdvanceRequirements: [],
       parityGaps: [],
     });
+  });
+
+  it('recordWorkOrderSerial rejects evidence on a superseded (advanced) work order', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: new Date('2026-07-01T09:00:00Z'),
+      prodEnd: new Date('2026-07-01T11:00:00Z'),
+      prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: null,
+      nextPhaseId: 'phase-2',
+      phase: { bom: { lines: [{ id: 'bom-line-1', hasSerial: true }] } },
+      woSerials: [],
+    });
+
+    await expect(
+      recordWorkOrderSerial('wo-1', { bomRefId: 'bom-line-1', serialNumber: 'SER-001' }, 'actor1', 'tenant-a'),
+    ).rejects.toThrow('cannot record serial: work order is locked (advanced to the next phase)');
+
+    expect(mocks.woSerial.upsert).not.toHaveBeenCalled();
+    expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('amendWorkOrderEvidence bypasses the lock and writes an evidence_amended audit event', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: new Date('2026-07-01T09:00:00Z'),
+      prodEnd: new Date('2026-07-01T11:00:00Z'),
+      prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: null,
+      nextPhaseId: 'phase-2',
+      phase: { bom: { lines: [{ id: 'bom-line-1', hasSerial: true }] } },
+      woSerials: [],
+    });
+    mocks.workOrder.findMany.mockResolvedValue([]);
+    mocks.workOrder.findFirstOrThrow.mockResolvedValue(decoratedStub({ nextPhaseId: 'phase-2' }));
+
+    await amendWorkOrderEvidence('wo-1', { kind: 'serial', bomRefId: 'bom-line-1', serialNumber: 'SER-002' }, 'actor1', 'tenant-a');
+
+    expect(mocks.woSerial.upsert).toHaveBeenCalled();
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'work_order.serial_recorded' }) }),
+    );
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'work_order.evidence_amended',
+          source: 'workOrderService.amendWorkOrderEvidence:serial',
+        }),
+      }),
+    );
+  });
+
+  it('combineHets rejects when the current phase blocks combining', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: new Date('2026-07-01T09:00:00Z'),
+      prodEnd: null,
+      prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: null,
+      nextPhaseId: null,
+      phase: { blocksCombine: true },
+      batchHets: [],
+    });
+
+    await expect(combineHets('wo-1', ['het-2'], 'actor1', 'tenant-a')).rejects.toThrow(
+      'cannot combine: the current phase does not allow combining HETs',
+    );
+
+    expect(mocks.workOrderHet.createMany).not.toHaveBeenCalled();
+    expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('combineHets attaches source HETs, writes COMBINATION edges, and audits', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: new Date('2026-07-01T09:00:00Z'),
+      prodEnd: null,
+      prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: null,
+      nextPhaseId: null,
+      phase: { blocksCombine: false },
+      batchHets: [],
+    });
+    mocks.het.findMany.mockResolvedValue([{ id: 'het-2' }, { id: 'het-3' }]);
+    mocks.inventoryLot.findFirst.mockResolvedValue({ id: 'lot-het-1' });
+    mocks.inventoryLot.findFirst.mockImplementation(async ({ where }: { where: { hetId?: string } }) =>
+      where.hetId === 'het-1' ? { id: 'lot-het-1' } : { id: `lot-${where.hetId}` },
+    );
+    // writeConversionEdges now batches the source-lot lookup into one findMany.
+    mocks.inventoryLot.findMany.mockResolvedValue([{ id: 'lot-het-2' }, { id: 'lot-het-3' }]);
+    mocks.inventoryGenealogy.upsert.mockResolvedValue({});
+    mocks.workOrderHet.createMany.mockResolvedValue({ count: 2 });
+    // No other work order carries these HETs as its primary run, and the in-tx
+    // release guard finds the work order still unreleased (count 1).
+    mocks.workOrder.findMany.mockResolvedValue([]);
+    mocks.workOrder.updateMany.mockResolvedValue({ count: 1 });
+    mocks.workOrder.findFirstOrThrow.mockResolvedValue(decoratedStub());
+
+    const result = await combineHets('wo-1', ['het-2', 'het-3'], 'actor1', 'tenant-a');
+
+    expect(mocks.workOrderHet.createMany).toHaveBeenCalledWith({
+      data: [
+        { workOrderId: 'wo-1', hetId: 'het-2' },
+        { workOrderId: 'wo-1', hetId: 'het-3' },
+      ],
+      skipDuplicates: true,
+    });
+    // COMBINATION edges from each source HET lot -> the run's primary HET lot.
+    expect(mocks.inventoryGenealogy.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ childInventoryLotId: 'lot-het-1', relationshipType: 'COMBINATION' }),
+      }),
+    );
+    expect(mocks.workOrderAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'work_order.hets_combined' }) }),
+    );
+    expect(result).toMatchObject({ id: 'wo-1' });
+  });
+
+  it('combineHets rejects unknown HET ids before attaching anything', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: new Date('2026-07-01T09:00:00Z'),
+      prodEnd: null,
+      prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: null,
+      nextPhaseId: null,
+      phase: { blocksCombine: false },
+      batchHets: [],
+    });
+    mocks.het.findMany.mockResolvedValue([{ id: 'het-2' }]);
+
+    await expect(combineHets('wo-1', ['het-2', 'het-missing'], 'actor1', 'tenant-a')).rejects.toThrow(
+      'cannot combine: one or more HETs do not exist',
+    );
+
+    expect(mocks.workOrderHet.createMany).not.toHaveBeenCalled();
+    expect(mocks.workOrderAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('combineHets rejects a HET that is the primary of another active run', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: new Date('2026-07-01T09:00:00Z'),
+      prodEnd: null,
+      prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: null,
+      nextPhaseId: null,
+      phase: { blocksCombine: false },
+      batchHets: [],
+    });
+    mocks.het.findMany.mockResolvedValue([{ id: 'het-2' }]);
+    // het-2 is the primary HET of another still-active (unadvanced, unreleased)
+    // work order — folding it in would silently supersede that run.
+    mocks.workOrder.findMany.mockResolvedValue([{ hetId: 'het-2' }]);
+
+    await expect(combineHets('wo-1', ['het-2'], 'actor1', 'tenant-a')).rejects.toThrow(
+      'cannot combine: HET het-2 has its own active run',
+    );
+    expect(mocks.workOrderHet.createMany).not.toHaveBeenCalled();
+  });
+
+  it('combineHets aborts when the work order was released concurrently (in-tx guard)', async () => {
+    mocks.workOrder.findFirst.mockResolvedValue({
+      id: 'wo-1',
+      tenantId: 'tenant-a',
+      workflowId: 'workflow-1',
+      phaseId: 'phase-1',
+      phaseOrder: 10,
+      hetId: 'het-1',
+      prodStart: new Date('2026-07-01T09:00:00Z'),
+      prodEnd: null,
+      prodDuration: null,
+      outputQuantity: null,
+      releaseStatus: null,
+      nextPhaseId: null,
+      phase: { blocksCombine: false },
+      batchHets: [],
+    });
+    mocks.het.findMany.mockResolvedValue([{ id: 'het-2' }]);
+    mocks.workOrder.findMany.mockResolvedValue([]);
+    // A concurrent release committed in the window: the status-scoped guard inside
+    // the tx matches 0 rows, so the combine aborts before attaching any HET.
+    mocks.workOrder.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(combineHets('wo-1', ['het-2'], 'actor1', 'tenant-a')).rejects.toThrow(
+      'cannot combine: work order already released',
+    );
+    expect(mocks.workOrderHet.createMany).not.toHaveBeenCalled();
   });
 });

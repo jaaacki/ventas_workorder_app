@@ -19,6 +19,9 @@ export interface WorkOrderPhaseRef {
   phaseName: string | null;
   phaseShort: string | null;
   phaseOrder: number | null;
+  // Present on the work order's current phase so the client can gate the combine
+  // affordance; absent on the phase timeline / nextPhase summaries.
+  blocksCombine?: boolean;
   // The current phase's ordered steps (owned Step rows). Absent on the phase
   // timeline entries, which only carry phase-level fields.
   steps?: WorkOrderStepTag[];
@@ -123,14 +126,26 @@ export interface WorkOrderSummary {
   prodDuration: string | number | null;
   outputQuantity: string | number | null;
   imagePath: string | null;
+  startSignPath: string | null;
+  endSignPath: string | null;
+  startSignById: string | null;
+  endSignById: string | null;
+  reportPdfPath: string | null;
   releaseStatus: 'released' | 'quarantined' | 'rejected' | null;
   releaseDecisionAt: string | null;
   releaseDecisionById: string | null;
   releaseRemarks: string | null;
+  collectionReceiptId: string | null;
+  // True when the current phase is a HET-collection phase (Phase.processType).
+  // A collection phase starts HET-less and the collection process mints the HET.
+  isCollectionPhase: boolean;
   workflow: WorkOrderWorkflowRef | null;
   phase: WorkOrderPhaseRef | null;
   het: WorkOrderHetRef | null;
   manufacturer: WorkOrderManufacturerRef | null;
+  // Source HETs attached as a combined batch (C12). combinedHetCheck is derived
+  // from this being non-empty.
+  batchHets: Array<{ hetId: string }>;
   sterilises: WorkOrderSterilisationRef[];
   woSerials: WorkOrderSerialRef[];
   lifecycleState: WorkOrderLifecycleState;
@@ -273,6 +288,23 @@ export async function createWorkOrder(payload: {
   return data;
 }
 
+export interface RecordHetCollectionPayload {
+  collectionPointId: string;
+  quantity?: number;
+  lotNumber?: string;
+  parcelTrackingNumber?: string;
+  collectionUnitId?: string;
+  signatureDataUrl?: string;
+}
+
+export async function recordHetCollection(
+  id: string,
+  payload: RecordHetCollectionPayload,
+): Promise<WorkOrderDetail> {
+  const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/het-collection`, payload);
+  return data;
+}
+
 export async function startWorkOrderPhase(id: string, signatureDataUrl?: string): Promise<WorkOrderDetail> {
   const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/start`, signatureDataUrl ? { signatureDataUrl } : {});
   return data;
@@ -325,5 +357,52 @@ export async function recordWorkOrderSerial(
 
 export async function advanceWorkOrder(id: string): Promise<WorkOrderDetail> {
   const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/advance`);
+  return data;
+}
+
+export interface WorkOrderRunChainEntry {
+  workOrderId: string;
+  woNumber: string | null;
+  phase: { id: string; phaseName: string | null; phaseShort: string | null; sortOrder: number; isGate: boolean } | null;
+  phaseOrder: number | null;
+  prodStart: string | null;
+  prodEnd: string | null;
+  prodDuration: string | number | null;
+  outputQuantity: string | number | null;
+  releaseStatus: string | null;
+  releaseDecisionAt: string | null;
+  hasPhoto: boolean;
+  startSignature: { signer: string | null; at: string | null } | null;
+  endSignature: { signer: string | null; at: string | null } | null;
+  releaseSignature: { signer: string | null; at: string | null } | null;
+  counts: { serials: number; equipment: number; sterilisations: number };
+  isCurrent: boolean;
+}
+
+export interface WorkOrderRunChain {
+  workOrderId: string;
+  hetId: string | null;
+  workOrders: WorkOrderRunChainEntry[];
+}
+
+// Admin-only correction of evidence on a locked (superseded) interior work order.
+export type AmendEvidencePayload =
+  | { kind: 'serial'; bomRefId: string; serialNumber: string }
+  | { kind: 'output-quantity'; outputQuantity: string }
+  | { kind: 'photo'; imageDataUrl: string }
+  | { kind: 'equipment'; phaseEquipId: string };
+
+export async function fetchWorkOrderChain(id: string): Promise<WorkOrderRunChain> {
+  const { data } = await api.get<WorkOrderRunChain>(`/api/work-orders/${id}/chain`);
+  return data;
+}
+
+export async function combineWorkOrderHets(id: string, hetIds: string[]): Promise<WorkOrderDetail> {
+  const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/combine`, { hetIds });
+  return data;
+}
+
+export async function amendWorkOrderEvidence(id: string, payload: AmendEvidencePayload): Promise<WorkOrderDetail> {
+  const { data } = await api.post<WorkOrderDetail>(`/api/work-orders/${id}/amend-evidence`, payload);
   return data;
 }

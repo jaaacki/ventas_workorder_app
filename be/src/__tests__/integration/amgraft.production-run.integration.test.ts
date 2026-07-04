@@ -13,6 +13,7 @@ import {
   finishWorkOrderPhase,
 } from '../../services/workOrderService.js';
 import { generateBatchRecord } from '../../services/manufacturingService.js';
+import { getBatchRecord } from '../../services/batchRecordService.js';
 import { createSterilisation } from '../../services/sterilisationService.js';
 import { DEFAULT_TENANT_ID } from '../../services/tenant.js';
 
@@ -32,8 +33,10 @@ const ctx: {
   bomLineId: string;
   phaseEquipId: string;
   hetId: string;
+  hetNumber: string;
+  hetLotId: string;
   workOrderIds: string[];
-} = { actorId: '', tenantId: DEFAULT_TENANT_ID, workflowId: '', phaseIds: [], bomId: '', bomLineId: '', phaseEquipId: '', hetId: '', workOrderIds: [] };
+} = { actorId: '', tenantId: DEFAULT_TENANT_ID, workflowId: '', phaseIds: [], bomId: '', bomLineId: '', phaseEquipId: '', hetId: '', hetNumber: '', hetLotId: '', workOrderIds: [] };
 
 beforeAll(async () => {
   // Actor (any staff row; create a throwaway one if none exist).
@@ -100,11 +103,23 @@ beforeAll(async () => {
   }
 
   ctx.hetId = `${code}:HET`;
-  await prisma.het.create({ data: { id: ctx.hetId, tenantId: ctx.tenantId, hetNumber: `${code}-H1`, quantity: 1 } });
+  ctx.hetNumber = `${code}-H1`;
+  await prisma.het.create({ data: { id: ctx.hetId, tenantId: ctx.tenantId, hetNumber: ctx.hetNumber, clinicName: 'Integration Clinic', HCICode: 'HCI-INT', quantity: 1 } });
+
+  // A raw HET inventory lot so the release step can write a CONVERSION
+  // genealogy edge (raw HET lot -> finished-goods lot).
+  ctx.hetLotId = `${code}:HETLOT`;
+  await prisma.inventoryLot.create({
+    data: { id: ctx.hetLotId, tenantId: ctx.tenantId, inventoryType: 'HET', status: 'available', lotNumber: `${code}-H1`, hetId: ctx.hetId },
+  });
 });
 
 afterAll(async () => {
   const woIds = ctx.workOrderIds;
+  // Genealogy references lots; lots reference work orders + hets. Remove them
+  // first so the work-order/HET deletes below are not FK-blocked.
+  await prisma.inventoryGenealogy.deleteMany({ where: { OR: [{ workOrderId: { in: woIds } }, { parentInventoryLotId: ctx.hetLotId }] } }).catch(() => undefined);
+  await prisma.inventoryLot.deleteMany({ where: { OR: [{ workOrderId: { in: woIds } }, { id: ctx.hetLotId }, { hetId: ctx.hetId }] } }).catch(() => undefined);
   if (woIds.length) {
     // Break the circular FKs first: WorkOrder.steralisationCurrentId -> Sterilise
     // and Het.usedById/finishedById -> WorkOrder.
@@ -254,9 +269,47 @@ describe('AmGraft production run (integration)', () => {
     await expect(advanceWorkOrder(release.id, ctx.actorId)).rejects.toThrow(
       'work order is at its final phase',
     );
+    // Finalise the batch record on the release work order so the minted lot
+    // carries the manuNumber as its lotNumber.
+    const releaseBatch = await generateBatchRecord(release.id, ctx.actorId);
     const released = await recordWorkOrderRelease(release.id, { releaseStatus: 'released' }, ctx.actorId);
     expect(released.releaseStatus).toBe('released');
     expect(released.lifecycleState).toBe('Released');
+
+    // 10a. Release mints a FINISHED_GOOD lot, lotNumber = manuNumber, qty from output.
+    const finishedLot = await prisma.inventoryLot.findFirst({
+      where: { tenantId: ctx.tenantId, workOrderId: release.id, inventoryType: 'FINISHED_GOOD' },
+    });
+    expect(finishedLot).not.toBeNull();
+    expect(finishedLot?.status).toBe('available');
+    expect(finishedLot?.lotNumber).toBe(releaseBatch.manuNumber);
+    expect(Number(finishedLot?.quantityInitial)).toBe(1);
+    // The finished lot leaves hetId null (the raw HET lot already holds it) and
+    // the releasing WO now points at the on-demand PDF.
+    expect(finishedLot?.hetId).toBeNull();
+    const releaseWo = await prisma.workOrder.findUniqueOrThrow({ where: { id: release.id } });
+    expect(releaseWo.reportPdfPath).toBe(`/api/lots/${encodeURIComponent(finishedLot!.lotNumber!)}/batch-record.pdf`);
+
+    // 10b. A CONVERSION genealogy edge links the raw HET lot -> finished lot.
+    const edge = await prisma.inventoryGenealogy.findFirst({
+      where: { tenantId: ctx.tenantId, parentInventoryLotId: ctx.hetLotId, childInventoryLotId: finishedLot!.id, relationshipType: 'CONVERSION' },
+    });
+    expect(edge).not.toBeNull();
+    expect(edge?.workOrderId).toBe(release.id);
+
+    // 10c. A lot_minted audit event is recorded on the releasing WO.
+    expect(await prisma.workOrderAuditEvent.count({ where: { workOrderId: release.id, action: 'work_order.lot_minted' } })).toBe(1);
+
+    // 10d. getBatchRecord reconstructs the full chain with evidence and origin.
+    const batchRecord = await getBatchRecord(finishedLot!.lotNumber!, ctx.tenantId);
+    expect(batchRecord.lot.lotNumber).toBe(finishedLot?.lotNumber);
+    expect(batchRecord.hetOrigin).toMatchObject({ hetNumber: ctx.hetNumber, clinicName: 'Integration Clinic' });
+    expect(batchRecord.phases.map((phase) => phase.phase?.phaseName)).toEqual(phaseNames);
+    expect(batchRecord.genealogyParents.map((parent) => parent.id)).toContain(ctx.hetLotId);
+    // Preparation phase kept its serial + equipment evidence in the record.
+    const prepPhase = batchRecord.phases[0];
+    expect(prepPhase.serials.some((serial) => serial.serialNumber === `${ctx.bomLineId}:SN-001`)).toBe(true);
+    expect(prepPhase.equipment.some((equip) => equip.phaseEquipId === ctx.phaseEquipId)).toBe(true);
 
     // 11. HET lifecycle closed by the chain: first WO used it, the release WO finished it.
     const hetAfterRelease = await prisma.het.findUniqueOrThrow({ where: { id: ctx.hetId } });

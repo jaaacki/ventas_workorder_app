@@ -38,6 +38,9 @@ const phaseSummarySchema = z.object({
   sortOrder: z.number(),
   isGate: z.boolean(),
   blocksCombine: z.boolean(),
+  // Read side is a plain nullable string (the DB column is free-form); only the
+  // write path (addPhaseBodySchema) constrains the value to 'COLLECTION' | null.
+  processType: z.string().nullable(),
   bomId: z.string().nullable(),
 });
 
@@ -84,6 +87,8 @@ const addPhaseBodySchema = z.object({
   description: z.string().trim().nullable().optional(),
   isGate: z.boolean().optional(),
   blocksCombine: z.boolean().optional(),
+  // Only 'COLLECTION' or null (production) — the phase's process lever (#186).
+  processType: z.enum(['COLLECTION']).nullable().optional(),
   bomId: z.string().trim().min(1).nullable().optional(),
 });
 

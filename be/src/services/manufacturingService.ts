@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { Prisma as PrismaTypes } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
+import { generatePrefixedId } from '../lib/ids.js';
 import { tenantIdOrDefault } from './tenant.js';
 import { writeAuditLog } from './auditLogService.js';
 
@@ -16,12 +17,12 @@ const manufacturerDetailInclude = {
  * Generate the official manufacturing batch record for a work order.
  *
  * Creates a Manufacturer row stamped with the actor, derives a unique
- * `manuNumber` from the current wall clock (MANU-<base36>), and links it back
- * onto the work order (`manuId` + `manuNumber`). Throws a P2025-shaped Prisma
- * error if the work order does not exist.
+ * `manuNumber` (MANU-<base36 ms>-<random suffix>, collision-safe within a
+ * millisecond), and links it back onto the work order (`manuId` + `manuNumber`).
+ * Throws a P2025-shaped Prisma error if the work order does not exist.
  */
 export async function generateBatchRecord(workOrderId: string, actorId: string, tenantId?: string | null) {
-  const manuNumber = `MANU-${Date.now().toString(36).toUpperCase()}`;
+  const manuNumber = generatePrefixedId('MANU');
   const scopedTenantId = tenantIdOrDefault(tenantId);
 
   const manufacturer = await prisma.$transaction(async (tx) => {

@@ -5,10 +5,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Link, useSearchParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
-import { fetchWorkflows } from '@/lib/workflows-api';
+import { fetchWorkflows, fetchWorkflow } from '@/lib/workflows-api';
 import { fetchHets, type HetSummary } from '@/lib/hets-api';
 import { statusTone, workflowLabel, unitsLabel } from '@/lib/work-order-ui';
 import { useWorkflowContext } from '@/store/workflowContext';
+import { useAuthStore } from '@/store/authStore';
 import { humanStatus, toneToBadgeVariant } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -135,10 +136,14 @@ function WorkOrderCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
+          {/* Card identity = the HET run: the het number leads, with the current
+              work order and workflow as secondary context. One card per active run. */}
           <div className="truncate text-sm font-semibold text-gray-800 dark:text-white/90">
-            {workOrder.woNumber || workOrder.id}
+            {workOrder.het?.hetNumber || workOrder.hetId || (workOrder.isCollectionPhase ? 'Collection pending' : 'No HET')}
           </div>
-          <div className="mt-1 truncate text-xs text-muted-foreground">{workflowLabel(workOrder)}</div>
+          <div className="mt-1 truncate text-xs text-muted-foreground">
+            {workflowLabel(workOrder)} · {workOrder.woNumber || workOrder.id}
+          </div>
         </div>
         {(() => {
           const status = humanStatus(workOrder.operationalStatus);
@@ -147,10 +152,17 @@ function WorkOrderCard({
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-        <span className="truncate">{workOrder.het?.hetNumber || workOrder.hetId || 'No HET'}</span>
+        <span className="truncate">{workOrder.het?.clinicName || '—'}</span>
         <span>{unitsLabel(workOrder.het?.quantity) ?? '—'}</span>
         <span>{workOrder.counts?.serials ?? 0}/{workOrder.serialRequiredCount ?? 0} serials</span>
       </div>
+
+      {workOrder.combinedHetCheck && (
+        <div className="mt-2 inline-flex items-center gap-1 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+          <Boxes className="h-3 w-3" />
+          Combined batch
+        </div>
+      )}
 
       {stepTags.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1">
@@ -176,7 +188,7 @@ function WorkOrderCard({
   );
 }
 
-function SignaturePad({
+export function SignaturePad({
   label,
   value,
   onChange,
@@ -279,7 +291,11 @@ function SignaturePad({
 const createWorkOrderSchema = z
   .object({
     workflowId: z.string().min(1, 'Select a product workflow'),
-    hetId: z.string().min(1, 'Select a HET record'),
+    // Optional at the schema level: a workflow whose first phase is a COLLECTION
+    // phase starts HET-less and mints the HET at collection. The "HET required"
+    // rule for normal workflows is enforced in the submit handler, which knows
+    // the selected workflow's first-phase process type.
+    hetId: z.string(),
     startNow: z.boolean(),
     signatureDataUrl: z.string(),
   })
@@ -300,25 +316,42 @@ function CreateWorkOrderForm({
   workflows: Array<{ id: string; name: string; code: string; description: string | null }>;
   hets: HetSummary[];
   creating: boolean;
-  onCreate: (payload: { workflowId: string; hetId: string; startNow: boolean; signatureDataUrl?: string }) => void;
+  onCreate: (payload: { workflowId: string; hetId?: string; startNow: boolean; signatureDataUrl?: string }) => void;
 }) {
   const form = useForm<CreateWorkOrderValues>({
     resolver: zodResolver(createWorkOrderSchema),
     defaultValues: { workflowId: '', hetId: '', startNow: true, signatureDataUrl: '' },
   });
-  const { control, register, handleSubmit, watch, formState: { errors } } = form;
+  const { control, register, handleSubmit, watch, setValue, setError, formState: { errors } } = form;
   const workflowId = watch('workflowId');
   const hetId = watch('hetId');
   const startNow = watch('startNow');
   const selectedWorkflow = workflows.find((workflow) => workflow.id === workflowId);
   const selectedHet = hets.find((het) => het.id === hetId);
 
+  // A workflow whose first phase is a COLLECTION phase starts HET-less: the HET
+  // is minted by the collection process, so the picker is optional and there is
+  // nothing to start until collection has run.
+  const workflowDetailQuery = useQuery({
+    queryKey: ['workflow', workflowId],
+    queryFn: () => fetchWorkflow(workflowId),
+    enabled: Boolean(workflowId),
+  });
+  const isCollectionStart = workflowDetailQuery.data?.phases?.[0]?.processType === 'COLLECTION';
+  useEffect(() => {
+    if (isCollectionStart) setValue('startNow', false);
+  }, [isCollectionStart, setValue]);
+
   const submit = handleSubmit((values) => {
+    if (!isCollectionStart && !values.hetId) {
+      setError('hetId', { message: 'Select a HET record' });
+      return;
+    }
     onCreate({
       workflowId: values.workflowId,
-      hetId: values.hetId,
-      startNow: values.startNow,
-      signatureDataUrl: values.startNow ? values.signatureDataUrl : undefined,
+      hetId: values.hetId || undefined,
+      startNow: isCollectionStart ? false : values.startNow,
+      signatureDataUrl: !isCollectionStart && values.startNow ? values.signatureDataUrl : undefined,
     });
   });
 
@@ -343,13 +376,13 @@ function CreateWorkOrderForm({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="create-het">HET record</Label>
+          <Label htmlFor="create-het">{isCollectionStart ? 'HET record (minted at collection)' : 'HET record'}</Label>
           <select
             id="create-het"
             className="flex h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs transition-colors focus-visible:border-brand-300 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
             {...register('hetId')}
           >
-            <option value="">Select HET</option>
+            <option value="">{isCollectionStart ? 'No HET — minted at collection' : 'Select HET'}</option>
             {hets.map((het) => (
               <option key={het.id} value={het.id}>
                 {hetLabel(het)}
@@ -377,30 +410,38 @@ function CreateWorkOrderForm({
         </div>
       </div>
 
-      <label className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 text-sm text-gray-700 dark:border-gray-800 dark:text-gray-300">
-        <input
-          type="checkbox"
-          {...register('startNow')}
-          className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
-        />
-        Start first phase immediately after creation
-      </label>
-
-      {startNow && (
-        <div className="space-y-1">
-          <Controller
-            control={control}
-            name="signatureDataUrl"
-            render={({ field }) => <SignaturePad label="Start sign-off" value={field.value} onChange={field.onChange} />}
-          />
-          {errors.signatureDataUrl && <p className="text-sm text-error-500">{errors.signatureDataUrl.message}</p>}
+      {isCollectionStart ? (
+        <div className="rounded-lg border border-success-500/40 bg-success-50 p-3 text-sm text-success-700 dark:bg-success-500/10 dark:text-success-400">
+          This workflow starts at a HET-collection phase. The run is created without a HET; perform collection on the work order to mint the HET before starting production.
         </div>
+      ) : (
+        <>
+          <label className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 text-sm text-gray-700 dark:border-gray-800 dark:text-gray-300">
+            <input
+              type="checkbox"
+              {...register('startNow')}
+              className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+            />
+            Start first phase immediately after creation
+          </label>
+
+          {startNow && (
+            <div className="space-y-1">
+              <Controller
+                control={control}
+                name="signatureDataUrl"
+                render={({ field }) => <SignaturePad label="Start sign-off" value={field.value} onChange={field.onChange} />}
+              />
+              {errors.signatureDataUrl && <p className="text-sm text-error-500">{errors.signatureDataUrl.message}</p>}
+            </div>
+          )}
+        </>
       )}
 
       <SheetFooter className="border-t border-gray-100 px-0 pb-0 dark:border-gray-800">
         <Button type="submit" disabled={creating}>
           <FileSignature className="h-4 w-4" />
-          {startNow ? 'Create and start phase' : 'Create work order'}
+          {!isCollectionStart && startNow ? 'Create and start phase' : 'Create work order'}
         </Button>
       </SheetFooter>
     </form>
@@ -415,6 +456,7 @@ export function WorkOrderWorkspace({
   advancing,
   starting,
   finishing,
+  hidePhaseTimeline = false,
 }: {
   workOrder: WorkOrderSummary;
   onAdvance: (id: string) => void;
@@ -423,9 +465,16 @@ export function WorkOrderWorkspace({
   advancing: boolean;
   starting: boolean;
   finishing: boolean;
+  // The detail page renders the full run chain instead of the compact,
+  // decorative phase-timeline pills, so it hides them here.
+  hidePhaseTimeline?: boolean;
 }) {
   const [startSignature, setStartSignature] = useState('');
   const [finishSignature, setFinishSignature] = useState('');
+  const hasPermission = useAuthStore((state) => state.hasPermission);
+  // start/finish + all phase evidence share workOrder.execute; advance has its own key.
+  const canExecute = hasPermission('workOrder.execute');
+  const canAdvancePermission = hasPermission('workOrder.advance');
   const canAdvance = workOrder.canAdvanceLegacy;
   const canStart = workOrder.lifecycleState === 'NotStarted' && workOrder.operationalStatus !== 'Blocked';
   const canFinish = workOrder.lifecycleState === 'InProgress';
@@ -462,26 +511,28 @@ export function WorkOrderWorkspace({
         </div>
       </div>
 
-      <div>
-        <div className="mb-2 text-sm font-semibold text-gray-800 dark:text-white/90">Phase timeline</div>
-        <div className="grid gap-2 md:grid-cols-5">
-          {workOrder.phaseTimeline?.map((phase) => (
-            <div
-              key={phase.id}
-              className={`rounded-lg border px-3 py-2 text-sm ${
-                phase.state === 'complete'
-                  ? 'border-success-500/30 bg-success-50 text-success-600 dark:border-success-500/30 dark:bg-success-500/10 dark:text-success-500'
-                  : phase.state === 'current'
-                    ? 'border-brand-300 bg-brand-50 text-brand-600 dark:border-brand-500/40 dark:bg-brand-500/10 dark:text-brand-400'
-                    : 'border-gray-200 bg-gray-50 text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400'
-              }`}
-            >
-              <div className="truncate font-medium">{phase.phaseName || phase.phaseShort || `Phase ${phase.sortOrder + 1}`}</div>
-              <div className="mt-1 text-xs capitalize opacity-80">{phase.state}</div>
-            </div>
-          ))}
+      {!hidePhaseTimeline && (
+        <div>
+          <div className="mb-2 text-sm font-semibold text-gray-800 dark:text-white/90">Phase timeline</div>
+          <div className="grid gap-2 md:grid-cols-5">
+            {workOrder.phaseTimeline?.map((phase) => (
+              <div
+                key={phase.id}
+                className={`rounded-lg border px-3 py-2 text-sm ${
+                  phase.state === 'complete'
+                    ? 'border-success-500/30 bg-success-50 text-success-600 dark:border-success-500/30 dark:bg-success-500/10 dark:text-success-500'
+                    : phase.state === 'current'
+                      ? 'border-brand-300 bg-brand-50 text-brand-600 dark:border-brand-500/40 dark:bg-brand-500/10 dark:text-brand-400'
+                      : 'border-gray-200 bg-gray-50 text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400'
+                }`}
+              >
+                <div className="truncate font-medium">{phase.phaseName || phase.phaseShort || `Phase ${phase.sortOrder + 1}`}</div>
+                <div className="mt-1 text-xs capitalize opacity-80">{phase.state}</div>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-3">
         <MetricCard icon={<Boxes className="h-5 w-5" />} label="Serial records" value={`${workOrder.counts?.serials ?? 0}/${workOrder.serialRequiredCount ?? 0}`} />
@@ -518,24 +569,30 @@ export function WorkOrderWorkspace({
         </div>
       )}
 
-      {canStart && <SignaturePad label="Start sign-off" value={startSignature} onChange={setStartSignature} />}
-      {canFinish && <SignaturePad label="Finish sign-off" value={finishSignature} onChange={setFinishSignature} />}
+      {canStart && canExecute && <SignaturePad label="Start sign-off" value={startSignature} onChange={setStartSignature} />}
+      {canFinish && canExecute && <SignaturePad label="Finish sign-off" value={finishSignature} onChange={setFinishSignature} />}
+
+      {((canStart || canFinish) && !canExecute) || (canAdvance && !canAdvancePermission) ? (
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Your role cannot perform this action. Ask an administrator for the required work-order permission.
+        </p>
+      ) : null}
 
       <SheetFooter className="border-t border-gray-100 px-0 pb-0 dark:border-gray-800">
         {!canAdvance && workOrder.legacyStateBucket === '2. Next Phase' ? (
           <Button disabled>Next phase blocked</Button>
         ) : canStart ? (
-          <Button onClick={() => onStart(workOrder.id, startSignature)} disabled={actionPending || !startSignature}>
+          <Button onClick={() => onStart(workOrder.id, startSignature)} disabled={actionPending || !startSignature || !canExecute}>
             <FileSignature className="h-4 w-4" />
             Start phase
           </Button>
         ) : canFinish ? (
-          <Button onClick={() => onFinish(workOrder.id, finishSignature)} disabled={actionPending || !finishSignature}>
+          <Button onClick={() => onFinish(workOrder.id, finishSignature)} disabled={actionPending || !finishSignature || !canExecute}>
             <FileSignature className="h-4 w-4" />
             Finish phase
           </Button>
         ) : (
-          <Button onClick={() => onAdvance(workOrder.id)} disabled={actionPending || !canAdvance}>
+          <Button onClick={() => onAdvance(workOrder.id)} disabled={actionPending || !canAdvance || !canAdvancePermission}>
             Advance phase
             <ArrowRight className="h-4 w-4" />
           </Button>
@@ -548,6 +605,7 @@ export function WorkOrderWorkspace({
 export default function WorkOrdersPage() {
   const queryClient = useQueryClient();
   const { activeWorkflowId } = useWorkflowContext();
+  const canCreate = useAuthStore((state) => state.hasPermission)('workOrder.create');
   const [allLines, setAllLines] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get('wo');
@@ -611,8 +669,8 @@ export default function WorkOrdersPage() {
   };
 
   const createMutation = useMutation({
-    mutationFn: async (payload: { workflowId: string; hetId: string; startNow: boolean; signatureDataUrl?: string }) => {
-      const created = await createWorkOrder({ workflowId: payload.workflowId, hetId: payload.hetId });
+    mutationFn: async (payload: { workflowId: string; hetId?: string; startNow: boolean; signatureDataUrl?: string }) => {
+      const created = await createWorkOrder({ workflowId: payload.workflowId, hetId: payload.hetId || undefined });
       if (payload.startNow) {
         return startWorkOrderPhase(created.id, payload.signatureDataUrl);
       }
@@ -672,10 +730,12 @@ export default function WorkOrdersPage() {
             <Button variant={allLines ? 'default' : 'outline'} onClick={() => setAllLines((value) => !value)}>
               {allLines ? 'Active line' : 'All lines'}
             </Button>
-            <Button onClick={openCreate}>
-              <Plus className="h-4 w-4" />
-              New work order
-            </Button>
+            {canCreate && (
+              <Button onClick={openCreate}>
+                <Plus className="h-4 w-4" />
+                New work order
+              </Button>
+            )}
           </div>
         }
       />

@@ -6,8 +6,10 @@ import DashboardLayout from './components/layout/DashboardLayout';
 import LoginPage from './pages/LoginPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 import DashboardHome from './pages/DashboardHome';
+import ManagerDashboardPage from './pages/ManagerDashboardPage';
 import UsersRolesPage from './pages/UsersRolesPage';
 import WorkflowsPage from './pages/WorkflowsPage';
+import MasterDataPage from './pages/MasterDataPage';
 import WorkOrdersPage from './pages/WorkOrdersPage';
 import WorkOrderDetailPage from './pages/WorkOrderDetailPage';
 import MyQueuePage from './pages/MyQueuePage';
@@ -18,6 +20,8 @@ import CollectionUnitDetailPage from './pages/CollectionUnitDetailPage';
 import HetDetailPage from './pages/HetDetailPage';
 import InventoryPage from './pages/InventoryPage';
 import InventoryLotDetailPage from './pages/InventoryLotDetailPage';
+import LotsPage from './pages/LotsPage';
+import LotBatchRecordPage from './pages/LotBatchRecordPage';
 import TraceabilityPage from './pages/TraceabilityPage';
 import NotFoundPage from './pages/NotFoundPage';
 
@@ -56,6 +60,26 @@ function App() {
               <ProtectedRoute roles={['owner', 'admin']}>
                 <DashboardLayout>
                   <WorkflowsPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/master-data"
+            element={
+              <ProtectedRoute roles={['owner', 'admin']}>
+                <DashboardLayout>
+                  <MasterDataPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/metrics"
+            element={
+              <ProtectedRoute roles={['owner', 'admin', 'production_manager', 'qa_manager']}>
+                <DashboardLayout>
+                  <ManagerDashboardPage />
                 </DashboardLayout>
               </ProtectedRoute>
             }
@@ -156,6 +180,26 @@ function App() {
               <ProtectedRoute>
                 <DashboardLayout>
                   <InventoryPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/lots/:lotNumber"
+            element={
+              <ProtectedRoute roles={['owner', 'admin', 'qa_manager', 'production_manager']}>
+                <DashboardLayout>
+                  <LotBatchRecordPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/lots"
+            element={
+              <ProtectedRoute roles={['owner', 'admin', 'qa_manager', 'production_manager']}>
+                <DashboardLayout>
+                  <LotsPage />
                 </DashboardLayout>
               </ProtectedRoute>
             }

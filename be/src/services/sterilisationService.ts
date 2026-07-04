@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
+import { generatePrefixedId } from '../lib/ids.js';
 import { tenantIdOrDefault } from './tenant.js';
 import { writeAuditLog } from './auditLogService.js';
 
@@ -55,8 +56,9 @@ export async function createSterilisation(
     }
 
     // Sterilise.id has no @default; generate a human-readable id mirroring the
-    // WorkOrder woNumber convention so the sterilisation is addressable.
-    const id = `STER-${Date.now().toString(36).toUpperCase()}`;
+    // WorkOrder woNumber convention (random suffix avoids same-millisecond PK
+    // collisions when several sterilisations are created in one tick).
+    const id = generatePrefixedId('STER');
 
     const created = await tx.sterilise.create({
       data: {

@@ -845,6 +845,13 @@ function WorkflowEditor({ workflowId, onBack }: { workflowId: string; onBack: ()
                       >
                         no-combine
                       </button>
+                      <button
+                        className={`rounded-full border px-2 py-0.5 text-xs ${phase.processType === 'COLLECTION' ? 'border-success-500/40 bg-success-50 text-success-600 dark:bg-success-500/10' : 'border-border text-muted-foreground'}`}
+                        onClick={() => togglePhaseFlag.mutate({ id: phase.id, payload: { processType: phase.processType === 'COLLECTION' ? null : 'COLLECTION' } })}
+                        title="HET-collection phase — the run starts with no HET and the collection process mints one"
+                      >
+                        collection
+                      </button>
                     </div>
                   </TableCell>
                   <TableCell className="text-right"><Badge variant="outline">{phase.steps.length}</Badge></TableCell>

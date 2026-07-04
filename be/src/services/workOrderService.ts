@@ -1,6 +1,8 @@
-import { randomBytes } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { Prisma, type WorkOrder } from '@prisma/client';
+import { releaseStatusSchema } from '@workorder/shared';
 import { prisma } from '../db/prisma.js';
+import { generatePrefixedId } from '../lib/ids.js';
 import { tenantIdOrDefault } from './tenant.js';
 
 /**
@@ -12,7 +14,92 @@ import { tenantIdOrDefault } from './tenant.js';
  * as an opaque 500.
  */
 function generateWoNumber() {
-  return `WO-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString('hex').toUpperCase()}`;
+  return generatePrefixedId('WO');
+}
+
+// Fallback finished-goods lot number when the releasing work order has no
+// manuNumber. Same shape/idiom as generateWoNumber so ids stay roughly
+// sortable and collision-resistant across concurrent releases.
+function generateLotNumber() {
+  return generatePrefixedId('LOT');
+}
+
+/**
+ * Write CONVERSION genealogy edges from each source HET's inventory lot to the
+ * child (finished-goods) lot minted by this run. Idempotent via the
+ * (parent, child, relationshipType) unique triple. A source HET without a lot
+ * is skipped silently — nothing to link. Exported so the C12 combine action
+ * (epic #207) can reuse the exact same edge-writing convention.
+ */
+export async function writeConversionEdges(
+  tx: Prisma.TransactionClient,
+  params: {
+    sourceHetIds: string[];
+    childLotId: string;
+    workOrderId: string;
+    phaseId: string | null;
+    tenantId: string;
+    relationshipType?: string;
+  },
+) {
+  const relationshipType = params.relationshipType ?? 'CONVERSION';
+  const uniqueHetIds = Array.from(new Set(params.sourceHetIds.filter(Boolean)));
+  if (uniqueHetIds.length === 0) return;
+  // One query for every source HET's lot (InventoryLot.hetId is @unique, so ≤1
+  // per HET), then the idempotent upsert loop over the fetched set — no findFirst
+  // round-trip per source HET inside the release transaction.
+  const parentLots = await tx.inventoryLot.findMany({
+    where: { tenantId: params.tenantId, hetId: { in: uniqueHetIds }, deleted: false },
+    select: { id: true },
+  });
+  for (const parentLot of parentLots) {
+    if (parentLot.id === params.childLotId) continue;
+    await tx.inventoryGenealogy.upsert({
+      where: {
+        parentInventoryLotId_childInventoryLotId_relationshipType: {
+          parentInventoryLotId: parentLot.id,
+          childInventoryLotId: params.childLotId,
+          relationshipType,
+        },
+      },
+      create: {
+        tenantId: params.tenantId,
+        parentInventoryLotId: parentLot.id,
+        childInventoryLotId: params.childLotId,
+        relationshipType,
+        workOrderId: params.workOrderId,
+        phaseId: params.phaseId,
+        sourceSystem: 'api',
+      },
+      update: {},
+    });
+  }
+}
+
+/**
+ * Write COMBINATION genealogy edges from each source HET's inventory lot to the
+ * run's primary HET lot when C12 combining attaches source HETs into a batch.
+ * Anchored on the primary HET's lot; if that lot has not been minted yet the
+ * combine still attaches the HETs and the raw-source genealogy is captured later
+ * at release (writeConversionEdges already includes batch HETs as sources).
+ */
+export async function writeCombinationEdges(
+  tx: Prisma.TransactionClient,
+  params: { sourceHetIds: string[]; targetHetId: string; workOrderId: string; phaseId: string | null; tenantId: string },
+) {
+  const targetLot = await tx.inventoryLot.findFirst({
+    where: { tenantId: params.tenantId, hetId: params.targetHetId, deleted: false },
+    select: { id: true },
+  });
+  if (!targetLot) return;
+  await writeConversionEdges(tx, {
+    sourceHetIds: params.sourceHetIds,
+    childLotId: targetLot.id,
+    workOrderId: params.workOrderId,
+    phaseId: params.phaseId,
+    tenantId: params.tenantId,
+    relationshipType: 'COMBINATION',
+  });
 }
 
 export interface CreateWorkOrderInput {
@@ -20,20 +107,24 @@ export interface CreateWorkOrderInput {
   hetId?: string;
 }
 
-type WorkOrderAuditAction =
+export type WorkOrderAuditAction =
   | 'work_order.created'
   | 'work_order.equipment_recorded'
   | 'work_order.photo_evidence_recorded'
   | 'work_order.output_quantity_recorded'
   | 'work_order.release_recorded'
   | 'work_order.serial_recorded'
+  | 'work_order.het_collected'
+  | 'work_order.hets_combined'
+  | 'work_order.evidence_amended'
   | 'work_order.phase_started'
   | 'work_order.phase_finished'
-  | 'work_order.phase_advanced';
+  | 'work_order.phase_advanced'
+  | 'work_order.lot_minted';
 
 const MAX_PHOTO_EVIDENCE_DECODED_BYTES = 5 * 1024 * 1024;
 
-interface WorkOrderAuditState extends Prisma.InputJsonObject {
+export interface WorkOrderAuditState extends Prisma.InputJsonObject {
   id: string;
   tenantId: string;
   workflowId: string | null;
@@ -49,6 +140,7 @@ interface WorkOrderAuditState extends Prisma.InputJsonObject {
   imageCaptured?: boolean | null;
   equipmentCount?: number | null;
   serialCount?: number | null;
+  combinedHetCount?: number | null;
   previousWoId?: string | null;
   nextWorkOrderId?: string | null;
 }
@@ -67,6 +159,7 @@ const workOrderDetailInclude = {
       sortOrder: true,
       isGate: true,
       blocksCombine: true,
+      processType: true,
       steps: { select: { id: true, code: true, name: true, sortOrder: true }, orderBy: { sortOrder: 'asc' as const } },
       bom: { select: { lines: { where: { deleted: false }, select: { id: true, description: true, quantity: true, uom: true, hasSerial: true, inventorySku: { select: { id: true, sku: true, description: true } } } } } },
       phaseEquips: { select: { phaseEquip: { select: { id: true, equipId: true, name: true, description: true } } } },
@@ -101,7 +194,7 @@ const workOrderOperationalInclude = {
       name: true,
       code: true,
       phases: {
-        select: { id: true, phaseName: true, phaseShort: true, sortOrder: true, isGate: true, blocksCombine: true },
+        select: { id: true, phaseName: true, phaseShort: true, sortOrder: true, isGate: true, blocksCombine: true, processType: true },
         orderBy: { sortOrder: 'asc' as const },
       },
     },
@@ -118,7 +211,7 @@ const workOrderWithPhasesInclude = {
   workflow: {
     include: {
       phases: {
-        select: { id: true, phaseName: true, phaseShort: true, sortOrder: true, isGate: true },
+        select: { id: true, phaseName: true, phaseShort: true, sortOrder: true, isGate: true, processType: true },
         orderBy: { sortOrder: 'asc' as const },
       },
     },
@@ -154,7 +247,7 @@ const workOrderAuditSnapshotSelect = {
   imagePath: true,
 } satisfies Prisma.WorkOrderSelect;
 
-function auditState(
+export function auditState(
   workOrder: Pick<
     WorkOrder,
     | 'id'
@@ -239,12 +332,38 @@ function validatePhotoEvidenceDataUrl(imageDataUrl: string) {
   }
 }
 
-function assertCanRecordPhaseEvidence(workOrder: Pick<WorkOrder, 'prodStart'> & { releaseStatus?: string | null }, evidenceName: string) {
+/**
+ * A work order is superseded once it has been advanced past: `advanceWorkOrder`
+ * sets `nextPhaseId` on the completed work order and spawns the next-phase work
+ * order in the same transaction, so `nextPhaseId` is the authoritative in-row
+ * signal that the HET has moved on and this interior record is now history.
+ */
+function isSupersededWorkOrder(workOrder: { nextPhaseId?: string | null }) {
+  return Boolean(workOrder.nextPhaseId);
+}
+
+/**
+ * Interior-work-order immutability lock. Evidence recorders reject once the work
+ * order is superseded (advanced past): a finished, advanced interior work order
+ * is a completed step in the run chain and must not be silently re-edited. The
+ * only correction path is the admin-gated amendment (`amend: true`), which still
+ * writes a `work_order.evidence_amended` audit event — never a silent edit.
+ * Evidence recorded while the phase is still active (started, not yet advanced —
+ * including the finished-but-not-advanced window) is unaffected.
+ */
+function assertCanRecordPhaseEvidence(
+  workOrder: Pick<WorkOrder, 'prodStart'> & { releaseStatus?: string | null; nextPhaseId?: string | null },
+  evidenceName: string,
+  options: { amend?: boolean } = {},
+) {
   if (workOrder.releaseStatus) {
     throw new Error(`cannot record ${evidenceName}: work order already has a release disposition`);
   }
   if (!workOrder.prodStart) {
     throw new Error(`cannot record ${evidenceName}: phase not started`);
+  }
+  if (!options.amend && isSupersededWorkOrder(workOrder)) {
+    throw new Error(`cannot record ${evidenceName}: work order is locked (advanced to the next phase)`);
   }
 }
 
@@ -264,7 +383,7 @@ function positiveDecimalish(value: { toString: () => string } | null | undefined
   }
 }
 
-async function recordWorkOrderAuditEvent(input: {
+export async function recordWorkOrderAuditEvent(input: {
   tenantId: string;
   workOrderId: string;
   action: WorkOrderAuditAction;
@@ -286,13 +405,36 @@ async function recordWorkOrderAuditEvent(input: {
   });
 }
 
+/**
+ * Marker audit event written whenever an admin amends evidence on a superseded
+ * (locked) interior work order, in addition to the specific evidence event. Makes
+ * every correction of a locked record explicit and attributable — never silent.
+ */
+async function recordEvidenceAmendment(
+  tenantId: string,
+  workOrderId: string,
+  actorId: string,
+  evidenceName: string,
+  state: WorkOrderAuditState,
+) {
+  await recordWorkOrderAuditEvent({
+    tenantId,
+    workOrderId,
+    action: 'work_order.evidence_amended',
+    actorId,
+    source: `workOrderService.amendWorkOrderEvidence:${evidenceName}`,
+    previousState: state,
+    newState: state,
+  });
+}
+
 export async function createWorkOrder(input: CreateWorkOrderInput, actorId: string, tenantId?: string | null) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
   const workflow = await prisma.workflow.findFirst({
     where: { id: input.workflowId, tenantId: scopedTenantId },
     include: {
       phases: {
-        select: { id: true, phaseName: true, phaseShort: true, sortOrder: true },
+        select: { id: true, phaseName: true, phaseShort: true, sortOrder: true, processType: true },
         orderBy: { sortOrder: 'asc' },
       },
     },
@@ -376,7 +518,7 @@ function getLifecycleState(workOrder: OperationalWorkOrder, atFinalPhase: boolea
   return 'ReadyToAdvance';
 }
 
-function legacyHetKeys(workOrder: Pick<OperationalWorkOrder, 'hetId' | 'batchHets'>) {
+export function legacyHetKeys(workOrder: { hetId: string | null; batchHets?: { hetId: string }[] }) {
   return Array.from(
     new Set([
       ...(workOrder.hetId ? [workOrder.hetId] : []),
@@ -539,7 +681,12 @@ function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder, context: 
   const evidenceBlockers: string[] = [];
   const legacyState = getLegacyWorkOrderState(workOrder, context, atFinalPhase);
 
-  if (!workOrder.hetId) blockers.push('HET not assigned');
+  // A collection phase starts HET-less by design: the collection process mints
+  // the HET. Surface that as a "Collection required" blocker rather than the
+  // generic "HET not assigned" so the run reads as awaiting collection, not
+  // misconfigured. On any other phase the HET-missing blocker is unchanged.
+  const isCollectionPhase = workOrder.phase?.processType === 'COLLECTION';
+  if (!workOrder.hetId) blockers.push(isCollectionPhase ? 'Collection required' : 'HET not assigned');
   if (workOrder.phase?.isGate && !hasPassingSterilisation) {
     blockers.push('Sterilisation/BET pass required');
   }
@@ -581,6 +728,7 @@ function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder, context: 
     releaseDecisionById: workOrder.releaseDecisionById ?? null,
     releaseRemarks: workOrder.releaseRemarks ?? null,
     lifecycleState,
+    isCollectionPhase,
     operationalStatus: workOrder.releaseStatus ?? (superseded ? 'Completed' : blockers.length ? 'Blocked' : atFinalPhase ? 'ReleasePending' : lifecycleState),
     readinessBlockers: [...blockers, ...evidenceBlockers],
     currentPhaseLabel: workOrder.phase?.phaseName ?? workOrder.phaseShort ?? `Phase ${workOrder.phaseOrder ?? '-'}`,
@@ -594,7 +742,7 @@ function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder, context: 
   };
 }
 
-async function getDecoratedWorkOrderOrThrow(id: string, tenantId?: string | null) {
+export async function getDecoratedWorkOrderOrThrow(id: string, tenantId?: string | null) {
   const workOrder = await prisma.workOrder.findFirstOrThrow({
     where: { id, tenantId: tenantIdOrDefault(tenantId) },
     include: workOrderOperationalInclude,
@@ -677,6 +825,7 @@ export async function recordWorkOrderSerial(
   input: { bomRefId: string; serialNumber: string },
   actorId: string,
   tenantId?: string | null,
+  options: { amend?: boolean } = {},
 ) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
   const workOrder = await prisma.workOrder.findFirst({
@@ -693,6 +842,7 @@ export async function recordWorkOrderSerial(
       prodDuration: true,
       outputQuantity: true,
       releaseStatus: true,
+      nextPhaseId: true,
       phase: {
         select: {
           bom: {
@@ -715,7 +865,7 @@ export async function recordWorkOrderSerial(
       clientVersion: 'unknown',
     });
   }
-  assertCanRecordPhaseEvidence(workOrder, 'serial');
+  assertCanRecordPhaseEvidence(workOrder, 'serial', options);
 
   const requiredBomLine = workOrder.phase?.bom?.lines.find((line) => line.id === input.bomRefId && line.hasSerial);
   if (!requiredBomLine) {
@@ -751,6 +901,7 @@ export async function recordWorkOrderSerial(
     previousState: auditState(workOrder),
     newState: { ...auditState(workOrder), serialCount: workOrder.woSerials.length + (existingSerial ? 0 : 1) },
   });
+  if (options.amend) await recordEvidenceAmendment(scopedTenantId, id, actorId, 'serial', auditState(workOrder));
 
   return getDecoratedWorkOrderOrThrow(id, scopedTenantId);
 }
@@ -760,9 +911,19 @@ export async function recordWorkOrderOutputQuantity(
   input: { outputQuantity: string | number },
   actorId: string,
   tenantId?: string | null,
+  options: { amend?: boolean } = {},
 ) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
-  const outputQuantity = new Prisma.Decimal(input.outputQuantity);
+  // The amend route body accepts any non-empty string for outputQuantity, so a
+  // non-numeric value (e.g. "n/a") would make the Decimal constructor throw a raw
+  // DecimalError that escapes as a 500. Convert it to a domain error both the
+  // /output-quantity and amend routes map to 4xx via the 'cannot record ' prefix.
+  let outputQuantity: Prisma.Decimal;
+  try {
+    outputQuantity = new Prisma.Decimal(input.outputQuantity);
+  } catch {
+    throw new Error('cannot record output quantity: invalid number');
+  }
   if (!outputQuantity.isFinite() || outputQuantity.lte(0)) {
     throw new Error('cannot record output quantity: quantity must be greater than zero');
   }
@@ -781,6 +942,7 @@ export async function recordWorkOrderOutputQuantity(
       prodDuration: true,
       outputQuantity: true,
       releaseStatus: true,
+      nextPhaseId: true,
     },
   });
 
@@ -790,7 +952,7 @@ export async function recordWorkOrderOutputQuantity(
       clientVersion: 'unknown',
     });
   }
-  assertCanRecordPhaseEvidence(workOrder, 'output quantity');
+  assertCanRecordPhaseEvidence(workOrder, 'output quantity', options);
 
   const updated = await updateTenantWorkOrderForAudit(prisma, id, scopedTenantId, {
     outputQuantity,
@@ -806,6 +968,7 @@ export async function recordWorkOrderOutputQuantity(
     previousState: auditState(workOrder),
     newState: auditState(updated),
   });
+  if (options.amend) await recordEvidenceAmendment(scopedTenantId, id, actorId, 'output quantity', auditState(updated));
 
   return getDecoratedWorkOrderOrThrow(id, scopedTenantId);
 }
@@ -815,6 +978,7 @@ export async function recordWorkOrderPhotoEvidence(
   input: { imageDataUrl: string },
   actorId: string,
   tenantId?: string | null,
+  options: { amend?: boolean } = {},
 ) {
   const imageDataUrl = input.imageDataUrl.trim();
   if (!imageDataUrl) {
@@ -838,6 +1002,7 @@ export async function recordWorkOrderPhotoEvidence(
       outputQuantity: true,
       imagePath: true,
       releaseStatus: true,
+      nextPhaseId: true,
     },
   });
 
@@ -847,7 +1012,7 @@ export async function recordWorkOrderPhotoEvidence(
       clientVersion: 'unknown',
     });
   }
-  assertCanRecordPhaseEvidence(workOrder, 'photo evidence');
+  assertCanRecordPhaseEvidence(workOrder, 'photo evidence', options);
 
   const updated = await updateTenantWorkOrderForAudit(prisma, id, scopedTenantId, {
     imagePath: imageDataUrl,
@@ -863,6 +1028,7 @@ export async function recordWorkOrderPhotoEvidence(
     previousState: auditState(workOrder),
     newState: auditState(updated),
   });
+  if (options.amend) await recordEvidenceAmendment(scopedTenantId, id, actorId, 'photo evidence', auditState(updated));
 
   return getDecoratedWorkOrderOrThrow(id, scopedTenantId);
 }
@@ -873,6 +1039,14 @@ export async function recordWorkOrderRelease(
   actorId: string,
   tenantId?: string | null,
 ) {
+  // Validate the disposition at the service boundary, not just the HTTP route,
+  // so programmatic callers (imports, scripts, other services) can't persist a
+  // status outside the closed released|quarantined|rejected set. Mapped to 409
+  // by the route's `cannot release:` handler.
+  if (!releaseStatusSchema.safeParse(input.releaseStatus).success) {
+    throw new Error(`cannot release: invalid release status "${input.releaseStatus}"`);
+  }
+
   const scopedTenantId = tenantIdOrDefault(tenantId);
   const workOrder = await prisma.workOrder.findFirst({
     where: { id, tenantId: scopedTenantId },
@@ -899,13 +1073,98 @@ export async function recordWorkOrderRelease(
     throw new Error(`cannot release: missing ${blockers.join(', ')}`);
   }
 
-  const updated = await prisma.$transaction(async (tx) => {
+  // released -> real available finished-goods lot; quarantined -> the material
+  // physically exists and must stay traceable, so mint the same lot marked
+  // quarantined; rejected -> no lot (scrapped, nothing to hold in inventory).
+  const mintsLot = input.releaseStatus === 'released' || input.releaseStatus === 'quarantined';
+
+  const { updated, newLot } = await prisma.$transaction(async (tx) => {
+    // Serialize the release on the work-order row + status BEFORE minting any lot.
+    // The pre-tx ReleasePending check runs on a snapshot outside the tx; under the
+    // default READ COMMITTED isolation two concurrent releases could both pass it
+    // and each mint a FINISHED_GOOD lot (findFirst-then-create is not atomic and
+    // lotNumber has no unique constraint). This status-scoped guarded update takes
+    // the row lock: the first release proceeds, the second re-evaluates the
+    // `releaseStatus: null` predicate against the now-committed row, matches 0
+    // rows, and aborts before minting a duplicate lot.
+    const claimed = await tx.workOrder.updateMany({
+      where: { id, tenantId: scopedTenantId, releaseStatus: null },
+      data: { updatedById: actorId },
+    });
+    if (claimed.count === 0) {
+      throw new Error('cannot release: work order already has a release disposition');
+    }
+
+    let mintedLot: { id: string; lotNumber: string | null } | null = null;
+    let newLot: { id: string; lotNumber: string | null } | null = null;
+
+    if (mintsLot) {
+      // Idempotency: one finished-goods lot per releasing work order. Query
+      // first inside the tx and reuse it rather than adding a unique constraint
+      // on lotNumber (legacy lotNumber values are not reliably unique).
+      const existing = await tx.inventoryLot.findFirst({
+        where: { tenantId: scopedTenantId, workOrderId: id, inventoryType: 'FINISHED_GOOD' },
+        select: { id: true, lotNumber: true },
+      });
+      if (existing) {
+        mintedLot = existing;
+      } else {
+        // Link the finished lot to the run's HET only if that HET has no lot yet
+        // (InventoryLot.hetId is @unique) — otherwise leave it null so the raw
+        // HET lot stays the genealogy parent, not the finished-goods child.
+        let lotHetId: string | null = null;
+        if (workOrder.hetId) {
+          const hetLot = await tx.inventoryLot.findFirst({ where: { tenantId: scopedTenantId, hetId: workOrder.hetId }, select: { id: true } });
+          if (!hetLot) lotHetId = workOrder.hetId;
+        }
+        const quantity = positiveDecimalish(workOrder.outputQuantity)
+          ? new Prisma.Decimal(workOrder.outputQuantity!.toString())
+          : new Prisma.Decimal(1);
+        mintedLot = await tx.inventoryLot.create({
+          data: {
+            id: randomUUID(),
+            tenantId: scopedTenantId,
+            inventoryType: 'FINISHED_GOOD',
+            status: input.releaseStatus === 'released' ? 'available' : 'quarantined',
+            lotNumber: workOrder.manuNumber || generateLotNumber(),
+            hetId: lotHetId,
+            workOrderId: id,
+            quantityInitial: quantity,
+            quantityCurrent: quantity,
+            sourceSystem: 'api',
+            createdById: actorId,
+            updatedById: actorId,
+          },
+          select: { id: true, lotNumber: true },
+        });
+        newLot = mintedLot;
+        // Genealogy: raw HET lot(s) -> finished lot. Sources = this run's HET
+        // plus any combined batch HETs. Combine edges (each combined HET lot ->
+        // combined output) are out of scope here and land with C12 in #207.
+        await writeConversionEdges(tx, {
+          sourceHetIds: [
+            ...(workOrder.hetId ? [workOrder.hetId] : []),
+            ...workOrder.batchHets.map((batchHet) => batchHet.hetId),
+          ],
+          childLotId: mintedLot.id,
+          workOrderId: id,
+          phaseId: workOrder.phaseId,
+          tenantId: scopedTenantId,
+        });
+      }
+    }
+
     const released = await updateTenantWorkOrderForAudit(tx, id, scopedTenantId, {
       releaseStatus: input.releaseStatus,
       releaseDecisionAt: new Date(),
       releaseDecisionById: actorId,
       releaseRemarks: input.remarks?.trim() || null,
       updatedById: actorId,
+      // Pointer only; the PDF is rendered on demand from the immutable record so
+      // it always reflects the assembled batch record, never a stale snapshot.
+      ...(mintedLot?.lotNumber
+        ? { reportPdfPath: `/api/lots/${encodeURIComponent(mintedLot.lotNumber)}/batch-record.pdf` }
+        : {}),
     });
 
     // A released run consumes its HET: the final (release-phase) work order is
@@ -920,7 +1179,7 @@ export async function recordWorkOrderRelease(
       });
     }
 
-    return released;
+    return { updated: released, newLot };
   });
 
   await recordWorkOrderAuditEvent({
@@ -933,6 +1192,18 @@ export async function recordWorkOrderRelease(
     newState: auditState(updated),
   });
 
+  if (newLot) {
+    await recordWorkOrderAuditEvent({
+      tenantId: scopedTenantId,
+      workOrderId: id,
+      action: 'work_order.lot_minted',
+      actorId,
+      source: 'workOrderService.recordWorkOrderRelease',
+      previousState: null,
+      newState: auditState(updated),
+    });
+  }
+
   return getDecoratedWorkOrderOrThrow(id, scopedTenantId);
 }
 
@@ -941,6 +1212,7 @@ export async function recordWorkOrderEquipment(
   input: { phaseEquipId: string },
   actorId: string,
   tenantId?: string | null,
+  options: { amend?: boolean } = {},
 ) {
   const scopedTenantId = tenantIdOrDefault(tenantId);
   const workOrder = await prisma.workOrder.findFirst({
@@ -957,6 +1229,7 @@ export async function recordWorkOrderEquipment(
       prodDuration: true,
       outputQuantity: true,
       releaseStatus: true,
+      nextPhaseId: true,
       phase: {
         select: {
           phaseEquips: {
@@ -974,7 +1247,7 @@ export async function recordWorkOrderEquipment(
       clientVersion: 'unknown',
     });
   }
-  assertCanRecordPhaseEvidence(workOrder, 'equipment');
+  assertCanRecordPhaseEvidence(workOrder, 'equipment', options);
 
   const allowed = workOrder.phase?.phaseEquips.some((equipment) => equipment.phaseEquipId === input.phaseEquipId);
   if (!allowed) {
@@ -982,16 +1255,22 @@ export async function recordWorkOrderEquipment(
   }
 
   const existing = workOrder.phaseEquips.some((equipment) => equipment.phaseEquipId === input.phaseEquipId);
-  if (existing) {
+  // Non-amend recording is idempotent: an already-recorded equipment is a no-op.
+  // An amend must always leave an audit trail (the evidence + evidence_amended
+  // events below), so it falls through even when the row already exists — but
+  // never re-inserts the join row (which would violate its composite PK).
+  if (existing && !options.amend) {
     return getDecoratedWorkOrderOrThrow(id, scopedTenantId);
   }
 
-  await prisma.workOrderPhaseEquip.create({
-    data: {
-      workOrderId: id,
-      phaseEquipId: input.phaseEquipId,
-    },
-  });
+  if (!existing) {
+    await prisma.workOrderPhaseEquip.create({
+      data: {
+        workOrderId: id,
+        phaseEquipId: input.phaseEquipId,
+      },
+    });
+  }
 
   await recordWorkOrderAuditEvent({
     tenantId: scopedTenantId,
@@ -1000,8 +1279,9 @@ export async function recordWorkOrderEquipment(
     actorId,
     source: 'workOrderService.recordWorkOrderEquipment',
     previousState: auditState(workOrder),
-    newState: { ...auditState(workOrder), equipmentCount: workOrder.phaseEquips.length + 1 },
+    newState: { ...auditState(workOrder), equipmentCount: workOrder.phaseEquips.length + (existing ? 0 : 1) },
   });
+  if (options.amend) await recordEvidenceAmendment(scopedTenantId, id, actorId, 'equipment', auditState(workOrder));
 
   return getDecoratedWorkOrderOrThrow(id, scopedTenantId);
 }
@@ -1157,6 +1437,14 @@ export async function advanceWorkOrder(id: string, actorId: string, tenantId?: s
     throw new Error('work order is at its final phase');
   }
 
+  // Collection gate: a collection phase can only be left once its process has
+  // run — the minted HET and its custody receipt are both attached. Checked
+  // before the generic HET guard so the message names the missing collection,
+  // not a missing HET (which is expected at the start of a collection phase).
+  if (orderedPhases[currentIndex].processType === 'COLLECTION' && (!workOrder.hetId || !workOrder.collectionReceiptId)) {
+    throw new Error('cannot advance: collection not recorded');
+  }
+
   if (!workOrder.hetId) {
     throw new Error('cannot advance: HET not assigned');
   }
@@ -1257,3 +1545,247 @@ export async function advanceWorkOrder(id: string, actorId: string, tenantId?: s
 
   return getDecoratedWorkOrderOrThrow(spawned.id, scopedTenantId);
 }
+
+/**
+ * C12 combine: attach one or more source HETs to a work order as a combined
+ * batch. Valid only while the phase is active (not released, not advanced) and
+ * the phase permits combining (`Phase.blocksCombine` false). Attaching HETs is
+ * what sets the derived combined-batch semantics (`combinedHetCheck`); genealogy
+ * COMBINATION edges anchor each source HET lot to the run's primary HET lot.
+ * Errors map: P2025 -> 404, 'cannot combine:' -> 409, P2002 -> 409.
+ */
+export async function combineHets(workOrderId: string, hetIds: string[], actorId: string, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const uniqueHetIds = Array.from(new Set((hetIds ?? []).filter(Boolean)));
+  if (uniqueHetIds.length === 0) {
+    throw new Error('cannot combine: no HETs provided');
+  }
+
+  const workOrder = await prisma.workOrder.findFirst({
+    where: { id: workOrderId, tenantId: scopedTenantId },
+    select: {
+      id: true,
+      tenantId: true,
+      workflowId: true,
+      phaseId: true,
+      phaseOrder: true,
+      hetId: true,
+      prodStart: true,
+      prodEnd: true,
+      prodDuration: true,
+      outputQuantity: true,
+      releaseStatus: true,
+      nextPhaseId: true,
+      phase: { select: { blocksCombine: true } },
+      batchHets: { select: { hetId: true } },
+    },
+  });
+
+  if (!workOrder) {
+    throw new Prisma.PrismaClientKnownRequestError('Work order not found', {
+      code: 'P2025',
+      clientVersion: 'unknown',
+    });
+  }
+  if (workOrder.releaseStatus) {
+    throw new Error('cannot combine: work order already has a release disposition');
+  }
+  if (isSupersededWorkOrder(workOrder)) {
+    throw new Error('cannot combine: work order is locked (advanced to the next phase)');
+  }
+  if (workOrder.phase?.blocksCombine) {
+    throw new Error('cannot combine: the current phase does not allow combining HETs');
+  }
+
+  // Validate every source HET exists in this tenant before attaching any, so a
+  // bad id fails the whole combine rather than half-attaching.
+  const foundHets = await prisma.het.findMany({
+    where: { id: { in: uniqueHetIds }, tenantId: scopedTenantId, deleted: false },
+    select: { id: true },
+  });
+  if (foundHets.length !== uniqueHetIds.length) {
+    throw new Error('cannot combine: one or more HETs do not exist');
+  }
+
+  // Reject any source HET that is the primary HET of another still-active run
+  // (its own work order, not this one, not advanced, not released). Folding such
+  // a HET in as a batch HET would group its work order into this higher-phase
+  // chain and let buildLegacyWorkOrderContext silently mark it superseded —
+  // permanently locking a run that never advanced, with no audit. A HET with no
+  // active primary run (collection-only, or already advanced/released) stays
+  // combinable.
+  const activePrimaryRuns = await prisma.workOrder.findMany({
+    where: {
+      tenantId: scopedTenantId,
+      deleted: false,
+      hetId: { in: uniqueHetIds },
+      id: { not: workOrderId },
+      releaseStatus: null,
+      nextPhaseId: null,
+    },
+    select: { hetId: true },
+  });
+  if (activePrimaryRuns.length > 0) {
+    const lockedHetId = activePrimaryRuns.find((run) => run.hetId)?.hetId;
+    throw new Error(`cannot combine: HET ${lockedHetId} has its own active run`);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // Serialize against a concurrent release committing in the window between the
+    // pre-tx release/superseded checks and this write: a status-scoped guarded
+    // update that matches 0 rows once the work order has a release disposition,
+    // aborting the combine rather than attaching HETs to a released run.
+    const claimed = await tx.workOrder.updateMany({
+      where: { id: workOrderId, tenantId: scopedTenantId, releaseStatus: null },
+      data: { updatedById: actorId },
+    });
+    if (claimed.count === 0) {
+      throw new Error('cannot combine: work order already released');
+    }
+    await tx.workOrderHet.createMany({
+      data: uniqueHetIds.map((hetId) => ({ workOrderId, hetId })),
+      skipDuplicates: true,
+    });
+    // Genealogy: each source HET lot -> the run's primary HET lot (COMBINATION).
+    // Skips the primary HET itself; a no-op when a source or the primary has no
+    // inventory lot yet (release later writes the raw-source CONVERSION edges).
+    if (workOrder.hetId) {
+      await writeCombinationEdges(tx, {
+        sourceHetIds: uniqueHetIds.filter((hetId) => hetId !== workOrder.hetId),
+        targetHetId: workOrder.hetId,
+        workOrderId,
+        phaseId: workOrder.phaseId,
+        tenantId: scopedTenantId,
+      });
+    }
+  });
+
+  const previousHetCount = workOrder.batchHets.length;
+  await recordWorkOrderAuditEvent({
+    tenantId: scopedTenantId,
+    workOrderId,
+    action: 'work_order.hets_combined',
+    actorId,
+    source: 'workOrderService.combineHets',
+    previousState: { ...auditState(workOrder), combinedHetCount: previousHetCount },
+    newState: {
+      ...auditState(workOrder),
+      combinedHetCount: new Set([...workOrder.batchHets.map((batchHet) => batchHet.hetId), ...uniqueHetIds]).size,
+    },
+  });
+
+  return getDecoratedWorkOrderOrThrow(workOrderId, scopedTenantId);
+}
+
+export type AmendEvidenceInput =
+  | { kind: 'serial'; bomRefId: string; serialNumber: string }
+  | { kind: 'output-quantity'; outputQuantity: string | number }
+  | { kind: 'photo'; imageDataUrl: string }
+  | { kind: 'equipment'; phaseEquipId: string };
+
+/**
+ * Admin-gated amendment of evidence on a locked (superseded) interior work order.
+ * Routes to the matching evidence recorder with the immutability lock bypassed;
+ * each recorder still writes both its specific evidence event and a
+ * `work_order.evidence_amended` marker. The admin/owner role gate lives on the
+ * route — the service is the single amendment entry point.
+ */
+export async function amendWorkOrderEvidence(
+  id: string,
+  input: AmendEvidenceInput,
+  actorId: string,
+  tenantId?: string | null,
+) {
+  switch (input.kind) {
+    case 'serial':
+      return recordWorkOrderSerial(id, { bomRefId: input.bomRefId, serialNumber: input.serialNumber }, actorId, tenantId, { amend: true });
+    case 'output-quantity':
+      return recordWorkOrderOutputQuantity(id, { outputQuantity: input.outputQuantity }, actorId, tenantId, { amend: true });
+    case 'photo':
+      return recordWorkOrderPhotoEvidence(id, { imageDataUrl: input.imageDataUrl }, actorId, tenantId, { amend: true });
+    case 'equipment':
+      return recordWorkOrderEquipment(id, { phaseEquipId: input.phaseEquipId }, actorId, tenantId, { amend: true });
+  }
+}
+
+const runChainStaffRef = { select: { id: true, name: true, email: true } } as const;
+
+const runChainWoSelect = {
+  id: true,
+  woNumber: true,
+  phaseId: true,
+  phaseOrder: true,
+  prodStart: true,
+  prodEnd: true,
+  prodDuration: true,
+  outputQuantity: true,
+  imagePath: true,
+  releaseStatus: true,
+  releaseDecisionAt: true,
+  createdAt: true,
+  phase: { select: { id: true, phaseName: true, phaseShort: true, sortOrder: true, isGate: true } },
+  startSignBy: runChainStaffRef,
+  endSignBy: runChainStaffRef,
+  releaseDecisionBy: runChainStaffRef,
+  _count: { select: { woSerials: true, phaseEquips: true, sterilises: true } },
+} satisfies Prisma.WorkOrderSelect;
+
+export function runChainSigner(staff: { id: string; name: string | null; email: string } | null) {
+  return staff?.name || staff?.email || staff?.id || null;
+}
+
+/**
+ * The real per-phase run chain for a work order: every work order carrying the
+ * same HET (directly or as a batch HET), ordered first phase -> latest, each with
+ * its phase, timestamps, and evidence/signature presence. Replaces the decorative
+ * phaseTimeline for the WO-detail history walk. Returns null if the WO is missing.
+ */
+export async function getWorkOrderRunChain(id: string, tenantId?: string | null) {
+  const scopedTenantId = tenantIdOrDefault(tenantId);
+  const workOrder = await prisma.workOrder.findFirst({
+    where: { id, tenantId: scopedTenantId },
+    select: { id: true, hetId: true, batchHets: { select: { hetId: true } } },
+  });
+  if (!workOrder) return null;
+
+  const hetIds = legacyHetKeys(workOrder);
+  const chain = hetIds.length
+    ? await prisma.workOrder.findMany({
+        where: {
+          tenantId: scopedTenantId,
+          deleted: false,
+          OR: [{ hetId: { in: hetIds } }, { batchHets: { some: { hetId: { in: hetIds } } } }],
+        },
+        select: runChainWoSelect,
+      })
+    : [await prisma.workOrder.findFirstOrThrow({ where: { id, tenantId: scopedTenantId }, select: runChainWoSelect })];
+
+  const ordered = chain.sort(
+    (a, b) => (a.phaseOrder ?? 0) - (b.phaseOrder ?? 0) || a.createdAt.getTime() - b.createdAt.getTime(),
+  );
+
+  return {
+    workOrderId: id,
+    hetId: workOrder.hetId,
+    workOrders: ordered.map((wo) => ({
+      workOrderId: wo.id,
+      woNumber: wo.woNumber,
+      phase: wo.phase,
+      phaseOrder: wo.phaseOrder,
+      prodStart: wo.prodStart,
+      prodEnd: wo.prodEnd,
+      prodDuration: wo.prodDuration,
+      outputQuantity: wo.outputQuantity,
+      releaseStatus: wo.releaseStatus,
+      releaseDecisionAt: wo.releaseDecisionAt,
+      hasPhoto: Boolean(wo.imagePath),
+      startSignature: wo.startSignBy ? { signer: runChainSigner(wo.startSignBy), at: wo.prodStart } : null,
+      endSignature: wo.endSignBy ? { signer: runChainSigner(wo.endSignBy), at: wo.prodEnd } : null,
+      releaseSignature: wo.releaseDecisionBy ? { signer: runChainSigner(wo.releaseDecisionBy), at: wo.releaseDecisionAt } : null,
+      counts: { serials: wo._count.woSerials, equipment: wo._count.phaseEquips, sterilisations: wo._count.sterilises },
+      isCurrent: wo.id === id,
+    })),
+  };
+}
+
+export type WorkOrderRunChain = NonNullable<Awaited<ReturnType<typeof getWorkOrderRunChain>>>;

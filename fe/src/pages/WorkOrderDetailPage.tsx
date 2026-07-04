@@ -12,8 +12,11 @@ import {
   GitBranch,
   History,
   ImageUp,
+  Layers,
+  Lock,
   PackageSearch,
   ShieldCheck,
+  Workflow as WorkflowIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,23 +28,31 @@ import { SummaryStrip, GenealogyCard } from '@/components/detail';
 import { humanStatus, hasValue, toneToBadgeVariant } from '@/lib/format';
 import {
   advanceWorkOrder,
+  amendWorkOrderEvidence,
+  combineWorkOrderHets,
   fetchWorkOrder,
   fetchWorkOrderAuditEvents,
+  fetchWorkOrderChain,
   fetchWorkOrderInventoryTrace,
   finishWorkOrderPhase,
+  recordHetCollection,
   recordWorkOrderEquipment,
   recordWorkOrderOutputQuantity,
   recordWorkOrderPhotoEvidence,
   recordWorkOrderRelease,
   recordWorkOrderSerial,
   startWorkOrderPhase,
+  type RecordHetCollectionPayload,
   type WorkOrderAuditEvent,
   type WorkOrderAllowedEquipment,
   type WorkOrderDetail,
   type WorkOrderRequiredSerial,
 } from '@/lib/work-orders-api';
+import { fetchHets } from '@/lib/hets-api';
+import { fetchCollectionPoints } from '@/lib/procurement-api';
 import { workflowLabel } from '@/lib/work-order-ui';
-import { WorkOrderWorkspace } from './WorkOrdersPage';
+import { useAuthStore } from '@/store/authStore';
+import { SignaturePad, WorkOrderWorkspace } from './WorkOrdersPage';
 
 const MAX_PHOTO_EVIDENCE_BYTES = 5 * 1024 * 1024;
 
@@ -125,9 +136,11 @@ function equipmentLabel(equipment: WorkOrderAllowedEquipment) {
 function ReleaseDispositionPanel({
   workOrder,
   onSaved,
+  disabled = false,
 }: {
   workOrder: WorkOrderDetail;
   onSaved: (updated: WorkOrderDetail) => void;
+  disabled?: boolean;
 }) {
   const [releaseStatus, setReleaseStatus] = useState<'released' | 'quarantined' | 'rejected'>('released');
   const [remarks, setRemarks] = useState('');
@@ -197,8 +210,116 @@ function ReleaseDispositionPanel({
                 placeholder={canRecord ? 'Release notes or quarantine/rejection reason' : 'Work order must be in final release readiness before disposition.'}
               />
             </div>
-            <Button type="submit" disabled={!canRecord || releaseMutation.isPending}>
+            <Button type="submit" disabled={disabled || !canRecord || releaseMutation.isPending}>
               Record disposition
+            </Button>
+          </form>
+        )}
+      </div>
+    </AdminPanel>
+  );
+}
+
+function CollectionProcessPanel({
+  workOrder,
+  onSaved,
+  disabled = false,
+}: {
+  workOrder: WorkOrderDetail;
+  onSaved: (updated: WorkOrderDetail) => void;
+  disabled?: boolean;
+}) {
+  const [collectionPointId, setCollectionPointId] = useState('');
+  const [lotNumber, setLotNumber] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [parcelTrackingNumber, setParcelTrackingNumber] = useState('');
+  const [signature, setSignature] = useState('');
+
+  const alreadyCollected = Boolean(workOrder.hetId);
+
+  const pointsQuery = useQuery({
+    queryKey: ['collection-points'],
+    queryFn: () => fetchCollectionPoints(),
+    enabled: !alreadyCollected,
+  });
+  const collectionPoints = pointsQuery.data ?? [];
+
+  const collectMutation = useMutation({
+    mutationFn: () => {
+      const payload: RecordHetCollectionPayload = { collectionPointId };
+      const qty = Number(quantity);
+      if (quantity.trim() && Number.isFinite(qty) && qty > 0) payload.quantity = Math.trunc(qty);
+      if (lotNumber.trim()) payload.lotNumber = lotNumber.trim();
+      if (parcelTrackingNumber.trim()) payload.parcelTrackingNumber = parcelTrackingNumber.trim();
+      if (signature) payload.signatureDataUrl = signature;
+      return recordHetCollection(workOrder.id, payload);
+    },
+    onSuccess: (updated) => {
+      onSaved(updated);
+      toast.success('HET collected');
+    },
+    onError: (e: AxiosError<{ error?: string }>) =>
+      toast.error(e.response?.data?.error || 'Failed to record HET collection'),
+  });
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!collectionPointId) return;
+    collectMutation.mutate();
+  };
+
+  return (
+    <AdminPanel title="HET collection" description="Perform collection at this phase to mint the HET and start the run.">
+      <div className="grid gap-4 xl:grid-cols-[280px_1fr] xl:items-start">
+        <MetricCard
+          icon={<Boxes className="h-5 w-5" />}
+          label="Collected HET"
+          value={workOrder.het?.hetNumber || (alreadyCollected ? workOrder.hetId : 'Not collected')}
+          detail={alreadyCollected ? workOrder.het?.clinicName || 'HET minted at collection' : 'Awaiting collection'}
+        />
+        {alreadyCollected ? (
+          <div className="rounded-lg border border-gray-200 p-4 text-sm dark:border-gray-800">
+            <div className="font-medium text-gray-800 dark:text-white/90">HET minted at collection</div>
+            <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {workOrder.het?.hetNumber || workOrder.hetId} · {workOrder.het?.clinicName || 'Clinic on receipt'}
+            </div>
+            <div className="mt-3 text-gray-600 dark:text-gray-300">Advance the run to continue into production.</div>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="collection-point">Collection point</Label>
+              <select
+                id="collection-point"
+                value={collectionPointId}
+                onChange={(event) => setCollectionPointId(event.target.value)}
+                className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              >
+                <option value="">Select collection point</option>
+                {collectionPoints.map((point) => (
+                  <option key={point.id} value={point.id}>
+                    {point.displayName || point.hciCode || point.id}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="collection-lot">Lot number</Label>
+                <Input id="collection-lot" value={lotNumber} onChange={(event) => setLotNumber(event.target.value)} placeholder="Clinic lot / HET number" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="collection-qty">Quantity</Label>
+                <Input id="collection-qty" type="number" min={1} value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="1" />
+              </div>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="collection-parcel">Parcel tracking</Label>
+              <Input id="collection-parcel" value={parcelTrackingNumber} onChange={(event) => setParcelTrackingNumber(event.target.value)} placeholder="Courier tracking number" />
+            </div>
+            <SignaturePad label="Custody sign-off (optional)" value={signature} onChange={setSignature} />
+            <Button type="submit" disabled={disabled || !collectionPointId || collectMutation.isPending}>
+              Record collection &amp; mint HET
             </Button>
           </form>
         )}
@@ -210,16 +331,23 @@ function ReleaseDispositionPanel({
 function PhotoEvidencePanel({
   workOrder,
   onSaved,
+  disabled = false,
+  amend = false,
 }: {
   workOrder: WorkOrderDetail;
   onSaved: (updated: WorkOrderDetail) => void;
+  disabled?: boolean;
+  amend?: boolean;
 }) {
   const [imageDataUrl, setImageDataUrl] = useState('');
   const [fileName, setFileName] = useState('');
   const preview = imageDataUrl || workOrder.imagePath || '';
 
   const photoMutation = useMutation({
-    mutationFn: () => recordWorkOrderPhotoEvidence(workOrder.id, { imageDataUrl }),
+    mutationFn: () =>
+      amend
+        ? amendWorkOrderEvidence(workOrder.id, { kind: 'photo', imageDataUrl })
+        : recordWorkOrderPhotoEvidence(workOrder.id, { imageDataUrl }),
     onSuccess: (updated) => {
       onSaved(updated);
       setImageDataUrl('');
@@ -288,8 +416,8 @@ function PhotoEvidencePanel({
               {fileName || (workOrder.imagePath ? 'Photo evidence already recorded' : 'No photo evidence recorded')}
             </div>
           </div>
-          <Button type="submit" disabled={!imageDataUrl || photoMutation.isPending}>
-            Record
+          <Button type="submit" disabled={disabled || !imageDataUrl || photoMutation.isPending}>
+            {amend ? 'Amend' : 'Record'}
           </Button>
         </form>
       </div>
@@ -300,9 +428,13 @@ function PhotoEvidencePanel({
 function EquipmentEvidencePanel({
   workOrder,
   onSaved,
+  disabled = false,
+  amend = false,
 }: {
   workOrder: WorkOrderDetail;
   onSaved: (updated: WorkOrderDetail) => void;
+  disabled?: boolean;
+  amend?: boolean;
 }) {
   const [phaseEquipId, setPhaseEquipId] = useState('');
   const missingEquipment = useMemo(
@@ -312,7 +444,10 @@ function EquipmentEvidencePanel({
   const selectedPhaseEquipId = phaseEquipId || missingEquipment[0]?.phaseEquipId || '';
 
   const equipmentMutation = useMutation({
-    mutationFn: () => recordWorkOrderEquipment(workOrder.id, { phaseEquipId: selectedPhaseEquipId }),
+    mutationFn: () =>
+      amend
+        ? amendWorkOrderEvidence(workOrder.id, { kind: 'equipment', phaseEquipId: selectedPhaseEquipId })
+        : recordWorkOrderEquipment(workOrder.id, { phaseEquipId: selectedPhaseEquipId }),
     onSuccess: (updated) => {
       onSaved(updated);
       setPhaseEquipId('');
@@ -352,8 +487,8 @@ function EquipmentEvidencePanel({
                 ))}
               </select>
             </div>
-            <Button type="submit" disabled={!selectedPhaseEquipId || equipmentMutation.isPending}>
-              Record
+            <Button type="submit" disabled={disabled || !selectedPhaseEquipId || equipmentMutation.isPending}>
+              {amend ? 'Amend' : 'Record'}
             </Button>
           </form>
 
@@ -391,14 +526,21 @@ function EquipmentEvidencePanel({
 function OutputEvidencePanel({
   workOrder,
   onSaved,
+  disabled = false,
+  amend = false,
 }: {
   workOrder: WorkOrderDetail;
   onSaved: (updated: WorkOrderDetail) => void;
+  disabled?: boolean;
+  amend?: boolean;
 }) {
   const [outputQuantity, setOutputQuantity] = useState(workOrder.outputQuantity ? String(workOrder.outputQuantity) : '');
 
   const outputMutation = useMutation({
-    mutationFn: () => recordWorkOrderOutputQuantity(workOrder.id, { outputQuantity: outputQuantity.trim() }),
+    mutationFn: () =>
+      amend
+        ? amendWorkOrderEvidence(workOrder.id, { kind: 'output-quantity', outputQuantity: outputQuantity.trim() })
+        : recordWorkOrderOutputQuantity(workOrder.id, { outputQuantity: outputQuantity.trim() }),
     onSuccess: (updated) => {
       onSaved(updated);
       setOutputQuantity(updated.outputQuantity ? String(updated.outputQuantity) : '');
@@ -431,8 +573,8 @@ function OutputEvidencePanel({
               placeholder="1.0000"
             />
           </div>
-          <Button type="submit" disabled={!outputQuantity.trim() || outputMutation.isPending}>
-            Record
+          <Button type="submit" disabled={disabled || !outputQuantity.trim() || outputMutation.isPending}>
+            {amend ? 'Amend' : 'Record'}
           </Button>
         </form>
       </div>
@@ -447,9 +589,13 @@ function serialLabel(serial: WorkOrderRequiredSerial) {
 function SerialEvidencePanel({
   workOrder,
   onSaved,
+  disabled = false,
+  amend = false,
 }: {
   workOrder: WorkOrderDetail;
   onSaved: (updated: WorkOrderDetail) => void;
+  disabled?: boolean;
+  amend?: boolean;
 }) {
   const [bomRefId, setBomRefId] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
@@ -460,7 +606,10 @@ function SerialEvidencePanel({
   const selectedBomRefId = bomRefId || missingSerials[0]?.bomRefId || workOrder.requiredSerials[0]?.bomRefId || '';
 
   const serialMutation = useMutation({
-    mutationFn: () => recordWorkOrderSerial(workOrder.id, { bomRefId: selectedBomRefId, serialNumber: serialNumber.trim() }),
+    mutationFn: () =>
+      amend
+        ? amendWorkOrderEvidence(workOrder.id, { kind: 'serial', bomRefId: selectedBomRefId, serialNumber: serialNumber.trim() })
+        : recordWorkOrderSerial(workOrder.id, { bomRefId: selectedBomRefId, serialNumber: serialNumber.trim() }),
     onSuccess: (updated) => {
       onSaved(updated);
       setBomRefId('');
@@ -508,8 +657,8 @@ function SerialEvidencePanel({
                 placeholder="SN-AMG-1001"
               />
             </div>
-            <Button type="submit" disabled={!selectedBomRefId || !serialNumber.trim() || serialMutation.isPending}>
-              Record
+            <Button type="submit" disabled={disabled || !selectedBomRefId || !serialNumber.trim() || serialMutation.isPending}>
+              {amend ? 'Amend' : 'Record'}
             </Button>
           </form>
 
@@ -554,10 +703,194 @@ function SerialEvidencePanel({
   );
 }
 
+function RunChainPanel({ workOrderId }: { workOrderId: string }) {
+  const chainQuery = useQuery({
+    queryKey: ['work-order-chain', workOrderId],
+    queryFn: () => fetchWorkOrderChain(workOrderId),
+    enabled: Boolean(workOrderId),
+  });
+
+  return (
+    <AdminPanel title="Run chain" description="Per-phase history for this HET run — each phase links to its work order with evidence, timestamps, and signatures.">
+      {chainQuery.isLoading ? (
+        <div className="flex h-24 items-center justify-center">
+          <div className="h-7 w-7 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+        </div>
+      ) : chainQuery.isError || !chainQuery.data?.workOrders.length ? (
+        <EmptyState icon={<WorkflowIcon className="h-6 w-6" />} title="No run chain" description="This run has no linked phase history yet." />
+      ) : (
+        <ol className="space-y-2">
+          {chainQuery.data.workOrders.map((entry, index) => (
+            <li
+              key={entry.workOrderId}
+              className={`rounded-lg border p-3 ${
+                entry.isCurrent
+                  ? 'border-brand-300 bg-brand-50 dark:border-brand-500/40 dark:bg-brand-500/10'
+                  : 'border-gray-200 dark:border-gray-800'
+              }`}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-gray-800 dark:text-white/90">
+                    {index + 1}. {entry.phase?.phaseName || entry.phase?.phaseShort || `Phase ${(entry.phaseOrder ?? 0) + 1}`}
+                    {entry.phase?.isGate && (
+                      <span className="ml-2 rounded bg-warning-50 px-1.5 py-0.5 text-[10px] font-medium text-warning-600 dark:bg-warning-500/10 dark:text-warning-500">
+                        Gate
+                      </span>
+                    )}
+                  </div>
+                  {entry.isCurrent ? (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{entry.woNumber || entry.workOrderId} (this work order)</span>
+                  ) : (
+                    <Link
+                      to={`/dashboard/work-orders/${encodeURIComponent(entry.workOrderId)}`}
+                      className="text-xs text-brand-600 hover:underline dark:text-brand-400"
+                    >
+                      {entry.woNumber || entry.workOrderId}
+                    </Link>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {entry.isCurrent && <StatusPill tone="brand">Current</StatusPill>}
+                  {entry.releaseStatus && (
+                    <StatusPill tone={entry.releaseStatus === 'released' ? 'success' : 'warning'}>{entry.releaseStatus}</StatusPill>
+                  )}
+                </div>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+                <span>Start {formatDate(entry.prodStart)}</span>
+                <span>End {formatDate(entry.prodEnd)}</span>
+                <span>{formatDurationMinutes(entry.prodDuration)}</span>
+                <span>Output {formatQuantity(entry.outputQuantity)}</span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1 text-[10px]">
+                {entry.hasPhoto && (
+                  <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600 dark:bg-white/[0.06] dark:text-gray-300">Photo</span>
+                )}
+                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600 dark:bg-white/[0.06] dark:text-gray-300">{entry.counts.serials} serials</span>
+                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600 dark:bg-white/[0.06] dark:text-gray-300">{entry.counts.equipment} equipment</span>
+                {entry.counts.sterilisations > 0 && (
+                  <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600 dark:bg-white/[0.06] dark:text-gray-300">
+                    {entry.counts.sterilisations} sterilisation
+                  </span>
+                )}
+                {entry.startSignature?.signer && (
+                  <span className="rounded bg-success-50 px-1.5 py-0.5 text-success-600 dark:bg-success-500/10 dark:text-success-500">
+                    Start ✓ {entry.startSignature.signer}
+                  </span>
+                )}
+                {entry.endSignature?.signer && (
+                  <span className="rounded bg-success-50 px-1.5 py-0.5 text-success-600 dark:bg-success-500/10 dark:text-success-500">
+                    End ✓ {entry.endSignature.signer}
+                  </span>
+                )}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </AdminPanel>
+  );
+}
+
+function CombinePanel({ workOrder, onSaved }: { workOrder: WorkOrderDetail; onSaved: (updated: WorkOrderDetail) => void }) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const hetsQuery = useQuery({ queryKey: ['hets'], queryFn: fetchHets });
+  const combinedIds = useMemo(() => new Set(workOrder.batchHets.map((batchHet) => batchHet.hetId)), [workOrder.batchHets]);
+  const available = useMemo(
+    () => (hetsQuery.data ?? []).filter((het) => !het.deleted && het.id !== workOrder.hetId && !combinedIds.has(het.id)),
+    [hetsQuery.data, workOrder.hetId, combinedIds],
+  );
+
+  const combineMutation = useMutation({
+    mutationFn: () => combineWorkOrderHets(workOrder.id, selected),
+    onSuccess: (updated) => {
+      onSaved(updated);
+      setSelected([]);
+      toast.success('Source HETs combined into the batch');
+    },
+    onError: (e: AxiosError<{ error?: string }>) => toast.error(e.response?.data?.error || 'Failed to combine HETs'),
+  });
+
+  const toggle = (hetId: string) =>
+    setSelected((prev) => (prev.includes(hetId) ? prev.filter((value) => value !== hetId) : [...prev, hetId]));
+
+  return (
+    <AdminPanel title="Combine HETs (C12)" description="Attach source HETs to this run as a combined batch. Combined batches are visibly listed and genealogy-linked.">
+      <div className="space-y-4">
+        <div>
+          <div className="mb-1.5 text-sm font-medium text-gray-800 dark:text-white/90">Combined batch</div>
+          {workOrder.batchHets.length ? (
+            <div className="flex flex-wrap gap-1.5">
+              {workOrder.batchHets.map((batchHet) => (
+                <span
+                  key={batchHet.hetId}
+                  className="inline-flex items-center gap-1 rounded bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-600 dark:bg-brand-500/10 dark:text-brand-400"
+                >
+                  <Layers className="h-3 w-3" />
+                  {batchHet.hetId}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground">No source HETs combined yet.</div>
+          )}
+        </div>
+
+        <div className="grid gap-1.5">
+          <Label>Add source HETs</Label>
+          <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-gray-200 p-2 dark:border-gray-800">
+            {hetsQuery.isLoading ? (
+              <div className="p-2 text-xs text-muted-foreground">Loading HETs…</div>
+            ) : available.length ? (
+              available.map((het) => (
+                <label
+                  key={het.id}
+                  className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-white/[0.03]"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(het.id)}
+                    onChange={() => toggle(het.id)}
+                    className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+                  />
+                  <span className="truncate">
+                    {het.hetNumber || het.id}
+                    {het.clinicName ? ` · ${het.clinicName}` : ''}
+                  </span>
+                </label>
+              ))
+            ) : (
+              <div className="p-2 text-xs text-muted-foreground">No other HETs available to combine.</div>
+            )}
+          </div>
+        </div>
+
+        <Button onClick={() => combineMutation.mutate()} disabled={!selected.length || combineMutation.isPending}>
+          <Boxes className="h-4 w-4" />
+          Combine {selected.length || ''} HET{selected.length === 1 ? '' : 's'}
+        </Button>
+      </div>
+    </AdminPanel>
+  );
+}
+
 export default function WorkOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const hasPermission = useAuthStore((state) => state.hasPermission);
+  // Evidence recorders all require workOrder.execute; release and collect have
+  // their own keys. Panels below are disabled (not hidden) so recorded evidence
+  // stays visible to read-only roles.
+  const canExecute = hasPermission('workOrder.execute');
+  const canRelease = hasPermission('workOrder.release');
+  const canCollect = hasPermission('workOrder.collect');
+  const canCombine = hasPermission('workOrder.combine');
+  // Amending locked interior evidence requires an admin/owner role on top of the
+  // execute permission (matches the backend amend-evidence route gate).
+  const roleKey = useAuthStore((state) => state.user?.role?.key);
+  const isAdmin = roleKey === 'admin' || roleKey === 'owner';
 
   const workOrderQuery = useQuery({
     queryKey: ['work-order', id],
@@ -583,6 +916,9 @@ export default function WorkOrderDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['qa-queue'] });
     queryClient.invalidateQueries({ queryKey: ['work-order-inventory-trace', updated.id] });
     queryClient.invalidateQueries({ queryKey: ['work-order-audit-events', updated.id] });
+    queryClient.invalidateQueries({ queryKey: ['work-order-chain', updated.id] });
+    // A release mints a FINISHED_GOOD lot; keep the finished-goods list fresh.
+    queryClient.invalidateQueries({ queryKey: ['finished-goods-lots'] });
   };
 
   const startMutation = useMutation({
@@ -632,6 +968,9 @@ export default function WorkOrderDetailPage() {
       // Advancing completes this work order and initialises the next phase as a
       // new one — follow the chain to the spawned work order.
       queryClient.invalidateQueries({ queryKey: ['work-order', id] });
+      // updateCachedWorkOrder refreshes the spawned WO's chain; the source WO's
+      // run-chain also gained the new leg, so invalidate it too.
+      queryClient.invalidateQueries({ queryKey: ['work-order-chain', id] });
       toast.success(`Advanced to ${workOrderTitle(updated)}`);
       if (updated.id !== id) {
         navigate(`/dashboard/work-orders/${updated.id}`);
@@ -672,6 +1011,22 @@ export default function WorkOrderDetailPage() {
   const workOrder = workOrderQuery.data;
   const trace = traceQuery.data;
 
+  // A superseded interior work order (the HET advanced past this phase) is
+  // locked: its evidence is history. It renders read-only for everyone; an admin
+  // can still amend through the audited amendment path.
+  const isLocked = workOrder.lifecycleState === 'Completed';
+  const evidenceDisabled = !canExecute || (isLocked && !isAdmin);
+  const evidenceAmend = isLocked && isAdmin;
+  // Combine is offered only where it is actually valid: an active (not locked,
+  // not released) run with a HET, on a phase that permits combining.
+  const combineApplicable =
+    canCombine &&
+    Boolean(workOrder.hetId) &&
+    !workOrder.phase?.blocksCombine &&
+    !isLocked &&
+    !workOrder.releaseStatus &&
+    !workOrder.isCollectionPhase;
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -706,6 +1061,18 @@ export default function WorkOrderDetailPage() {
         ]}
       />
 
+      {isLocked && (
+        <div className="flex items-start gap-2 rounded-lg border border-gray-300 bg-gray-50 p-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-white/[0.03] dark:text-gray-300">
+          <Lock className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            This is a completed step in the run chain — the HET has advanced to a later phase, so its evidence is locked.
+            {isAdmin
+              ? ' As an admin you can amend recorded evidence; every amendment is captured in the audit trail.'
+              : ' Evidence is read-only. An administrator can record an audited amendment if a correction is needed.'}
+          </span>
+        </div>
+      )}
+
       <AdminPanel title="Production execution" description="Controlled phase actions, readiness gates, evidence counts, and workflow timeline for this production run.">
         <WorkOrderWorkspace
           workOrder={workOrder}
@@ -715,20 +1082,56 @@ export default function WorkOrderDetailPage() {
           advancing={advanceMutation.isPending}
           starting={startMutation.isPending}
           finishing={finishMutation.isPending}
+          hidePhaseTimeline
         />
       </AdminPanel>
 
+      <RunChainPanel workOrderId={workOrder.id} />
+
+      {combineApplicable && <CombinePanel workOrder={workOrder} onSaved={updateCachedWorkOrder} />}
+
+      {workOrder.isCollectionPhase && (
+        <CollectionProcessPanel workOrder={workOrder} onSaved={updateCachedWorkOrder} disabled={!canCollect} />
+      )}
+
       <GenealogyCard genealogy={trace?.genealogy ?? []} lots={trace?.lots ?? []} />
 
-      <OutputEvidencePanel key={workOrder.id} workOrder={workOrder} onSaved={recordOutputSaved} />
+      <OutputEvidencePanel key={workOrder.id} workOrder={workOrder} onSaved={recordOutputSaved} disabled={evidenceDisabled} amend={evidenceAmend} />
 
-      <PhotoEvidencePanel workOrder={workOrder} onSaved={recordPhotoSaved} />
+      <PhotoEvidencePanel workOrder={workOrder} onSaved={recordPhotoSaved} disabled={evidenceDisabled} amend={evidenceAmend} />
 
-      <ReleaseDispositionPanel workOrder={workOrder} onSaved={recordReleaseSaved} />
+      <ReleaseDispositionPanel workOrder={workOrder} onSaved={recordReleaseSaved} disabled={!canRelease} />
 
-      <EquipmentEvidencePanel workOrder={workOrder} onSaved={recordEquipmentSaved} />
+      <EquipmentEvidencePanel workOrder={workOrder} onSaved={recordEquipmentSaved} disabled={evidenceDisabled} amend={evidenceAmend} />
 
-      <SerialEvidencePanel workOrder={workOrder} onSaved={recordSerialSaved} />
+      <SerialEvidencePanel workOrder={workOrder} onSaved={recordSerialSaved} disabled={evidenceDisabled} amend={evidenceAmend} />
+
+      {(workOrder.startSignPath || workOrder.endSignPath) && (
+        <AdminPanel title="Signatures" description="Operator start and end sign-off captured for this phase.">
+          <div className="grid gap-4 sm:grid-cols-2">
+            {workOrder.startSignPath ? (
+              <div className="rounded-lg border border-border bg-background p-3">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Start signature</div>
+                <img src={workOrder.startSignPath} alt="Start signature" className="mt-2 h-16 w-auto max-w-full bg-white object-contain" />
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {workOrder.startSignById || '—'}
+                  {workOrder.prodStart ? ` · ${formatDate(workOrder.prodStart)}` : ''}
+                </div>
+              </div>
+            ) : null}
+            {workOrder.endSignPath ? (
+              <div className="rounded-lg border border-border bg-background p-3">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">End signature</div>
+                <img src={workOrder.endSignPath} alt="End signature" className="mt-2 h-16 w-auto max-w-full bg-white object-contain" />
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {workOrder.endSignById || '—'}
+                  {workOrder.prodEnd ? ` · ${formatDate(workOrder.prodEnd)}` : ''}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </AdminPanel>
+      )}
 
       <details className="group rounded-2xl border border-border bg-card">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-semibold text-foreground">

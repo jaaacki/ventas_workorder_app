@@ -18,6 +18,7 @@ import { fetchQaWorkOrderQueue } from '@/lib/work-orders-api';
 import { logoutApi } from '@/lib/auth-api';
 import {
   LayoutDashboard,
+  BarChart3,
   Users,
   Menu,
   LogOut,
@@ -26,11 +27,13 @@ import {
   Search,
   Boxes,
   Warehouse,
+  PackageCheck,
   ArrowRight,
   ShieldCheck,
   ListChecks,
   Ban,
   Waypoints,
+  Database,
   Moon,
   Sun,
 } from 'lucide-react';
@@ -76,6 +79,7 @@ const navGroups: NavGroup[] = [
     items: [
       { label: 'Board', href: '/dashboard/work-orders', icon: Columns3, roles: ALL_ROLES, keywords: ['work orders', 'wo', 'phases', 'kanban', 'batches'] },
       { label: 'My queue', href: '/dashboard/my-queue', icon: ListChecks, roles: ALL_ROLES, keywords: ['tasks', 'operator', 'my work', 'assigned', 'next action'] },
+      { label: 'Insights', href: '/dashboard/metrics', icon: BarChart3, roles: ['owner', 'admin', 'production_manager', 'qa_manager'], keywords: ['metrics', 'dashboard', 'cycle time', 'throughput', 'wip', 'stalled', 'analytics'] },
     ],
   },
   {
@@ -90,6 +94,7 @@ const navGroups: NavGroup[] = [
     items: [
       { label: 'Collections', href: '/dashboard/procurement', icon: Boxes, roles: ALL_ROLES, keywords: ['collection units', 'clinic', 'het', 'intake', 'procurement'] },
       { label: 'Inventory', href: '/dashboard/inventory', icon: Warehouse, roles: ALL_ROLES, keywords: ['lots', 'sku', 'stock', 'reagents', 'locations'] },
+      { label: 'Finished goods', href: '/dashboard/lots', icon: PackageCheck, roles: ['owner', 'admin', 'qa_manager', 'production_manager'], keywords: ['lots', 'batch record', 'finished goods', 'released', 'genealogy', 'certificate'] },
       { label: 'Traceability', href: '/dashboard/traceability', icon: Waypoints, roles: ALL_ROLES, keywords: ['genealogy', 'chain of custody', 'trace', 'parent', 'child'] },
     ],
   },
@@ -97,6 +102,7 @@ const navGroups: NavGroup[] = [
     heading: 'Setup',
     items: [
       { label: 'Workflows & phases', href: '/dashboard/workflows', icon: Settings2, roles: ['owner', 'admin'], keywords: ['workflows', 'phases', 'bom', 'equipment', 'master data'] },
+      { label: 'Master data', href: '/dashboard/master-data', icon: Database, roles: ['owner', 'admin'], keywords: ['bom', 'bill of materials', 'equipment', 'phase equipment', 'catalog', 'serial', 'master data'] },
       { label: 'Users & roles', href: '/dashboard/users', icon: Users, roles: ['owner', 'admin'], keywords: ['staff', 'people', 'access', 'permissions', 'roles'] },
     ],
   },

@@ -78,10 +78,16 @@ export async function deliverEmptyContainer(
   // be tenant-checked here (mirrors the recordHetCollection unit guard).
   const collectionUnit = await prisma.collectionUnit.findFirst({
     where: { id: input.collectionUnitId, tenantId: scopedTenantId, deleted: false },
-    select: { id: true },
+    select: { id: true, status: true },
   });
   if (!collectionUnit) {
     throw new Error('cannot deliver: collection unit not found');
+  }
+  // A container already issued out (in transit for another run) cannot be issued
+  // again — that would commit one physical container to two runs, and both would
+  // later mark it RECEIVED (F8).
+  if (collectionUnit.status === UNIT_STATUS_ISSUED) {
+    throw new Error('cannot deliver: container already in transit');
   }
 
   const now = new Date();
@@ -121,12 +127,22 @@ export async function deliverEmptyContainer(
     });
 
     const updated = await tx.workOrder.updateMany({
-      where: { id: workOrderId, tenantId: scopedTenantId, issuanceOrderId: null },
+      where: {
+        id: workOrderId,
+        tenantId: scopedTenantId,
+        issuanceOrderId: null,
+        // Also guard the collect columns: a concurrent recordHetCollection sets
+        // hetId/collectionReceiptId (not issuanceOrderId), so without these a race
+        // would still match here and leave the run with both a collected HET and a
+        // dangling ISSUED container that can never be closed (F1).
+        hetId: null,
+        collectionReceiptId: null,
+      },
       data: { issuanceOrderId: issuance.id, updatedById: actorId },
     });
     if (updated.count === 0) {
-      // A concurrent deliver already issued a container; abort rather than orphan
-      // the issuance just created in this transaction.
+      // A concurrent deliver or collect already advanced this run; abort rather
+      // than orphan the issuance just created in this transaction.
       throw new Error('cannot deliver: work order already has an issued container');
     }
 
@@ -241,8 +257,24 @@ export async function recordHetCollection(
   const issuanceOrderId = workOrder.issuanceOrderId;
   let continuityUnitId: string | null = null;
   if (issuanceOrderId) {
+    // Chain-of-custody (F7): the delivered issuance is authoritative for the
+    // clinic. Reject a collect that names a different clinic than the container
+    // was delivered to — otherwise the container round-trips clinic A while the
+    // HET/order/receipt are attributed to clinic B, corrupting custody and the
+    // collections report.
+    const issuance = await prisma.issuanceOrder.findFirst({
+      where: { id: issuanceOrderId, tenantId: scopedTenantId },
+      select: { collectionPointId: true },
+    });
+    if (issuance?.collectionPointId && issuance.collectionPointId !== collectionPoint.id) {
+      throw new Error('cannot collect: clinic does not match the delivered container');
+    }
+    // Filter soft-deleted lines and order deterministically (F2): an archived
+    // line plus a re-created live line on the same issuance must resolve to the
+    // live container, not the stale archived one.
     const issuedLine = await prisma.issuanceOrderLine.findFirst({
-      where: { issuanceOrderId, tenantId: scopedTenantId },
+      where: { issuanceOrderId, tenantId: scopedTenantId, deleted: false },
+      orderBy: { createdAt: 'desc' },
       select: { collectionUnitId: true },
     });
     continuityUnitId = issuedLine?.collectionUnitId ?? null;
@@ -263,10 +295,15 @@ export async function recordHetCollection(
     }
     const nextUnit = await prisma.collectionUnit.findFirst({
       where: { id: input.nextCollectionUnitId, tenantId: scopedTenantId, deleted: false },
-      select: { id: true },
+      select: { id: true, status: true },
     });
     if (!nextUnit) {
       throw new Error('cannot collect: next collection unit not found');
+    }
+    // The next container is about to be issued out; if it is already in transit
+    // for another run it cannot be issued again (F8, mirrors the deliver guard).
+    if (nextUnit.status === UNIT_STATUS_ISSUED) {
+      throw new Error('cannot collect: next container already in transit');
     }
     nextUnitId = nextUnit.id;
   }

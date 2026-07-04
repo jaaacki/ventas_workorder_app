@@ -1066,6 +1066,11 @@ export default function WorkOrderDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['work-order-chain', updated.id] });
     // A release mints a FINISHED_GOOD lot; keep the finished-goods list fresh.
     queryClient.invalidateQueries({ queryKey: ['finished-goods-lots'] });
+    // A deliver/collect moves containers between buckets and flips unit status;
+    // refresh the Collection Queue and the container picker so they don't show
+    // stale buckets/status for up to the 30s staleTime (F6).
+    queryClient.invalidateQueries({ queryKey: ['collection-queue'] });
+    queryClient.invalidateQueries({ queryKey: ['collection-units'] });
   };
 
   const startMutation = useMutation({

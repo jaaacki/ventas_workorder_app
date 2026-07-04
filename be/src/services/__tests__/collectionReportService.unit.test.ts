@@ -60,4 +60,20 @@ describe('collectionReportService.getCollectionReport', () => {
 
     expect(report.groupBy).toBe('month');
   });
+
+  it('makes the `to` bound inclusive of the whole end day (F4)', async () => {
+    mocks.prisma.$queryRaw.mockResolvedValue([]);
+    const to = new Date('2026-06-30T00:00:00.000Z');
+
+    const report = await getCollectionReport({ tenantId, to });
+
+    // The report echoes the caller's original `to` unchanged.
+    expect(report.to).toEqual(to);
+    // The SQL compares against the START OF THE NEXT DAY, so a HET collected any
+    // time on 2026-06-30 is counted; a strict `<` on midnight would drop it.
+    const boundValues = mocks.prisma.$queryRaw.mock.calls[0]![0].values as unknown[];
+    const nextDay = new Date('2026-07-01T00:00:00.000Z').getTime();
+    expect(boundValues.some((v) => v instanceof Date && v.getTime() === nextDay)).toBe(true);
+    expect(boundValues.some((v) => v instanceof Date && v.getTime() === to.getTime())).toBe(false);
+  });
 });

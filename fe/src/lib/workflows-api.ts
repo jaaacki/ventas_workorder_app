@@ -287,3 +287,26 @@ export async function deletePhaseEquipment(id: string): Promise<{ success: true 
   const { data } = await api.delete<{ success: true }>(`/api/master-data/phase-equipment/${id}`);
   return data;
 }
+
+// ── Phase ↔ equipment bindings (drives the allowed-equipment advance gate) ───
+
+export interface PhaseEquipmentBinding {
+  phaseId: string;
+  phaseEquipId: string;
+  phaseEquip: { id: string; equipId: string | null; name: string | null; description: string | null };
+}
+
+export async function fetchPhaseEquipmentBindings(phaseId: string): Promise<PhaseEquipmentBinding[]> {
+  const { data } = await api.get<PhaseEquipmentBinding[]>(`/api/phases/${phaseId}/equipment`);
+  return data;
+}
+
+export async function addPhaseEquipmentBinding(phaseId: string, phaseEquipId: string): Promise<PhaseEquipmentBinding> {
+  const { data } = await api.post<PhaseEquipmentBinding>(`/api/phases/${phaseId}/equipment`, { phaseEquipId });
+  return data;
+}
+
+export async function removePhaseEquipmentBinding(phaseId: string, phaseEquipId: string): Promise<{ success: true }> {
+  const { data } = await api.delete<{ success: true }>(`/api/phases/${phaseId}/equipment/${phaseEquipId}`);
+  return data;
+}

@@ -68,7 +68,7 @@ const workOrderDetailInclude = {
       isGate: true,
       blocksCombine: true,
       steps: { select: { id: true, code: true, name: true, sortOrder: true }, orderBy: { sortOrder: 'asc' as const } },
-      bom: { select: { lines: { where: { deleted: false }, select: { id: true, description: true, quantity: true, uom: true, hasSerial: true } } } },
+      bom: { select: { lines: { where: { deleted: false }, select: { id: true, description: true, quantity: true, uom: true, hasSerial: true, inventorySku: { select: { id: true, sku: true, description: true } } } } } },
       phaseEquips: { select: { phaseEquip: { select: { id: true, equipId: true, name: true, description: true } } } },
     },
   },
@@ -513,6 +513,7 @@ function getLegacyWorkOrderState(workOrder: OperationalWorkOrder, context: Legac
         quantity: line.quantity,
         uom: line.uom,
         serialNumber: captured?.serialNumber ?? null,
+        inventorySku: line.inventorySku ?? null,
       };
     }),
     allowedEquipment: allowedPhaseEquips.map(({ phaseEquip }) => ({

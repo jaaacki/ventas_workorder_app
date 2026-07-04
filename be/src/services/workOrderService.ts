@@ -67,13 +67,14 @@ export interface CreateWorkOrderInput {
   hetId?: string;
 }
 
-type WorkOrderAuditAction =
+export type WorkOrderAuditAction =
   | 'work_order.created'
   | 'work_order.equipment_recorded'
   | 'work_order.photo_evidence_recorded'
   | 'work_order.output_quantity_recorded'
   | 'work_order.release_recorded'
   | 'work_order.serial_recorded'
+  | 'work_order.het_collected'
   | 'work_order.phase_started'
   | 'work_order.phase_finished'
   | 'work_order.phase_advanced'
@@ -81,7 +82,7 @@ type WorkOrderAuditAction =
 
 const MAX_PHOTO_EVIDENCE_DECODED_BYTES = 5 * 1024 * 1024;
 
-interface WorkOrderAuditState extends Prisma.InputJsonObject {
+export interface WorkOrderAuditState extends Prisma.InputJsonObject {
   id: string;
   tenantId: string;
   workflowId: string | null;
@@ -115,6 +116,7 @@ const workOrderDetailInclude = {
       sortOrder: true,
       isGate: true,
       blocksCombine: true,
+      processType: true,
       steps: { select: { id: true, code: true, name: true, sortOrder: true }, orderBy: { sortOrder: 'asc' as const } },
       bom: { select: { lines: { where: { deleted: false }, select: { id: true, description: true, quantity: true, uom: true, hasSerial: true, inventorySku: { select: { id: true, sku: true, description: true } } } } } },
       phaseEquips: { select: { phaseEquip: { select: { id: true, equipId: true, name: true, description: true } } } },
@@ -149,7 +151,7 @@ const workOrderOperationalInclude = {
       name: true,
       code: true,
       phases: {
-        select: { id: true, phaseName: true, phaseShort: true, sortOrder: true, isGate: true, blocksCombine: true },
+        select: { id: true, phaseName: true, phaseShort: true, sortOrder: true, isGate: true, blocksCombine: true, processType: true },
         orderBy: { sortOrder: 'asc' as const },
       },
     },
@@ -166,7 +168,7 @@ const workOrderWithPhasesInclude = {
   workflow: {
     include: {
       phases: {
-        select: { id: true, phaseName: true, phaseShort: true, sortOrder: true, isGate: true },
+        select: { id: true, phaseName: true, phaseShort: true, sortOrder: true, isGate: true, processType: true },
         orderBy: { sortOrder: 'asc' as const },
       },
     },
@@ -202,7 +204,7 @@ const workOrderAuditSnapshotSelect = {
   imagePath: true,
 } satisfies Prisma.WorkOrderSelect;
 
-function auditState(
+export function auditState(
   workOrder: Pick<
     WorkOrder,
     | 'id'
@@ -312,7 +314,7 @@ function positiveDecimalish(value: { toString: () => string } | null | undefined
   }
 }
 
-async function recordWorkOrderAuditEvent(input: {
+export async function recordWorkOrderAuditEvent(input: {
   tenantId: string;
   workOrderId: string;
   action: WorkOrderAuditAction;
@@ -340,7 +342,7 @@ export async function createWorkOrder(input: CreateWorkOrderInput, actorId: stri
     where: { id: input.workflowId, tenantId: scopedTenantId },
     include: {
       phases: {
-        select: { id: true, phaseName: true, phaseShort: true, sortOrder: true },
+        select: { id: true, phaseName: true, phaseShort: true, sortOrder: true, processType: true },
         orderBy: { sortOrder: 'asc' },
       },
     },
@@ -587,7 +589,12 @@ function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder, context: 
   const evidenceBlockers: string[] = [];
   const legacyState = getLegacyWorkOrderState(workOrder, context, atFinalPhase);
 
-  if (!workOrder.hetId) blockers.push('HET not assigned');
+  // A collection phase starts HET-less by design: the collection process mints
+  // the HET. Surface that as a "Collection required" blocker rather than the
+  // generic "HET not assigned" so the run reads as awaiting collection, not
+  // misconfigured. On any other phase the HET-missing blocker is unchanged.
+  const isCollectionPhase = workOrder.phase?.processType === 'COLLECTION';
+  if (!workOrder.hetId) blockers.push(isCollectionPhase ? 'Collection required' : 'HET not assigned');
   if (workOrder.phase?.isGate && !hasPassingSterilisation) {
     blockers.push('Sterilisation/BET pass required');
   }
@@ -629,6 +636,7 @@ function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder, context: 
     releaseDecisionById: workOrder.releaseDecisionById ?? null,
     releaseRemarks: workOrder.releaseRemarks ?? null,
     lifecycleState,
+    isCollectionPhase,
     operationalStatus: workOrder.releaseStatus ?? (superseded ? 'Completed' : blockers.length ? 'Blocked' : atFinalPhase ? 'ReleasePending' : lifecycleState),
     readinessBlockers: [...blockers, ...evidenceBlockers],
     currentPhaseLabel: workOrder.phase?.phaseName ?? workOrder.phaseShort ?? `Phase ${workOrder.phaseOrder ?? '-'}`,
@@ -642,7 +650,7 @@ function decorateOperationalWorkOrder(workOrder: OperationalWorkOrder, context: 
   };
 }
 
-async function getDecoratedWorkOrderOrThrow(id: string, tenantId?: string | null) {
+export async function getDecoratedWorkOrderOrThrow(id: string, tenantId?: string | null) {
   const workOrder = await prisma.workOrder.findFirstOrThrow({
     where: { id, tenantId: tenantIdOrDefault(tenantId) },
     include: workOrderOperationalInclude,
@@ -1284,6 +1292,14 @@ export async function advanceWorkOrder(id: string, actorId: string, tenantId?: s
 
   if (currentIndex === -1 || currentIndex === orderedPhases.length - 1) {
     throw new Error('work order is at its final phase');
+  }
+
+  // Collection gate: a collection phase can only be left once its process has
+  // run — the minted HET and its custody receipt are both attached. Checked
+  // before the generic HET guard so the message names the missing collection,
+  // not a missing HET (which is expected at the start of a collection phase).
+  if (orderedPhases[currentIndex].processType === 'COLLECTION' && (!workOrder.hetId || !workOrder.collectionReceiptId)) {
+    throw new Error('cannot advance: collection not recorded');
   }
 
   if (!workOrder.hetId) {

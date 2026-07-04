@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Link, useSearchParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
-import { fetchWorkflows } from '@/lib/workflows-api';
+import { fetchWorkflows, fetchWorkflow } from '@/lib/workflows-api';
 import { fetchHets, type HetSummary } from '@/lib/hets-api';
 import { statusTone, workflowLabel, unitsLabel } from '@/lib/work-order-ui';
 import { useWorkflowContext } from '@/store/workflowContext';
@@ -176,7 +176,7 @@ function WorkOrderCard({
   );
 }
 
-function SignaturePad({
+export function SignaturePad({
   label,
   value,
   onChange,
@@ -279,7 +279,11 @@ function SignaturePad({
 const createWorkOrderSchema = z
   .object({
     workflowId: z.string().min(1, 'Select a product workflow'),
-    hetId: z.string().min(1, 'Select a HET record'),
+    // Optional at the schema level: a workflow whose first phase is a COLLECTION
+    // phase starts HET-less and mints the HET at collection. The "HET required"
+    // rule for normal workflows is enforced in the submit handler, which knows
+    // the selected workflow's first-phase process type.
+    hetId: z.string(),
     startNow: z.boolean(),
     signatureDataUrl: z.string(),
   })
@@ -300,25 +304,42 @@ function CreateWorkOrderForm({
   workflows: Array<{ id: string; name: string; code: string; description: string | null }>;
   hets: HetSummary[];
   creating: boolean;
-  onCreate: (payload: { workflowId: string; hetId: string; startNow: boolean; signatureDataUrl?: string }) => void;
+  onCreate: (payload: { workflowId: string; hetId?: string; startNow: boolean; signatureDataUrl?: string }) => void;
 }) {
   const form = useForm<CreateWorkOrderValues>({
     resolver: zodResolver(createWorkOrderSchema),
     defaultValues: { workflowId: '', hetId: '', startNow: true, signatureDataUrl: '' },
   });
-  const { control, register, handleSubmit, watch, formState: { errors } } = form;
+  const { control, register, handleSubmit, watch, setValue, setError, formState: { errors } } = form;
   const workflowId = watch('workflowId');
   const hetId = watch('hetId');
   const startNow = watch('startNow');
   const selectedWorkflow = workflows.find((workflow) => workflow.id === workflowId);
   const selectedHet = hets.find((het) => het.id === hetId);
 
+  // A workflow whose first phase is a COLLECTION phase starts HET-less: the HET
+  // is minted by the collection process, so the picker is optional and there is
+  // nothing to start until collection has run.
+  const workflowDetailQuery = useQuery({
+    queryKey: ['workflow', workflowId],
+    queryFn: () => fetchWorkflow(workflowId),
+    enabled: Boolean(workflowId),
+  });
+  const isCollectionStart = workflowDetailQuery.data?.phases?.[0]?.processType === 'COLLECTION';
+  useEffect(() => {
+    if (isCollectionStart) setValue('startNow', false);
+  }, [isCollectionStart, setValue]);
+
   const submit = handleSubmit((values) => {
+    if (!isCollectionStart && !values.hetId) {
+      setError('hetId', { message: 'Select a HET record' });
+      return;
+    }
     onCreate({
       workflowId: values.workflowId,
-      hetId: values.hetId,
-      startNow: values.startNow,
-      signatureDataUrl: values.startNow ? values.signatureDataUrl : undefined,
+      hetId: values.hetId || undefined,
+      startNow: isCollectionStart ? false : values.startNow,
+      signatureDataUrl: !isCollectionStart && values.startNow ? values.signatureDataUrl : undefined,
     });
   });
 
@@ -343,13 +364,13 @@ function CreateWorkOrderForm({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="create-het">HET record</Label>
+          <Label htmlFor="create-het">{isCollectionStart ? 'HET record (minted at collection)' : 'HET record'}</Label>
           <select
             id="create-het"
             className="flex h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs transition-colors focus-visible:border-brand-300 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
             {...register('hetId')}
           >
-            <option value="">Select HET</option>
+            <option value="">{isCollectionStart ? 'No HET — minted at collection' : 'Select HET'}</option>
             {hets.map((het) => (
               <option key={het.id} value={het.id}>
                 {hetLabel(het)}
@@ -377,30 +398,38 @@ function CreateWorkOrderForm({
         </div>
       </div>
 
-      <label className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 text-sm text-gray-700 dark:border-gray-800 dark:text-gray-300">
-        <input
-          type="checkbox"
-          {...register('startNow')}
-          className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
-        />
-        Start first phase immediately after creation
-      </label>
-
-      {startNow && (
-        <div className="space-y-1">
-          <Controller
-            control={control}
-            name="signatureDataUrl"
-            render={({ field }) => <SignaturePad label="Start sign-off" value={field.value} onChange={field.onChange} />}
-          />
-          {errors.signatureDataUrl && <p className="text-sm text-error-500">{errors.signatureDataUrl.message}</p>}
+      {isCollectionStart ? (
+        <div className="rounded-lg border border-success-500/40 bg-success-50 p-3 text-sm text-success-700 dark:bg-success-500/10 dark:text-success-400">
+          This workflow starts at a HET-collection phase. The run is created without a HET; perform collection on the work order to mint the HET before starting production.
         </div>
+      ) : (
+        <>
+          <label className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 text-sm text-gray-700 dark:border-gray-800 dark:text-gray-300">
+            <input
+              type="checkbox"
+              {...register('startNow')}
+              className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+            />
+            Start first phase immediately after creation
+          </label>
+
+          {startNow && (
+            <div className="space-y-1">
+              <Controller
+                control={control}
+                name="signatureDataUrl"
+                render={({ field }) => <SignaturePad label="Start sign-off" value={field.value} onChange={field.onChange} />}
+              />
+              {errors.signatureDataUrl && <p className="text-sm text-error-500">{errors.signatureDataUrl.message}</p>}
+            </div>
+          )}
+        </>
       )}
 
       <SheetFooter className="border-t border-gray-100 px-0 pb-0 dark:border-gray-800">
         <Button type="submit" disabled={creating}>
           <FileSignature className="h-4 w-4" />
-          {startNow ? 'Create and start phase' : 'Create work order'}
+          {!isCollectionStart && startNow ? 'Create and start phase' : 'Create work order'}
         </Button>
       </SheetFooter>
     </form>
@@ -611,8 +640,8 @@ export default function WorkOrdersPage() {
   };
 
   const createMutation = useMutation({
-    mutationFn: async (payload: { workflowId: string; hetId: string; startNow: boolean; signatureDataUrl?: string }) => {
-      const created = await createWorkOrder({ workflowId: payload.workflowId, hetId: payload.hetId });
+    mutationFn: async (payload: { workflowId: string; hetId?: string; startNow: boolean; signatureDataUrl?: string }) => {
+      const created = await createWorkOrder({ workflowId: payload.workflowId, hetId: payload.hetId || undefined });
       if (payload.startNow) {
         return startWorkOrderPhase(created.id, payload.signatureDataUrl);
       }

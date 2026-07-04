@@ -21,6 +21,8 @@ export interface StepItem {
   description: string | null;
 }
 
+export type PhaseProcessType = 'COLLECTION' | null;
+
 export interface PhaseItem {
   id: string;
   sortOrder: number;
@@ -29,6 +31,8 @@ export interface PhaseItem {
   description: string | null;
   isGate: boolean;
   blocksCombine: boolean;
+  // null = normal production phase, 'COLLECTION' = HET-collection phase (#186).
+  processType: PhaseProcessType;
   bomId: string | null;
   steps: StepItem[];
 }
@@ -95,6 +99,7 @@ export type PhaseMutationPayload = {
   description?: string | null;
   isGate?: boolean;
   blocksCombine?: boolean;
+  processType?: PhaseProcessType;
   bomId?: string | null;
 };
 

@@ -8,6 +8,7 @@ import AuthCallbackPage from './pages/AuthCallbackPage';
 import DashboardHome from './pages/DashboardHome';
 import UsersRolesPage from './pages/UsersRolesPage';
 import WorkflowsPage from './pages/WorkflowsPage';
+import MasterDataPage from './pages/MasterDataPage';
 import WorkOrdersPage from './pages/WorkOrdersPage';
 import WorkOrderDetailPage from './pages/WorkOrderDetailPage';
 import MyQueuePage from './pages/MyQueuePage';
@@ -56,6 +57,16 @@ function App() {
               <ProtectedRoute roles={['owner', 'admin']}>
                 <DashboardLayout>
                   <WorkflowsPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/master-data"
+            element={
+              <ProtectedRoute roles={['owner', 'admin']}>
+                <DashboardLayout>
+                  <MasterDataPage />
                 </DashboardLayout>
               </ProtectedRoute>
             }

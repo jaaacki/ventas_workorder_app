@@ -31,6 +31,7 @@ import {
   ListChecks,
   Ban,
   Waypoints,
+  Database,
   Moon,
   Sun,
 } from 'lucide-react';
@@ -97,6 +98,7 @@ const navGroups: NavGroup[] = [
     heading: 'Setup',
     items: [
       { label: 'Workflows & phases', href: '/dashboard/workflows', icon: Settings2, roles: ['owner', 'admin'], keywords: ['workflows', 'phases', 'bom', 'equipment', 'master data'] },
+      { label: 'Master data', href: '/dashboard/master-data', icon: Database, roles: ['owner', 'admin'], keywords: ['bom', 'bill of materials', 'equipment', 'phase equipment', 'catalog', 'serial', 'master data'] },
       { label: 'Users & roles', href: '/dashboard/users', icon: Users, roles: ['owner', 'admin'], keywords: ['staff', 'people', 'access', 'permissions', 'roles'] },
     ],
   },

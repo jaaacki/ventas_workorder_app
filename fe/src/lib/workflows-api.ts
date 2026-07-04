@@ -182,6 +182,8 @@ export interface BomLineCatalogItem {
   hasSerial: boolean;
   deleted: boolean;
   keyText: string | null;
+  inventorySkuId: string | null;
+  inventorySku: { id: string; sku: string | null; description: string | null } | null;
   createdAt: string;
   updatedAt: string;
 }

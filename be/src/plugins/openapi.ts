@@ -128,6 +128,8 @@ const bomLineExample = {
   hasSerial: true,
   deleted: false,
   keyText: 'AMGRAFT_MEMBRANE',
+  inventorySkuId: 'sku-graft',
+  inventorySku: { id: 'sku-graft', sku: 'AMG-MEM-001', description: 'AmGraft membrane' },
   createdAt: '2026-07-01T00:00:00.000Z',
   updatedAt: '2026-07-01T00:00:00.000Z',
 };

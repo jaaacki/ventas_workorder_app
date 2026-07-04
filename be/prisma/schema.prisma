@@ -213,13 +213,17 @@ model BomLine {
   hasSerial   Boolean  @default(false)
   deleted     Boolean  @default(false)
   keyText     String?
+  inventorySkuId String?
 
-  createdBy Staff?     @relation("BomLineCreatedBy", fields: [createdById], references: [id])
-  updatedBy Staff?     @relation("BomLineUpdatedBy", fields: [updatedById], references: [id])
-  bom       Bom        @relation(fields: [bomId], references: [id])
-  woSerials WoSerial[]
+  createdBy    Staff?        @relation("BomLineCreatedBy", fields: [createdById], references: [id])
+  updatedBy    Staff?        @relation("BomLineUpdatedBy", fields: [updatedById], references: [id])
+  bom          Bom           @relation(fields: [bomId], references: [id])
+  inventorySku InventorySku? @relation(fields: [inventorySkuId], references: [id], onDelete: SetNull)
+  woSerials    WoSerial[]
+  consumptions WorkOrderInventoryConsumption[]
 
   @@index([tenantId])
+  @@index([inventorySkuId])
   @@map("bomLine")
 }
 
@@ -870,6 +874,7 @@ model InventorySku {
   lots         InventoryLot[]
   balances     InventoryBalance[]
   transactions InventoryTransaction[]
+  bomLines     BomLine[]
 
   @@index([tenantId])
   @@index([deleted])
@@ -1053,6 +1058,7 @@ model WorkOrderInventoryConsumption {
 
   workOrder    WorkOrder     @relation(fields: [workOrderId], references: [id])
   inventoryLot InventoryLot? @relation(fields: [inventoryLotId], references: [id])
+  bomLine      BomLine?      @relation(fields: [bomLineId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
   @@index([deleted])

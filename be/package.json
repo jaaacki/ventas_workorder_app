@@ -24,6 +24,7 @@
     "db:import:inventory": "tsx src/scripts/importInventoryLegacy.ts",
     "db:sync:het-inventory": "tsx src/scripts/syncHetInventory.ts",
     "db:backfill:legacy-coherence": "tsx src/scripts/backfillLegacyCoherence.ts",
+    "db:backfill:bomline-inventory": "tsx src/scripts/backfillBomLineInventory.ts",
     "db:backfill:wo-evidence": "tsx src/scripts/backfillWorkOrderEvidence.ts",
     "audit:work-orders": "tsx src/scripts/auditWorkOrderParity.ts",
     "db:reset": "prisma migrate reset --force --skip-seed"

@@ -47,6 +47,8 @@ const bomLineSelect = {
   hasSerial: true,
   deleted: true,
   keyText: true,
+  inventorySkuId: true,
+  inventorySku: { select: { id: true, sku: true, description: true } },
   createdAt: true,
   updatedAt: true,
 } as const;

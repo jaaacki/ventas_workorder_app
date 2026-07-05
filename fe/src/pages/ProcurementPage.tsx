@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import type { AxiosError } from 'axios';
 import { toast } from 'sonner';
+import { collectionUnitStatusValues } from '@workorder/shared';
 import {
   archiveCollectionOrder,
   archiveCollectionPoint,
@@ -108,6 +109,18 @@ type ActionKind = EditableKind | 'import';
 type EditorState = { mode: 'create' | 'edit'; kind: EditableKind; id?: string; label: string; values: Record<string, string | boolean> } | null;
 type AuditState = { kind: ActionKind; id: string; label: string } | null;
 
+const editorActionLabels: Record<EditableKind, { create: string; edit: string; submitCreate: string; submitEdit: string }> = {
+  supply: { create: 'Create supply entity', edit: 'Edit supply entity', submitCreate: 'Create supply entity', submitEdit: 'Save supply entity' },
+  point: { create: 'Create collection point', edit: 'Edit collection point', submitCreate: 'Create collection point', submitEdit: 'Save collection point' },
+  unit: { create: 'Create collection unit', edit: 'Edit collection unit', submitCreate: 'Create collection unit', submitEdit: 'Save collection unit' },
+  issuance: { create: 'Create issuance order', edit: 'Edit issuance order', submitCreate: 'Create issuance order', submitEdit: 'Save issuance order' },
+  issuanceLine: { create: 'Add issuance line', edit: 'Edit issuance line', submitCreate: 'Add issuance line', submitEdit: 'Save issuance line' },
+  fulfilment: { create: 'Record fulfilment', edit: 'Edit fulfilment', submitCreate: 'Record fulfilment', submitEdit: 'Save fulfilment' },
+  order: { create: 'Create collection order', edit: 'Edit collection order', submitCreate: 'Create collection order', submitEdit: 'Save collection order' },
+  receipt: { create: 'Record collection receipt', edit: 'Edit collection receipt', submitCreate: 'Record receipt', submitEdit: 'Save receipt' },
+  receiptLine: { create: 'Add receipt line', edit: 'Edit receipt line', submitCreate: 'Add receipt line', submitEdit: 'Save receipt line' },
+};
+
 const resourceByKind: Record<ActionKind, string> = {
   supply: 'procurement.supplyEntity',
   point: 'procurement.collectionPoint',
@@ -126,13 +139,9 @@ const editorFieldLabels: Record<EditableKind, Record<string, string>> = {
     name: 'Name',
     legalName: 'Legal name',
     externalCode: 'External code',
-    legacyClinicId: 'Legacy clinic ID',
-    legacyGroupKey: 'Legacy group key',
-    sourceSystem: 'Source system',
   },
   point: {
-    supplyEntityId: 'Supply entity ID',
-    legacyClinicId: 'Legacy clinic ID',
+    supplyEntityId: 'Supply entity',
     hciCode: 'HCI code',
     displayName: 'Display name',
     licenseName: 'License name',
@@ -144,73 +153,55 @@ const editorFieldLabels: Record<EditableKind, Record<string, string>> = {
   unit: {
     unitNumber: 'Unit number',
     status: 'Status',
-    supplyEntityId: 'Supply entity ID',
-    collectionPointId: 'Collection point ID',
-    legacyHetId: 'Legacy HET ID',
+    supplyEntityId: 'Supply entity',
+    collectionPointId: 'Collection point',
     parcelTrackingNumber: 'Parcel tracking number',
-    legacyUsedByWorkOrderId: 'Used by work order ID',
-    sourceSystem: 'Source system',
-    linkCompleteness: 'Link completeness',
-    semanticConfidence: 'Semantic confidence',
     hiddenFromOperations: 'Hidden from operations',
   },
   issuance: {
-    supplyEntityId: 'Supply entity ID',
-    collectionPointId: 'Collection point ID',
+    supplyEntityId: 'Supply entity',
+    collectionPointId: 'Collection point',
     issuedAt: 'Issued at',
-    issuedBy: 'Issued by',
-    semanticConfidence: 'Semantic confidence',
     level: 'Level',
     remarks: 'Remarks',
   },
   issuanceLine: {
-    issuanceOrderId: 'Issuance order ID',
-    collectionUnitId: 'Collection unit ID',
+    issuanceOrderId: 'Issuance order',
+    collectionUnitId: 'Collection unit',
     itemCode: 'Item code',
     quantity: 'Quantity',
     uom: 'Unit',
-    legacyHetId: 'Legacy HET ID',
-    legacyHetNumber: 'Legacy HET number',
     parcelTrackingNumber: 'Parcel tracking number',
   },
   fulfilment: {
-    collectionUnitId: 'Collection unit ID',
+    collectionUnitId: 'Collection unit',
     fulfilledAt: 'Fulfilled at',
-    fulfilledBy: 'Fulfilled by',
-    source: 'Source',
     evidencePath: 'Evidence path',
     remarks: 'Remarks',
-    inferred: 'Inferred',
   },
   order: {
-    supplyEntityId: 'Supply entity ID',
-    collectionPointId: 'Collection point ID',
+    supplyEntityId: 'Supply entity',
+    collectionPointId: 'Collection point',
     requestedAt: 'Requested at',
     scheduledFor: 'Scheduled for',
-    requestedBy: 'Requested by',
     status: 'Status',
-    semanticConfidence: 'Semantic confidence',
     remarks: 'Remarks',
-    legacyConflatedOrderReceipt: 'Conflated legacy order/receipt',
   },
   receipt: {
-    collectionOrderId: 'Collection order ID',
+    collectionOrderId: 'Collection order',
     receivedAt: 'Received at',
-    receivedBy: 'Received by',
     signaturePath: 'Signature path',
     remarks: 'Remarks',
-    legacyConflatedOrderReceipt: 'Conflated legacy order/receipt',
     acceptanceState: 'Acceptance state',
   },
   receiptLine: {
-    collectionReceiptId: 'Collection receipt ID',
-    collectionUnitId: 'Collection unit ID',
+    collectionReceiptId: 'Collection receipt',
+    collectionUnitId: 'Collection unit',
     itemCode: 'Item code',
     quantity: 'Quantity',
     uom: 'Unit',
     conditionStatus: 'Condition status',
     acceptanceStatus: 'Acceptance status',
-    resultingHetId: 'Resulting HET ID',
     discrepancyReason: 'Discrepancy reason',
   },
 };
@@ -295,16 +286,19 @@ function eventDate(event: ProcurementEvent, kind: 'issuance' | 'order' | 'receip
   return kind === 'issuance' ? event.issuedAt : kind === 'order' ? event.requestedAt : event.receivedAt;
 }
 
+function eventOptionLabel(event: ProcurementEvent, kind: 'issuance' | 'order' | 'receipt') {
+  const date = eventDate(event, kind);
+  const prefix = kind === 'issuance' ? 'Issuance' : kind === 'order' ? 'Collection order' : 'Receipt';
+  const state = event.status || event.acceptanceState;
+  return [prefix, state, date ? formatDate(date) : null].filter(Boolean).join(' - ') || event.id;
+}
+
 function eventInitialValues(event: ProcurementEvent, kind: 'issuance' | 'order' | 'receipt'): Record<string, string | boolean> {
   if (kind === 'issuance') {
     return {
       supplyEntityId: event.supplyEntityId || '',
       collectionPointId: event.collectionPointId || '',
       issuedAt: event.issuedAt || '',
-      issuedBy: event.issuedBy || '',
-      legacyDeliverCollectId: event.legacyDeliverCollectId || '',
-      legacyDirection: event.legacyDirection || '',
-      semanticConfidence: event.semanticConfidence || '',
       level: event.level || '',
       remarks: event.remarks || '',
     };
@@ -315,12 +309,7 @@ function eventInitialValues(event: ProcurementEvent, kind: 'issuance' | 'order' 
       collectionPointId: event.collectionPointId || '',
       requestedAt: event.requestedAt || '',
       scheduledFor: event.scheduledFor || '',
-      requestedBy: event.requestedBy || '',
       status: event.status || '',
-      legacyCollectDeliverCollectId: event.legacyCollectDeliverCollectId || '',
-      legacyDirection: event.legacyDirection || '',
-      semanticConfidence: event.semanticConfidence || '',
-      legacyConflatedOrderReceipt: Boolean(event.legacyConflatedOrderReceipt),
       level: event.level || '',
       remarks: event.remarks || '',
     };
@@ -328,11 +317,8 @@ function eventInitialValues(event: ProcurementEvent, kind: 'issuance' | 'order' 
   return {
     collectionOrderId: event.collectionOrderId || '',
     receivedAt: event.receivedAt || '',
-    receivedBy: event.receivedBy || '',
     signaturePath: event.signaturePath || '',
     remarks: event.remarks || '',
-    legacyCollectDeliverCollectId: event.legacyCollectDeliverCollectId || '',
-    legacyConflatedOrderReceipt: Boolean(event.legacyConflatedOrderReceipt),
     acceptanceState: event.acceptanceState || '',
   };
 }
@@ -1100,9 +1086,9 @@ export default function ProcurementPage() {
   const entityOptions = useMemo(() => (entities.data ?? []).map((entity) => option(entity.id, entityName(entity))).filter((entry): entry is { value: string; label: string } => Boolean(entry)), [entities.data]);
   const pointOptions = useMemo(() => (points.data ?? []).map((point) => option(point.id, pointName(point))).filter((entry): entry is { value: string; label: string } => Boolean(entry)), [points.data]);
   const unitOptions = useMemo(() => (units.data ?? []).map((unit) => option(unit.id, unitName(unit))).filter((entry): entry is { value: string; label: string } => Boolean(entry)), [units.data]);
-  const issuanceOptions = useMemo(() => (issuance.data ?? []).map((event) => option(event.id, event.issuedBy || event.legacyDeliverCollectId || event.id)).filter((entry): entry is { value: string; label: string } => Boolean(entry)), [issuance.data]);
-  const orderOptions = useMemo(() => (collectionOrders.data ?? []).map((event) => option(event.id, event.requestedBy || event.legacyCollectDeliverCollectId || event.id)).filter((entry): entry is { value: string; label: string } => Boolean(entry)), [collectionOrders.data]);
-  const receiptOptions = useMemo(() => (receipts.data ?? []).map((event) => option(event.id, event.receivedBy || event.legacyCollectDeliverCollectId || event.id)).filter((entry): entry is { value: string; label: string } => Boolean(entry)), [receipts.data]);
+  const issuanceOptions = useMemo(() => (issuance.data ?? []).map((event) => option(event.id, eventOptionLabel(event, 'issuance'))).filter((entry): entry is { value: string; label: string } => Boolean(entry)), [issuance.data]);
+  const orderOptions = useMemo(() => (collectionOrders.data ?? []).map((event) => option(event.id, eventOptionLabel(event, 'order'))).filter((entry): entry is { value: string; label: string } => Boolean(entry)), [collectionOrders.data]);
+  const receiptOptions = useMemo(() => (receipts.data ?? []).map((event) => option(event.id, eventOptionLabel(event, 'receipt'))).filter((entry): entry is { value: string; label: string } => Boolean(entry)), [receipts.data]);
   const metrics = overview.data;
   const hasError = overview.isError || entities.isError || points.isError || units.isError || issuance.isError || issuanceLines.isError || fulfilments.isError || collectionOrders.isError || receipts.isError || receiptLines.isError;
   const mutationBusy = archiveMutation.isPending || restoreMutation.isPending || updateMutation.isPending || createMutation.isPending;
@@ -1125,9 +1111,6 @@ export default function ProcurementPage() {
       name: entity.name || '',
       legalName: entity.legalName || '',
       externalCode: entity.externalCode || '',
-      legacyClinicId: entity.legacyClinicId || '',
-      legacyGroupKey: entity.legacyGroupKey || '',
-      sourceSystem: entity.sourceSystem || '',
     },
   });
   const openPointEditor = (point: CollectionPoint) => setEditor({
@@ -1137,7 +1120,6 @@ export default function ProcurementPage() {
     label: pointName(point),
     values: {
       supplyEntityId: point.supplyEntityId || '',
-      legacyClinicId: point.legacyClinicId || '',
       hciCode: point.hciCode || '',
       displayName: point.displayName || '',
       licenseName: point.licenseName || '',
@@ -1157,12 +1139,7 @@ export default function ProcurementPage() {
       status: unit.status || '',
       supplyEntityId: unit.supplyEntityId || '',
       collectionPointId: unit.collectionPointId || '',
-      legacyHetId: unit.legacyHetId || '',
       parcelTrackingNumber: unit.parcelTrackingNumber || '',
-      legacyUsedByWorkOrderId: unit.legacyUsedByWorkOrderId || '',
-      sourceSystem: unit.sourceSystem || '',
-      linkCompleteness: unit.linkCompleteness || '',
-      semanticConfidence: unit.semanticConfidence || '',
       hiddenFromOperations: unit.hiddenFromOperations,
     },
   });
@@ -1180,8 +1157,6 @@ export default function ProcurementPage() {
       itemCode: line.itemCode || '',
       quantity: String(line.quantity ?? ''),
       uom: line.uom || '',
-      legacyHetId: line.legacyHetId || '',
-      legacyHetNumber: line.legacyHetNumber || '',
       parcelTrackingNumber: line.parcelTrackingNumber || '',
     },
   });
@@ -1193,11 +1168,8 @@ export default function ProcurementPage() {
     values: {
       collectionUnitId: fulfilment.collectionUnitId || '',
       fulfilledAt: fulfilment.fulfilledAt || '',
-      fulfilledBy: fulfilment.fulfilledBy || '',
-      source: fulfilment.source || '',
       evidencePath: fulfilment.evidencePath || '',
       remarks: fulfilment.remarks || '',
-      inferred: fulfilment.inferred,
     },
   });
   const openReceiptLineEditor = (line: CollectionReceiptLine) => setEditor({
@@ -1213,16 +1185,14 @@ export default function ProcurementPage() {
       uom: line.uom || '',
       conditionStatus: line.conditionStatus || '',
       acceptanceStatus: line.acceptanceStatus || '',
-      resultingHetId: line.resultingHetId || '',
       discrepancyReason: line.discrepancyReason || '',
     },
   });
   const openCreateEditor = (kind: EditableKind) => {
     const values: Record<EditableKind, Record<string, string | boolean>> = {
-      supply: { name: '', legalName: '', externalCode: '', legacyClinicId: '', legacyGroupKey: '', sourceSystem: '' },
+      supply: { name: '', legalName: '', externalCode: '' },
       point: {
         supplyEntityId: '',
-        legacyClinicId: '',
         hciCode: '',
         displayName: '',
         licenseName: '',
@@ -1233,15 +1203,10 @@ export default function ProcurementPage() {
       },
       unit: {
         unitNumber: '',
-        status: 'available',
+        status: 'ISSUED',
         supplyEntityId: '',
         collectionPointId: '',
-        legacyHetId: '',
         parcelTrackingNumber: '',
-        legacyUsedByWorkOrderId: '',
-        sourceSystem: '',
-        linkCompleteness: '',
-        semanticConfidence: '',
         hiddenFromOperations: false,
       },
       issuance: eventInitialValues({ id: '' } as ProcurementEvent, 'issuance'),
@@ -1251,18 +1216,13 @@ export default function ProcurementPage() {
         itemCode: '',
         quantity: '',
         uom: '',
-        legacyHetId: '',
-        legacyHetNumber: '',
         parcelTrackingNumber: '',
       },
       fulfilment: {
         collectionUnitId: '',
         fulfilledAt: '',
-        fulfilledBy: '',
-        source: '',
         evidencePath: '',
         remarks: '',
-        inferred: false,
       },
       order: eventInitialValues({ id: '', status: 'requested' } as ProcurementEvent, 'order'),
       receipt: eventInitialValues({ id: '' } as ProcurementEvent, 'receipt'),
@@ -1274,7 +1234,6 @@ export default function ProcurementPage() {
         uom: '',
         conditionStatus: '',
         acceptanceStatus: '',
-        resultingHetId: '',
         discrepancyReason: '',
       },
     };
@@ -1306,9 +1265,6 @@ export default function ProcurementPage() {
           <TextField control={control} name="name" label="Name" required error={errorFor('name')} />
           <TextField control={control} name="legalName" label="Legal name" error={errorFor('legalName')} />
           <TextField control={control} name="externalCode" label="External code" error={errorFor('externalCode')} />
-          <TextField control={control} name="legacyClinicId" label="Legacy clinic" error={errorFor('legacyClinicId')} />
-          <TextField control={control} name="legacyGroupKey" label="Legacy group" error={errorFor('legacyGroupKey')} />
-          <TextField control={control} name="sourceSystem" label="Source system" error={errorFor('sourceSystem')} />
         </>
       );
     }
@@ -1316,15 +1272,10 @@ export default function ProcurementPage() {
       return (
         <>
           <TextField control={control} name="unitNumber" label="Unit number" error={errorFor('unitNumber')} />
-          {enumField('status', ['available', 'issued', 'received', 'consumed', 'archived'])}
+          {enumField('status', [...collectionUnitStatusValues])}
           {selectField('supplyEntityId', entityOptions, 'Supply entity')}
           {selectField('collectionPointId', pointOptions, 'Collection point')}
-          <TextField control={control} name="legacyHetId" label="Legacy HET" error={errorFor('legacyHetId')} />
           <TextField control={control} name="parcelTrackingNumber" label="Parcel tracking" error={errorFor('parcelTrackingNumber')} />
-          <TextField control={control} name="legacyUsedByWorkOrderId" label="Work order ID" error={errorFor('legacyUsedByWorkOrderId')} />
-          <TextField control={control} name="sourceSystem" label="Source system" error={errorFor('sourceSystem')} />
-          <TextField control={control} name="linkCompleteness" label="Link completeness" error={errorFor('linkCompleteness')} />
-          <TextField control={control} name="semanticConfidence" label="Semantic confidence" error={errorFor('semanticConfidence')} />
           <CheckboxField control={control} name="hiddenFromOperations" label="Hidden from operations" />
         </>
       );
@@ -1649,9 +1600,9 @@ export default function ProcurementPage() {
 
       <CrudSheet
         open={Boolean(editor)}
-        title={editor ? `${editor.mode === 'create' ? 'Create' : 'Edit'} ${editor.label}` : 'Edit record'}
-        description="Update operational ERP fields. Blank optional values are saved as null."
-        submitLabel={editor?.mode === 'create' ? 'Create record' : 'Save changes'}
+        title={editor ? (editor.mode === 'create' ? editorActionLabels[editor.kind].create : `${editorActionLabels[editor.kind].edit}: ${editor.label}`) : 'Edit procurement record'}
+        description="Update the operational fields used by procurement workflows. Import and audit metadata stays in read-only views."
+        submitLabel={editor ? (editor.mode === 'create' ? editorActionLabels[editor.kind].submitCreate : editorActionLabels[editor.kind].submitEdit) : 'Save changes'}
         isSubmitting={updateMutation.isPending || createMutation.isPending}
         onOpenChange={(open) => !open && setEditor(null)}
         onSubmit={submitEditor}

@@ -81,6 +81,9 @@ import {
   type WorkOrderInventoryConsumption,
   type WorkOrderInventoryConsumptionPayload,
 } from '@/lib/inventory-api';
+import { fetchCollectionUnits } from '@/lib/procurement-api';
+import { fetchBomLines } from '@/lib/workflows-api';
+import { fetchWorkOrders } from '@/lib/work-orders-api';
 import { AdminPanel, EmptyState, MetricCard, PageHeader, StatusPill } from '@/components/tailadmin';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -106,6 +109,17 @@ type ActionKind = EditableKind | 'import';
 type EditorState = { mode: 'create' | 'edit'; kind: EditableKind; id?: string; label: string; values: Record<string, string> } | null;
 type AuditState = { kind: ActionKind; id: string; label: string } | null;
 
+const editorActionLabels: Record<EditableKind, { create: string; edit: string; submitCreate: string; submitEdit: string }> = {
+  reference: { create: 'Create reference', edit: 'Edit reference', submitCreate: 'Create reference', submitEdit: 'Save reference' },
+  lot: { create: 'Create inventory lot', edit: 'Edit inventory lot', submitCreate: 'Create inventory lot', submitEdit: 'Save inventory lot' },
+  transaction: { create: 'Record inventory movement', edit: 'Correct inventory movement', submitCreate: 'Record movement', submitEdit: 'Save correction' },
+  sku: { create: 'Create SKU', edit: 'Edit SKU', submitCreate: 'Create SKU', submitEdit: 'Save SKU' },
+  location: { create: 'Create location', edit: 'Edit location', submitCreate: 'Create location', submitEdit: 'Save location' },
+  balance: { create: 'Set inventory balance', edit: 'Edit inventory balance', submitCreate: 'Set balance', submitEdit: 'Save balance' },
+  genealogy: { create: 'Link lot genealogy', edit: 'Edit lot genealogy', submitCreate: 'Link lots', submitEdit: 'Save genealogy' },
+  consumption: { create: 'Record material consumption', edit: 'Edit material consumption', submitCreate: 'Record consumption', submitEdit: 'Save consumption' },
+};
+
 const resourceByKind: Record<ActionKind, string> = {
   reference: 'inventory.reference',
   lot: 'inventory.lot',
@@ -124,43 +138,30 @@ const editorFieldLabels: Record<EditableKind, Record<string, string>> = {
     name: 'Name',
     shortCode: 'Short code',
     description: 'Description',
-    sourceSystem: 'Source system',
   },
   lot: {
-    inventorySkuId: 'Inventory SKU ID',
+    inventorySkuId: 'Inventory SKU',
     lotNumber: 'Lot number',
     inventoryType: 'Inventory type',
     status: 'Status',
     quantityInitial: 'Initial quantity',
     quantityCurrent: 'Current quantity',
     uom: 'Unit of measure',
-    currentLocationId: 'Current location ID',
-    collectionUnitId: 'Collection unit ID',
-    hetId: 'HET ID',
-    workOrderId: 'Work order ID',
-    sourceSystem: 'Source system',
-    legacyItemSerialId: 'Legacy item serial ID',
-    legacyCheckInOutId: 'Legacy check-in/out ID',
-    legacyHetId: 'Legacy HET ID',
+    currentLocationId: 'Current location',
+    collectionUnitId: 'Collection unit',
   },
   transaction: {
-    inventorySkuId: 'Inventory SKU ID',
-    inventoryLotId: 'Inventory lot ID',
+    inventorySkuId: 'Inventory SKU',
+    inventoryLotId: 'Inventory lot',
     transactionType: 'Transaction type',
     direction: 'Direction',
     reason: 'Correction or movement reason',
     quantity: 'Quantity',
     uom: 'Unit of measure',
-    fromLocationId: 'From location ID',
-    toLocationId: 'To location ID',
-    workOrderId: 'Work order ID',
-    occurredAt: 'Occurred at',
-    actor: 'Actor',
-    signaturePath: 'Signature path',
+    fromLocationId: 'From location',
+    toLocationId: 'To location',
+    workOrderId: 'Work order',
     remarks: 'Correction remarks',
-    legacyRefNumber: 'Legacy reference in',
-    legacyRefNumberOut: 'Legacy reference out',
-    sourceSystem: 'Source system',
   },
   sku: {
     sku: 'SKU code',
@@ -173,48 +174,39 @@ const editorFieldLabels: Record<EditableKind, Record<string, string>> = {
     packQuantity: 'Pack quantity',
     threshold: 'Reorder threshold',
     serialisedMode: 'Serialised mode',
-    qrImagePath: 'QR image path',
-    mediaUrl: 'Media URL',
-    qrPrintPath: 'QR print path',
-    sourceSystem: 'Source system',
   },
   location: {
     locationType: 'Location type',
     name: 'Name',
-    parentLocationId: 'Parent location ID',
+    parentLocationId: 'Parent location',
     description: 'Description',
     imagePath: 'Image path',
-    sourceSystem: 'Source system',
   },
   balance: {
-    inventorySkuId: 'Inventory SKU ID',
-    inventoryLotId: 'Inventory lot ID',
-    inventoryLocationId: 'Inventory location ID',
+    inventorySkuId: 'Inventory SKU',
+    inventoryLotId: 'Inventory lot',
+    inventoryLocationId: 'Inventory location',
     quantity: 'Quantity on hand',
-    sourceSystem: 'Source system',
   },
   genealogy: {
-    parentInventoryLotId: 'Parent lot ID',
-    childInventoryLotId: 'Child lot ID',
+    parentInventoryLotId: 'Parent lot',
+    childInventoryLotId: 'Child lot',
     relationshipType: 'Relationship type',
-    workOrderId: 'Work order ID',
-    phaseId: 'Phase ID',
-    sourceSystem: 'Source system',
+    workOrderId: 'Work order',
   },
   consumption: {
-    workOrderId: 'Work order ID',
-    inventoryLotId: 'Inventory lot ID',
-    inventorySkuId: 'Inventory SKU ID',
-    bomLineId: 'BOM line ID',
+    workOrderId: 'Work order',
+    inventoryLotId: 'Inventory lot',
+    inventorySkuId: 'Inventory SKU',
+    bomLineId: 'BOM line',
     quantity: 'Consumed quantity',
     uom: 'Unit of measure',
-    sourceSystem: 'Source system',
   },
 };
 
 const requiredFields: Record<EditableKind, string[]> = {
   reference: ['refType', 'name'],
-  lot: ['inventoryType', 'status'],
+  lot: ['inventorySkuId', 'inventoryType', 'status'],
   transaction: ['transactionType'],
   sku: ['sku'],
   location: ['locationType', 'name'],
@@ -229,9 +221,19 @@ const requiredFields: Record<EditableKind, string[]> = {
 // by cleanPayload, preserving the existing request shape.
 function buildEditorSchema(kind: EditableKind, keys: string[]) {
   const required = new Set(requiredFields[kind] ?? []);
-  return z.object(
+  const schema = z.object(
     Object.fromEntries(keys.map((key) => [key, required.has(key) ? z.string().trim().min(1, 'Required') : z.string()])),
   );
+  if (kind !== 'lot') return schema;
+  return schema
+    .refine(
+      (payload) => typeof payload.lotNumber !== 'string' || payload.lotNumber.trim() || (typeof payload.collectionUnitId === 'string' && payload.collectionUnitId.trim()),
+      { message: 'Lot number or collection unit is required', path: ['lotNumber'] },
+    )
+    .refine(
+      (payload) => (typeof payload.quantityInitial === 'string' && payload.quantityInitial.trim()) || (typeof payload.quantityCurrent === 'string' && payload.quantityCurrent.trim()),
+      { message: 'Initial or current quantity is required', path: ['quantityInitial'] },
+    );
 }
 
 function formatDate(value?: string | null) {
@@ -405,13 +407,12 @@ function TransactionsTable({ transactions, permissions, busy, onEdit, onArchive,
             <TableRow key={transaction.id}>
               <TableCell>
                 <div className="flex items-center gap-2 font-medium text-gray-800 dark:text-white/90">{label}<DeletedBadge record={transaction} /></div>
-                <div className="text-xs text-gray-500">{transaction.actor || transaction.sourceSystem || '-'}</div>
               </TableCell>
               <TableCell><div>{skuLabel(transaction.inventorySku)}</div><div className="text-xs text-gray-500">{lotLabel(transaction.inventoryLot)}</div></TableCell>
               <TableCell><StatusPill tone={statusTone(transaction.transactionType)}>{transaction.transactionType.replace(/_/g, ' ')}</StatusPill></TableCell>
               <TableCell>{formatQty(transaction.quantity, transaction.uom)}</TableCell>
               <TableCell><div>{locationLabel(transaction.fromLocation)}</div><div className="text-xs text-gray-500">to {locationLabel(transaction.toLocation)}</div></TableCell>
-              <TableCell>{transaction.workOrderId || transaction.legacyRefNumber || transaction.legacyRefNumberOut || '-'}</TableCell>
+              <TableCell>{transaction.workOrderId || '-'}</TableCell>
               <TableCell>{formatDate(transaction.occurredAt || transaction.createdAt)}</TableCell>
               <TableCell>
                 <RowCrudActions
@@ -850,6 +851,9 @@ export default function InventoryPage() {
   const genealogyLinks = useQuery({ queryKey: ['inventory', 'genealogy-links', includeDeletedFor('genealogy')], queryFn: () => fetchInventoryGenealogyLinks({ includeDeleted: includeDeletedFor('genealogy') }), enabled: can('genealogy', 'read') });
   const genealogy = useQuery({ queryKey: ['inventory', 'genealogy', selectedGenealogyLotId], queryFn: () => fetchInventoryGenealogy(selectedGenealogyLotId), enabled: Boolean(selectedGenealogyLotId) && can('genealogy', 'read'), retry: false });
   const importReports = useQuery({ queryKey: ['inventory', 'import-reports', includeDeletedFor('import')], queryFn: () => fetchInventoryImportReports({ includeDeleted: includeDeletedFor('import') }), enabled: canReadImports, retry: false });
+  const collectionUnits = useQuery({ queryKey: ['inventory', 'collection-units'], queryFn: () => fetchCollectionUnits({ take: 300 }), enabled: can('lot', 'read'), retry: false });
+  const workOrders = useQuery({ queryKey: ['inventory', 'work-orders'], queryFn: fetchWorkOrders, enabled: can('transaction', 'read') || can('consumption', 'read') || can('genealogy', 'read'), retry: false });
+  const bomLines = useQuery({ queryKey: ['inventory', 'bom-lines'], queryFn: () => fetchBomLines(), enabled: can('consumption', 'read'), retry: false });
   const auditQuery = useQuery<AuditEvent<unknown>[]>({
     queryKey: ['inventory', 'audit', audit?.kind, audit?.id],
     enabled: Boolean(audit) && (audit ? can(audit.kind, 'readAudit') : false),
@@ -934,6 +938,9 @@ export default function InventoryPage() {
   const skuOptions = useMemo(() => (skus.data ?? []).map((sku) => option(sku.id, skuLabel(sku))).filter((entry): entry is { value: string; label: string } => Boolean(entry)), [skus.data]);
   const lotOptions = useMemo(() => (lots.data ?? []).map((lot) => option(lot.id, lotLabel(lot))).filter((entry): entry is { value: string; label: string } => Boolean(entry)), [lots.data]);
   const locationOptions = useMemo(() => (locations.data ?? []).map((location) => option(location.id, locationLabel(location))).filter((entry): entry is { value: string; label: string } => Boolean(entry)), [locations.data]);
+  const collectionUnitOptions = useMemo(() => (collectionUnits.data ?? []).map((unit) => option(unit.id, [unit.unitNumber || unit.parcelTrackingNumber || unit.id, unit.status].filter(Boolean).join(' - '))).filter((entry): entry is { value: string; label: string } => Boolean(entry)), [collectionUnits.data]);
+  const workOrderOptions = useMemo(() => (workOrders.data ?? []).map((workOrder) => option(workOrder.id, [workOrder.woNumber || workOrder.id, workOrder.currentPhaseLabel].filter(Boolean).join(' - '))).filter((entry): entry is { value: string; label: string } => Boolean(entry)), [workOrders.data]);
+  const bomLineOptions = useMemo(() => (bomLines.data ?? []).map((line) => option(line.id, [line.description || line.keyText || line.id, line.uom].filter(Boolean).join(' - '))).filter((entry): entry is { value: string; label: string } => Boolean(entry)), [bomLines.data]);
   const metrics = overview.data;
   const hasError = overview.isError || lots.isError || transactions.isError || skus.isError || references.isError || locations.isError || balances.isError || genealogyLinks.isError || consumptions.isError;
   const mutationBusy = archiveMutation.isPending || restoreMutation.isPending || updateMutation.isPending || createMutation.isPending;
@@ -947,39 +954,39 @@ export default function InventoryPage() {
     if (editor.id) updateMutation.mutate({ kind: editor.kind, id: editor.id, values });
   });
   const openLotEditor = (lot: InventoryLot) => setEditor({ mode: 'edit', kind: 'lot', id: lot.id, label: lotLabel(lot), values: {
-    inventorySkuId: lot.inventorySkuId || '', lotNumber: lot.lotNumber || '', inventoryType: lot.inventoryType || '', status: lot.status || '', quantityInitial: String(lot.quantityInitial ?? ''), quantityCurrent: String(lot.quantityCurrent ?? ''), uom: lot.uom || '', currentLocationId: lot.currentLocationId || '', collectionUnitId: lot.collectionUnitId || '', hetId: lot.hetId || '', workOrderId: lot.workOrderId || '', sourceSystem: lot.sourceSystem || '', legacyItemSerialId: lot.legacyItemSerialId || '', legacyCheckInOutId: lot.legacyCheckInOutId || '', legacyHetId: lot.legacyHetId || '',
+    inventorySkuId: lot.inventorySkuId || '', lotNumber: lot.lotNumber || '', inventoryType: lot.inventoryType || '', status: lot.status || '', quantityInitial: String(lot.quantityInitial ?? ''), quantityCurrent: String(lot.quantityCurrent ?? ''), uom: lot.uom || '', currentLocationId: lot.currentLocationId || '', collectionUnitId: lot.collectionUnitId || '',
   } });
   const openTransactionEditor = (transaction: InventoryTransaction) => setEditor({ mode: 'edit', kind: 'transaction', id: transaction.id, label: transaction.reason || transaction.id, values: {
-    inventorySkuId: transaction.inventorySkuId || '', inventoryLotId: transaction.inventoryLotId || '', transactionType: transaction.transactionType || '', direction: transaction.direction || '', reason: transaction.reason || '', quantity: String(transaction.quantity ?? ''), uom: transaction.uom || '', fromLocationId: transaction.fromLocationId || '', toLocationId: transaction.toLocationId || '', workOrderId: transaction.workOrderId || '', occurredAt: transaction.occurredAt || '', actor: transaction.actor || '', signaturePath: transaction.signaturePath || '', remarks: transaction.remarks || '', legacyRefNumber: transaction.legacyRefNumber || '', legacyRefNumberOut: transaction.legacyRefNumberOut || '', sourceSystem: transaction.sourceSystem || '',
+    inventorySkuId: transaction.inventorySkuId || '', inventoryLotId: transaction.inventoryLotId || '', transactionType: transaction.transactionType || '', direction: transaction.direction || '', reason: transaction.reason || '', quantity: String(transaction.quantity ?? ''), uom: transaction.uom || '', fromLocationId: transaction.fromLocationId || '', toLocationId: transaction.toLocationId || '', workOrderId: transaction.workOrderId || '', remarks: transaction.remarks || '',
   } });
   const openSkuEditor = (sku: InventorySku) => setEditor({ mode: 'edit', kind: 'sku', id: sku.id, label: skuLabel(sku), values: {
-    sku: sku.sku || '', description: sku.description || '', category: sku.category || '', brand: sku.brand || '', size: sku.size || '', colour: sku.colour || '', uom: sku.uom || '', packQuantity: String(sku.packQuantity ?? ''), threshold: String(sku.threshold ?? ''), serialisedMode: sku.serialisedMode || '', qrImagePath: sku.qrImagePath || '', mediaUrl: sku.mediaUrl || '', qrPrintPath: sku.qrPrintPath || '', sourceSystem: sku.sourceSystem || '',
+    sku: sku.sku || '', description: sku.description || '', category: sku.category || '', brand: sku.brand || '', size: sku.size || '', colour: sku.colour || '', uom: sku.uom || '', packQuantity: String(sku.packQuantity ?? ''), threshold: String(sku.threshold ?? ''), serialisedMode: sku.serialisedMode || '',
   } });
   const openLocationEditor = (location: InventoryLocation) => setEditor({ mode: 'edit', kind: 'location', id: location.id, label: location.name, values: {
-    locationType: location.locationType || '', name: location.name || '', parentLocationId: location.parentLocationId || '', description: location.description || '', imagePath: location.imagePath || '', sourceSystem: location.sourceSystem || '',
+    locationType: location.locationType || '', name: location.name || '', parentLocationId: location.parentLocationId || '', description: location.description || '', imagePath: location.imagePath || '',
   } });
   const openReferenceEditor = (reference: InventoryReference) => setEditor({ mode: 'edit', kind: 'reference', id: reference.id, label: reference.name, values: {
-    refType: reference.refType || '', name: reference.name || '', shortCode: reference.shortCode || '', description: reference.description || '', sourceSystem: reference.sourceSystem || '',
+    refType: reference.refType || '', name: reference.name || '', shortCode: reference.shortCode || '', description: reference.description || '',
   } });
   const openBalanceEditor = (balance: InventoryBalance) => setEditor({ mode: 'edit', kind: 'balance', id: balance.id, label: `${skuLabel(balance.inventorySku)} balance`, values: {
-    inventorySkuId: balance.inventorySkuId || '', inventoryLotId: balance.inventoryLotId || '', inventoryLocationId: balance.inventoryLocationId || '', quantity: String(balance.quantity ?? ''), sourceSystem: balance.sourceSystem || '',
+    inventorySkuId: balance.inventorySkuId || '', inventoryLotId: balance.inventoryLotId || '', inventoryLocationId: balance.inventoryLocationId || '', quantity: String(balance.quantity ?? ''),
   } });
   const openGenealogyEditor = (edge: InventoryGenealogyEdge) => setEditor({ mode: 'edit', kind: 'genealogy', id: edge.id, label: edge.relationshipType || edge.id, values: {
-    parentInventoryLotId: edge.parentInventoryLotId || '', childInventoryLotId: edge.childInventoryLotId || '', relationshipType: edge.relationshipType || '', workOrderId: edge.workOrderId || '', phaseId: edge.phaseId || '', sourceSystem: edge.sourceSystem || '',
+    parentInventoryLotId: edge.parentInventoryLotId || '', childInventoryLotId: edge.childInventoryLotId || '', relationshipType: edge.relationshipType || '', workOrderId: edge.workOrderId || '',
   } });
   const openConsumptionEditor = (consumption: WorkOrderInventoryConsumption) => setEditor({ mode: 'edit', kind: 'consumption', id: consumption.id, label: consumption.workOrderId, values: {
-    workOrderId: consumption.workOrderId || '', inventoryLotId: consumption.inventoryLotId || '', inventorySkuId: consumption.inventorySkuId || '', bomLineId: consumption.bomLineId || '', quantity: String(consumption.quantity ?? ''), uom: consumption.uom || '', sourceSystem: consumption.sourceSystem || '',
+    workOrderId: consumption.workOrderId || '', inventoryLotId: consumption.inventoryLotId || '', inventorySkuId: consumption.inventorySkuId || '', bomLineId: consumption.bomLineId || '', quantity: String(consumption.quantity ?? ''), uom: consumption.uom || '',
   } });
   const openCreateEditor = (kind: EditableKind) => {
     const values: Record<EditableKind, Record<string, string>> = {
-      reference: { refType: '', name: '', shortCode: '', description: '', sourceSystem: '' },
-      lot: { inventorySkuId: '', lotNumber: '', inventoryType: 'HET', status: 'available', quantityInitial: '', quantityCurrent: '', uom: '', currentLocationId: '', collectionUnitId: '', hetId: '', workOrderId: '', sourceSystem: '', legacyItemSerialId: '', legacyCheckInOutId: '', legacyHetId: '' },
-      transaction: { inventorySkuId: '', inventoryLotId: '', transactionType: 'ADJUST', direction: '', reason: '', quantity: '', uom: '', fromLocationId: '', toLocationId: '', workOrderId: '', occurredAt: '', actor: '', signaturePath: '', remarks: '', legacyRefNumber: '', legacyRefNumberOut: '', sourceSystem: '' },
-      sku: { sku: '', description: '', category: '', brand: '', size: '', colour: '', uom: '', packQuantity: '', threshold: '', serialisedMode: '', qrImagePath: '', mediaUrl: '', qrPrintPath: '', sourceSystem: '' },
-      location: { locationType: 'warehouse', name: '', parentLocationId: '', description: '', imagePath: '', sourceSystem: '' },
-      balance: { inventorySkuId: '', inventoryLotId: '', inventoryLocationId: '', quantity: '', sourceSystem: '' },
-      genealogy: { parentInventoryLotId: '', childInventoryLotId: '', relationshipType: 'consumed_into', workOrderId: '', phaseId: '', sourceSystem: '' },
-      consumption: { workOrderId: '', inventoryLotId: '', inventorySkuId: '', bomLineId: '', quantity: '', uom: '', sourceSystem: '' },
+      reference: { refType: '', name: '', shortCode: '', description: '' },
+      lot: { inventorySkuId: '', lotNumber: '', inventoryType: 'HET', status: 'available', quantityInitial: '', quantityCurrent: '', uom: '', currentLocationId: '', collectionUnitId: '' },
+      transaction: { inventorySkuId: '', inventoryLotId: '', transactionType: 'ADJUST', direction: '', reason: '', quantity: '', uom: '', fromLocationId: '', toLocationId: '', workOrderId: '', remarks: '' },
+      sku: { sku: '', description: '', category: '', brand: '', size: '', colour: '', uom: '', packQuantity: '', threshold: '', serialisedMode: '' },
+      location: { locationType: 'warehouse', name: '', parentLocationId: '', description: '', imagePath: '' },
+      balance: { inventorySkuId: '', inventoryLotId: '', inventoryLocationId: '', quantity: '' },
+      genealogy: { parentInventoryLotId: '', childInventoryLotId: '', relationshipType: 'consumed_into', workOrderId: '' },
+      consumption: { workOrderId: '', inventoryLotId: '', inventorySkuId: '', bomLineId: '', quantity: '', uom: '' },
     };
     setEditor({ mode: 'create', kind, label: kind.replace(/_/g, ' '), values: values[kind] });
   };
@@ -999,6 +1006,9 @@ export default function InventoryPage() {
       if (key === 'inventorySkuId') return selectField(key, skuOptions);
       if (key === 'inventoryLotId' || key === 'parentInventoryLotId' || key === 'childInventoryLotId') return selectField(key, lotOptions);
       if (key === 'currentLocationId' || key === 'fromLocationId' || key === 'toLocationId' || key === 'inventoryLocationId' || key === 'parentLocationId') return selectField(key, locationOptions);
+      if (key === 'collectionUnitId') return selectField(key, collectionUnitOptions);
+      if (key === 'workOrderId') return selectField(key, workOrderOptions);
+      if (key === 'bomLineId') return selectField(key, bomLineOptions);
       return null;
     };
     return orderedKeys.map((key) => (
@@ -1015,7 +1025,7 @@ export default function InventoryPage() {
                 ? enumField(key, ['consumed_into', 'produced_from', 'split_from', 'merged_into'])
                 : key === 'locationType'
                   ? enumField(key, ['warehouse', 'room', 'rack', 'bin', 'production_area'])
-                  : <TextField key={key} control={editorForm.control} name={key} label={labels[key] ?? key.replace(/([A-Z])/g, ' $1')} required={isRequired(key)} error={errorFor(key)} />)
+                  : <TextField key={key} control={editorForm.control} name={key} label={labels[key] ?? key.replace(/([A-Z])/g, ' $1')} type={/At$|For$/.test(key) ? 'datetime-local' : 'text'} required={isRequired(key)} error={errorFor(key)} />)
     ));
   };
 
@@ -1139,7 +1149,7 @@ export default function InventoryPage() {
         </Tabs>
       </AdminPanel>
 
-      <CrudSheet open={Boolean(editor)} title={editor ? `${editor.mode === 'create' ? 'Create' : 'Edit'} ${editor.label}` : 'Edit record'} description="Update operational inventory fields. Blank optional values are saved as null." submitLabel={editor?.mode === 'create' ? 'Create record' : 'Save changes'} isSubmitting={updateMutation.isPending || createMutation.isPending} onOpenChange={(open) => !open && setEditor(null)} onSubmit={submitEditor}>
+      <CrudSheet open={Boolean(editor)} title={editor ? (editor.mode === 'create' ? editorActionLabels[editor.kind].create : `${editorActionLabels[editor.kind].edit}: ${editor.label}`) : 'Edit inventory record'} description="Update operational inventory fields. Import, legacy, and audit metadata stays in read-only views." submitLabel={editor ? (editor.mode === 'create' ? editorActionLabels[editor.kind].submitCreate : editorActionLabels[editor.kind].submitEdit) : 'Save changes'} isSubmitting={updateMutation.isPending || createMutation.isPending} onOpenChange={(open) => !open && setEditor(null)} onSubmit={submitEditor}>
         {renderEditorFields()}
       </CrudSheet>
       <AuditDrawer open={Boolean(audit)} title={audit ? `Audit: ${audit.label}` : 'Audit'} events={auditQuery.data} isLoading={auditQuery.isLoading} isError={auditQuery.isError} errorMessage={auditQuery.error ? errorMessage(auditQuery.error, 'Unable to load audit events.') : undefined} onOpenChange={(open) => !open && setAudit(null)} />

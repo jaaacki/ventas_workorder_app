@@ -16,6 +16,25 @@ import {
 } from './auditedCrudService.js';
 import { tenantIdOrDefault } from './tenant.js';
 
+const inventoryLotStatusValues = ['available', 'reserved', 'consumed', 'quarantined', 'released', 'scrapped'] as const;
+const inventoryLotStatusSet = new Set<string>(inventoryLotStatusValues);
+const createProvenanceFields: Partial<Record<InventoryCrudResourceKey, readonly string[]>> = {
+  transactions: ['occurredAt', 'actor'],
+};
+
+function hasOperationalValue(value: unknown) {
+  if (value === null || value === undefined) return false;
+  return typeof value !== 'string' || value.trim() !== '';
+}
+
+function rejectClientProvenanceFields(key: InventoryCrudResourceKey, payload: Record<string, unknown>) {
+  const protectedFields = createProvenanceFields[key] ?? [];
+  const supplied = protectedFields.filter((field) => Object.prototype.hasOwnProperty.call(payload, field));
+  if (supplied.length) {
+    throw new CrudValidationError(`Server-managed field${supplied.length === 1 ? '' : 's'} cannot be supplied: ${supplied.join(', ')}`);
+  }
+}
+
 // Reject inventoryType values outside the closed HET|FINISHED_GOOD set on the
 // API write path. Legacy rows are imported via prisma directly (bypassing these
 // validators), so this only constrains records created/updated through the API.
@@ -27,6 +46,42 @@ function validateInventoryType(input: { payload: Record<string, unknown> }): Pro
     throw new CrudValidationError(`inventoryType must be one of: ${inventoryTypeValues.join(', ')}`);
   }
   return Promise.resolve();
+}
+
+function validateInventoryLotPayload(input: {
+  payload: Record<string, unknown>;
+  existing?: Record<string, unknown> | null;
+}): Promise<void> {
+  if (input.payload.status !== undefined && !inventoryLotStatusSet.has(String(input.payload.status))) {
+    throw new CrudValidationError(`status must be one of: ${inventoryLotStatusValues.join(', ')}`);
+  }
+
+  if (input.existing) return Promise.resolve();
+  if (!hasOperationalValue(input.payload.inventorySkuId)) {
+    throw new CrudValidationError('Inventory lot requires an inventory SKU');
+  }
+  const hasIdentifier = hasOperationalValue(input.payload.lotNumber) ||
+    hasOperationalValue(input.payload.hetId) ||
+    hasOperationalValue(input.payload.collectionUnitId);
+  if (!hasIdentifier) {
+    throw new CrudValidationError('Inventory lot requires a lot number, HET, or collection unit');
+  }
+  if (!hasOperationalValue(input.payload.quantityInitial) && !hasOperationalValue(input.payload.quantityCurrent)) {
+    throw new CrudValidationError('Inventory lot requires an initial or current quantity');
+  }
+  return Promise.resolve();
+}
+
+function payloadWithCreateProvenance(
+  key: InventoryCrudResourceKey,
+  input: { actor: JwtPayload; payload: Record<string, unknown> },
+) {
+  const payload = { ...input.payload };
+  if (key === 'transactions') {
+    payload.occurredAt = new Date();
+    payload.actor = input.actor.id;
+  }
+  return payload;
 }
 
 async function validateLocationParent(input: {
@@ -159,12 +214,13 @@ export const inventoryCrudResources = {
       'legacyHetId',
       'legacyRaw',
     ],
-    createRequiredFields: ['inventoryType', 'status'],
+    createRequiredFields: ['inventorySkuId', 'inventoryType', 'status'],
     searchableFields: ['id', 'lotNumber', 'legacyItemSerialId', 'legacyHetId'],
     defaultOrderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
     include: { inventorySku: true, currentLocation: true },
     validators: [
       validateInventoryType,
+      validateInventoryLotPayload,
       ({ tenantId, payload }) => requireSameTenant('inventorySku', payload.inventorySkuId, tenantId, 'Inventory SKU'),
       ({ tenantId, payload }) => requireSameTenant('inventoryLocation', payload.currentLocationId, tenantId, 'Current location'),
       ({ tenantId, payload }) => requireSameTenant('collectionUnit', payload.collectionUnitId, tenantId, 'Collection unit'),
@@ -362,13 +418,18 @@ export async function createInventoryResource(
   key: InventoryCrudResourceKey,
   input: { tenantId?: string | null; actor: JwtPayload; payload: Record<string, unknown> },
 ) {
-  return createCrud(inventoryCrudResources[key], input);
+  rejectClientProvenanceFields(key, input.payload);
+  return createCrud(inventoryCrudResources[key], {
+    ...input,
+    payload: payloadWithCreateProvenance(key, input),
+  });
 }
 
 export async function updateInventoryResource(
   key: InventoryCrudResourceKey,
   input: { id: string; tenantId?: string | null; actor: JwtPayload; payload: Record<string, unknown> },
 ) {
+  rejectClientProvenanceFields(key, input.payload);
   return updateCrud(inventoryCrudResources[key], input);
 }
 

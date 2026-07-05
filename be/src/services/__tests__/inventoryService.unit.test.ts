@@ -1,13 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  inventorySku: { count: vi.fn(), findMany: vi.fn() },
-  inventoryLot: { count: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
-  inventoryTransaction: { count: vi.fn(), findMany: vi.fn() },
+  writeAuditLog: vi.fn(),
+  inventorySku: { count: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
+  inventoryLot: { count: vi.fn(), findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
+  inventoryTransaction: { count: vi.fn(), findMany: vi.fn(), create: vi.fn() },
   inventoryLocation: { count: vi.fn(), findMany: vi.fn() },
   inventoryBalance: { count: vi.fn() },
   inventoryImportReport: { count: vi.fn(), findMany: vi.fn() },
   inventoryGenealogy: { findMany: vi.fn() },
+}));
+
+vi.mock('../auditLogService.js', () => ({
+  writeAuditLog: mocks.writeAuditLog,
+  listAuditLogs: vi.fn(),
 }));
 
 vi.mock('../../db/prisma.js', () => ({
@@ -17,6 +23,7 @@ vi.mock('../../db/prisma.js', () => ({
 import * as inventoryService from '../inventoryService.js';
 
 const tenantId = 'tenant-a';
+const actor = { id: 'staff-1', role: 'admin', email: 'staff@example.test', tenantId };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -101,5 +108,80 @@ describe('inventoryService tenant scoping', () => {
     expect(mocks.inventoryGenealogy.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId, parentInventoryLotId: 'lot-1', deleted: false } }),
     );
+  });
+});
+
+describe('inventoryService live CRUD validation', () => {
+  it('rejects inventory lots without SKU, identity, and quantity context', async () => {
+    await expect(
+      inventoryService.createInventoryResource('lots', {
+        tenantId,
+        actor,
+        payload: { inventorySkuId: 'sku-1', inventoryType: 'HET', status: 'available' },
+      }),
+    ).rejects.toThrow('Inventory lot requires a lot number, HET, or collection unit');
+
+    expect(mocks.inventoryLot.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects inventory lot statuses outside the live write vocabulary', async () => {
+    await expect(
+      inventoryService.createInventoryResource('lots', {
+        tenantId,
+        actor,
+        payload: {
+          inventorySkuId: 'sku-1',
+          lotNumber: 'LOT-1',
+          inventoryType: 'HET',
+          status: 'legacy_available',
+          quantityInitial: '1',
+        },
+      }),
+    ).rejects.toThrow('status must be one of: available, reserved, consumed, quarantined, released, scrapped');
+
+    expect(mocks.inventoryLot.create).not.toHaveBeenCalled();
+  });
+
+  it('derives hidden transaction actor and timestamp fields on create', async () => {
+    const created = { id: 'txn-1', tenantId, actor: actor.id };
+    mocks.inventoryTransaction.create.mockResolvedValue(created);
+
+    await inventoryService.createInventoryResource('transactions', {
+      tenantId,
+      actor,
+      payload: { transactionType: 'ADJUST', reason: 'Cycle count' },
+    });
+
+    expect(mocks.inventoryTransaction.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          occurredAt: expect.any(Date),
+          actor: actor.id,
+          transactionType: 'ADJUST',
+          reason: 'Cycle count',
+        }),
+      }),
+    );
+  });
+
+  it('rejects client-supplied provenance fields for server-owned inventory transactions', async () => {
+    await expect(
+      inventoryService.createInventoryResource('transactions', {
+        tenantId,
+        actor,
+        payload: { transactionType: 'ADJUST', actor: 'someone-else' },
+      }),
+    ).rejects.toThrow('Server-managed field cannot be supplied: actor');
+
+    await expect(
+      inventoryService.updateInventoryResource('transactions', {
+        id: 'txn-1',
+        tenantId,
+        actor,
+        payload: { occurredAt: '2026-01-01T00:00:00.000Z' },
+      }),
+    ).rejects.toThrow('Server-managed field cannot be supplied: occurredAt');
+
+    expect(mocks.inventoryTransaction.create).not.toHaveBeenCalled();
   });
 });

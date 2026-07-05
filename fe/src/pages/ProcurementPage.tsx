@@ -161,7 +161,6 @@ const editorFieldLabels: Record<EditableKind, Record<string, string>> = {
   issuance: {
     supplyEntityId: 'Supply entity',
     collectionPointId: 'Collection point',
-    issuedAt: 'Issued at',
     level: 'Level',
     remarks: 'Remarks',
   },
@@ -175,21 +174,18 @@ const editorFieldLabels: Record<EditableKind, Record<string, string>> = {
   },
   fulfilment: {
     collectionUnitId: 'Collection unit',
-    fulfilledAt: 'Fulfilled at',
     evidencePath: 'Evidence path',
     remarks: 'Remarks',
   },
   order: {
     supplyEntityId: 'Supply entity',
     collectionPointId: 'Collection point',
-    requestedAt: 'Requested at',
     scheduledFor: 'Scheduled for',
     status: 'Status',
     remarks: 'Remarks',
   },
   receipt: {
     collectionOrderId: 'Collection order',
-    receivedAt: 'Received at',
     signaturePath: 'Signature path',
     remarks: 'Remarks',
     acceptanceState: 'Acceptance state',
@@ -209,8 +205,8 @@ const editorFieldLabels: Record<EditableKind, Record<string, string>> = {
 const requiredFields: Record<EditableKind, string[]> = {
   supply: ['name'],
   point: ['supplyEntityId', 'displayName'],
-  unit: ['status'],
-  issuance: ['issuedAt'],
+  unit: ['status', 'supplyEntityId', 'collectionPointId'],
+  issuance: [],
   issuanceLine: ['issuanceOrderId'],
   fulfilment: ['collectionUnitId'],
   order: ['status'],
@@ -223,13 +219,18 @@ const requiredFields: Record<EditableKind, string[]> = {
 // booleans, everything else is an optional string (blank → null via cleanPayload).
 function buildEditorSchema(kind: EditableKind, values: Record<string, string | boolean>) {
   const required = new Set(requiredFields[kind] ?? []);
-  return z.object(
+  const schema = z.object(
     Object.fromEntries(
       Object.keys(values).map((key) => {
         if (typeof values[key] === 'boolean') return [key, z.boolean()];
         return [key, required.has(key) ? z.string().trim().min(1, 'Required') : z.string()];
       }),
     ),
+  );
+  if (kind !== 'unit') return schema;
+  return schema.refine(
+    (payload) => typeof payload.unitNumber !== 'string' || payload.unitNumber.trim() || (typeof payload.parcelTrackingNumber === 'string' && payload.parcelTrackingNumber.trim()),
+    { message: 'Unit number or parcel tracking is required', path: ['unitNumber'] },
   );
 }
 
@@ -298,7 +299,6 @@ function eventInitialValues(event: ProcurementEvent, kind: 'issuance' | 'order' 
     return {
       supplyEntityId: event.supplyEntityId || '',
       collectionPointId: event.collectionPointId || '',
-      issuedAt: event.issuedAt || '',
       level: event.level || '',
       remarks: event.remarks || '',
     };
@@ -307,7 +307,6 @@ function eventInitialValues(event: ProcurementEvent, kind: 'issuance' | 'order' 
     return {
       supplyEntityId: event.supplyEntityId || '',
       collectionPointId: event.collectionPointId || '',
-      requestedAt: event.requestedAt || '',
       scheduledFor: event.scheduledFor || '',
       status: event.status || '',
       level: event.level || '',
@@ -316,7 +315,6 @@ function eventInitialValues(event: ProcurementEvent, kind: 'issuance' | 'order' 
   }
   return {
     collectionOrderId: event.collectionOrderId || '',
-    receivedAt: event.receivedAt || '',
     signaturePath: event.signaturePath || '',
     remarks: event.remarks || '',
     acceptanceState: event.acceptanceState || '',
@@ -354,9 +352,6 @@ function UnitTable({
           <TableHead>Supply</TableHead>
           <TableHead>Point</TableHead>
           <TableHead>Status</TableHead>
-          <TableHead>HET</TableHead>
-          <TableHead>Work order</TableHead>
-          <TableHead>Parity</TableHead>
           <TableHead>Updated</TableHead>
           <TableHead className="text-right">Actions</TableHead>
         </TableRow>
@@ -377,21 +372,11 @@ function UnitTable({
                   </Link>
                   <DeletedBadge record={unit} />
                 </div>
-                <div className="text-xs text-gray-500">{unit.parcelTrackingNumber || unit.sourceSystem || '-'}</div>
+                <div className="text-xs text-gray-500">{unit.parcelTrackingNumber || '-'}</div>
               </TableCell>
               <TableCell>{unit.supplyEntityId ? entityName(entitiesById.get(unit.supplyEntityId)) : '-'}</TableCell>
               <TableCell>{unit.collectionPointId ? pointName(pointsById.get(unit.collectionPointId)) : '-'}</TableCell>
               <TableCell><StatusPill tone={statusTone(unit.status)}>{unit.status.replace(/_/g, ' ')}</StatusPill></TableCell>
-              <TableCell>{unit.legacyHetId || '-'}</TableCell>
-              <TableCell>{unit.legacyUsedByWorkOrderId || '-'}</TableCell>
-              <TableCell>
-                <div className="flex flex-col gap-1">
-                  <StatusPill tone={unit.hiddenFromOperations ? 'warning' : 'success'}>
-                    {unit.hiddenFromOperations ? 'Hidden' : 'Operational'}
-                  </StatusPill>
-                  <span className="text-xs text-gray-500">{unit.linkCompleteness || unit.semanticConfidence || '-'}</span>
-                </div>
-              </TableCell>
               <TableCell>{formatDate(unit.updatedAt)}</TableCell>
               <TableCell>
                 <RowCrudActions
@@ -442,15 +427,12 @@ function EventTable({
         <TableRow>
           <TableHead>ID</TableHead>
           <TableHead>Status</TableHead>
-          <TableHead>Legacy event</TableHead>
-          <TableHead>Confidence</TableHead>
           <TableHead>Date</TableHead>
           <TableHead className="text-right">Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {events.map((event) => {
-          const legacyId = event.legacyDeliverCollectId || event.legacyCollectDeliverCollectId || '-';
           return (
             <TableRow key={event.id}>
               <TableCell>
@@ -463,13 +445,6 @@ function EventTable({
                 <StatusPill tone={statusTone(event.status || event.legacyDirection)}>
                   {(event.status || event.legacyDirection || '-').replace(/_/g, ' ')}
                 </StatusPill>
-              </TableCell>
-              <TableCell>{legacyId}</TableCell>
-              <TableCell>
-                <div className="flex flex-col gap-1">
-                  <span>{event.semanticConfidence || '-'}</span>
-                  {event.legacyConflatedOrderReceipt && <StatusPill tone="warning">Conflated</StatusPill>}
-                </div>
               </TableCell>
               <TableCell>{formatDate(eventDate(event, kind))}</TableCell>
               <TableCell>
@@ -1167,7 +1142,6 @@ export default function ProcurementPage() {
     label: unitName(unitsById.get(fulfilment.collectionUnitId)),
     values: {
       collectionUnitId: fulfilment.collectionUnitId || '',
-      fulfilledAt: fulfilment.fulfilledAt || '',
       evidencePath: fulfilment.evidencePath || '',
       remarks: fulfilment.remarks || '',
     },
@@ -1203,7 +1177,7 @@ export default function ProcurementPage() {
       },
       unit: {
         unitNumber: '',
-        status: 'ISSUED',
+        status: '',
         supplyEntityId: '',
         collectionPointId: '',
         parcelTrackingNumber: '',
@@ -1220,7 +1194,6 @@ export default function ProcurementPage() {
       },
       fulfilment: {
         collectionUnitId: '',
-        fulfilledAt: '',
         evidencePath: '',
         remarks: '',
       },
@@ -1296,7 +1269,7 @@ export default function ProcurementPage() {
                 ? enumField(key, ['intact', 'damaged', 'missing', 'unknown'])
                 : key === 'source'
                   ? enumField(key, ['manual', 'legacy', 'api', 'inferred'])
-                  : <TextField key={key} control={control} name={key} label={labels[key] ?? key.replace(/([A-Z])/g, ' $1')} required={isRequired(key)} error={errorFor(key)} />)
+                  : <TextField key={key} control={control} name={key} label={labels[key] ?? key.replace(/([A-Z])/g, ' $1')} type={/At$|For$/.test(key) ? 'datetime-local' : 'text'} required={isRequired(key)} error={errorFor(key)} />)
         ))}
         {booleanFields.map((key) => (
           <CheckboxField key={key} control={control} name={key} label={labels[key] ?? (key === 'legacyConflatedOrderReceipt' ? 'Conflated order/receipt' : key.replace(/([A-Z])/g, ' $1'))} />

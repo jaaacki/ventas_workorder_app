@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  supplyEntity: { count: vi.fn(), findMany: vi.fn() },
-  collectionPoint: { count: vi.fn(), findMany: vi.fn() },
-  collectionUnit: { count: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
-  issuanceOrder: { count: vi.fn(), findMany: vi.fn() },
+  writeAuditLog: vi.fn(),
+  supplyEntity: { count: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
+  collectionPoint: { count: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
+  collectionUnit: { count: vi.fn(), findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
+  issuanceOrder: { count: vi.fn(), findMany: vi.fn(), create: vi.fn() },
   issuanceOrderLine: { findMany: vi.fn() },
   collectionUnitFulfilment: { findMany: vi.fn() },
   collectionOrder: { count: vi.fn(), findMany: vi.fn() },
@@ -14,6 +15,11 @@ const mocks = vi.hoisted(() => ({
   procurementImportReport: { findMany: vi.fn() },
 }));
 
+vi.mock('../auditLogService.js', () => ({
+  writeAuditLog: mocks.writeAuditLog,
+  listAuditLogs: vi.fn(),
+}));
+
 vi.mock('../../db/prisma.js', () => ({
   prisma: mocks,
 }));
@@ -21,6 +27,7 @@ vi.mock('../../db/prisma.js', () => ({
 import * as procurementService from '../procurementService.js';
 
 const tenantId = 'tenant-a';
+const actor = { id: 'staff-1', role: 'admin', email: 'staff@example.test', tenantId };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -119,5 +126,84 @@ describe('procurementService tenant scoping', () => {
     expect(mocks.het.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId, collectionUnitId: 'unit-1' } }),
     );
+  });
+});
+
+describe('procurementService live CRUD validation', () => {
+  it('rejects live collection units without operational identity and location context', async () => {
+    mocks.supplyEntity.findFirst.mockResolvedValue({ id: 'supply-1' });
+    mocks.collectionPoint.findFirst.mockResolvedValue({ id: 'point-1' });
+
+    await expect(
+      procurementService.createProcurementResource('collectionUnits', {
+        tenantId,
+        actor,
+        payload: { status: 'ISSUED', supplyEntityId: 'supply-1', collectionPointId: 'point-1' },
+      }),
+    ).rejects.toThrow('Collection unit requires a unit number or parcel tracking number');
+
+    expect(mocks.collectionUnit.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects collection unit statuses outside the shared live vocabulary', async () => {
+    mocks.supplyEntity.findFirst.mockResolvedValue({ id: 'supply-1' });
+    mocks.collectionPoint.findFirst.mockResolvedValue({ id: 'point-1' });
+
+    await expect(
+      procurementService.createProcurementResource('collectionUnits', {
+        tenantId,
+        actor,
+        payload: {
+          status: 'available',
+          supplyEntityId: 'supply-1',
+          collectionPointId: 'point-1',
+          unitNumber: 'CU-1',
+        },
+      }),
+    ).rejects.toThrow('status must be one of: ISSUED, IN_TRANSIT, COLLECTED, RECEIVED');
+
+    expect(mocks.collectionUnit.create).not.toHaveBeenCalled();
+  });
+
+  it('derives hidden issuance actor and timestamp fields on create', async () => {
+    const created = { id: 'iss-1', tenantId, issuedBy: actor.id };
+    mocks.issuanceOrder.create.mockResolvedValue(created);
+
+    await procurementService.createProcurementResource('issuanceOrders', {
+      tenantId,
+      actor,
+      payload: { remarks: 'Manual issue' },
+    });
+
+    expect(mocks.issuanceOrder.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          issuedAt: expect.any(Date),
+          issuedBy: actor.id,
+          remarks: 'Manual issue',
+        }),
+      }),
+    );
+  });
+
+  it('rejects client-supplied provenance fields for server-owned procurement events', async () => {
+    await expect(
+      procurementService.createProcurementResource('issuanceOrders', {
+        tenantId,
+        actor,
+        payload: { issuedBy: 'someone-else', remarks: 'Manual issue' },
+      }),
+    ).rejects.toThrow('Server-managed field cannot be supplied: issuedBy');
+
+    await expect(
+      procurementService.updateProcurementResource('collectionReceipts', {
+        id: 'receipt-1',
+        tenantId,
+        actor,
+        payload: { receivedAt: '2026-01-01T00:00:00.000Z' },
+      }),
+    ).rejects.toThrow('Server-managed field cannot be supplied: receivedAt');
+
+    expect(mocks.issuanceOrder.create).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,9 @@
+import { collectionUnitStatusValues } from '@workorder/shared';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import type { JwtPayload } from '../plugins/auth.js';
 import {
+  CrudValidationError,
   archiveCrud,
   createCrud,
   getCrud,
@@ -14,6 +16,72 @@ import {
   type CrudResourceConfig,
 } from './auditedCrudService.js';
 import { tenantIdOrDefault } from './tenant.js';
+
+const collectionUnitStatusSet = new Set<string>(collectionUnitStatusValues);
+const createProvenanceFields: Partial<Record<ProcurementCrudResourceKey, readonly string[]>> = {
+  issuanceOrders: ['issuedAt', 'issuedBy'],
+  collectionOrders: ['requestedAt', 'requestedBy'],
+  collectionReceipts: ['receivedAt', 'receivedBy'],
+  collectionUnitFulfilments: ['fulfilledAt', 'fulfilledBy', 'source'],
+};
+
+function hasOperationalValue(value: unknown) {
+  if (value === null || value === undefined) return false;
+  return typeof value !== 'string' || value.trim() !== '';
+}
+
+function rejectClientProvenanceFields(key: ProcurementCrudResourceKey, payload: Record<string, unknown>) {
+  const protectedFields = createProvenanceFields[key] ?? [];
+  const supplied = protectedFields.filter((field) => Object.prototype.hasOwnProperty.call(payload, field));
+  if (supplied.length) {
+    throw new CrudValidationError(`Server-managed field${supplied.length === 1 ? '' : 's'} cannot be supplied: ${supplied.join(', ')}`);
+  }
+}
+
+async function validateCollectionUnitPayload(input: { payload: Record<string, unknown>; existing?: Record<string, unknown> | null }) {
+  const { payload, existing } = input;
+  if (payload.status !== undefined && !collectionUnitStatusSet.has(String(payload.status))) {
+    throw new CrudValidationError(`status must be one of: ${collectionUnitStatusValues.join(', ')}`);
+  }
+
+  if (existing) return;
+  const hasIdentifier = hasOperationalValue(payload.unitNumber) || hasOperationalValue(payload.parcelTrackingNumber);
+  if (!hasIdentifier) {
+    throw new CrudValidationError('Collection unit requires a unit number or parcel tracking number');
+  }
+  if (!hasOperationalValue(payload.supplyEntityId)) {
+    throw new CrudValidationError('Collection unit requires a supply entity');
+  }
+  if (!hasOperationalValue(payload.collectionPointId)) {
+    throw new CrudValidationError('Collection unit requires a collection point');
+  }
+}
+
+function payloadWithCreateProvenance(
+  key: ProcurementCrudResourceKey,
+  input: { actor: JwtPayload; payload: Record<string, unknown> },
+) {
+  const payload = { ...input.payload };
+  const now = new Date();
+  if (key === 'issuanceOrders') {
+    payload.issuedAt = now;
+    payload.issuedBy = input.actor.id;
+  }
+  if (key === 'collectionOrders') {
+    payload.requestedAt = now;
+    payload.requestedBy = input.actor.id;
+  }
+  if (key === 'collectionReceipts') {
+    payload.receivedAt = now;
+    payload.receivedBy = input.actor.id;
+  }
+  if (key === 'collectionUnitFulfilments') {
+    payload.fulfilledAt = now;
+    payload.fulfilledBy = input.actor.id;
+    payload.source = 'manual';
+  }
+  return payload;
+}
 
 const unitSelect = {
   id: true,
@@ -94,13 +162,14 @@ export const procurementCrudResources = {
       'hiddenFromOperations',
       'legacyRaw',
     ],
-    createRequiredFields: ['status'],
+    createRequiredFields: ['status', 'supplyEntityId', 'collectionPointId'],
     searchableFields: ['id', 'legacyHetId', 'unitNumber', 'parcelTrackingNumber', 'legacyUsedByWorkOrderId'],
     defaultOrderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
     select: { ...unitSelect, legacyRaw: true },
     validators: [
       ({ tenantId, payload }) => requireSameTenant('supplyEntity', payload.supplyEntityId, tenantId, 'Supply entity'),
       ({ tenantId, payload }) => requireSameTenant('collectionPoint', payload.collectionPointId, tenantId, 'Collection point'),
+      validateCollectionUnitPayload,
     ],
   },
   issuanceOrders: {
@@ -366,13 +435,18 @@ export async function createProcurementResource(
   key: ProcurementCrudResourceKey,
   input: { tenantId?: string | null; actor: JwtPayload; payload: Record<string, unknown> },
 ) {
-  return createCrud(procurementCrudResources[key], input);
+  rejectClientProvenanceFields(key, input.payload);
+  return createCrud(procurementCrudResources[key], {
+    ...input,
+    payload: payloadWithCreateProvenance(key, input),
+  });
 }
 
 export async function updateProcurementResource(
   key: ProcurementCrudResourceKey,
   input: { id: string; tenantId?: string | null; actor: JwtPayload; payload: Record<string, unknown> },
 ) {
+  rejectClientProvenanceFields(key, input.payload);
   return updateCrud(procurementCrudResources[key], input);
 }
 

@@ -5,7 +5,9 @@ when:
   event: push
   branch: [dev]
   # instance: PR/DEV run only on jmacair; MAIN (main.yml) runs on home-syno. See issue #31 and #100.
-  instance: [jmacair.noonoon.cc]
+  # + prci.sparkfn.io: lab-001 amd64 CI (sparkfn/lab-001-cluster#27).
+  # Old Mac entries above are RETAINED so live Mac CI keeps matching.
+  instance: [jmacair.noonoon.cc, prci.sparkfn.io]
 
 variables:
   - &node_image node:24-alpine
